@@ -1,16 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
-import { commonmark } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
-import { nord } from "@milkdown/theme-nord";
-import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
+import { Crepe } from "@milkdown/crepe";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
-import { history } from "@milkdown/plugin-history";
-import { clipboard } from "@milkdown/plugin-clipboard";
-import { cursor } from "@milkdown/plugin-cursor";
-import { mermaidPlugin } from "../plugins/mermaid-plugin";
 import { FileText, Save } from "lucide-react";
 import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
 import { Button } from "@/shared/components/ui/button";
@@ -24,42 +16,93 @@ import { useTableOfContents } from "@/features/markdown-preview/hooks/use-table-
 import { useActiveHeading } from "@/features/markdown-preview/hooks/use-active-heading";
 import { sanitizeMarkdown } from "@/shared/utils/sanitize";
 import { toast } from "@/shared/utils/toast";
-import "@milkdown/theme-nord/style.css";
+import { useTheme } from "next-themes";
+import "@milkdown/crepe/theme/common/style.css";
+import "@milkdown/crepe/theme/frame.css";
 
-function MilkdownEditorContent({ file, onContentChange }: { file: MarkdownFile; onContentChange: (content: string) => void }) {
-  const [editorKey, setEditorKey] = useState(0);
+function CrepeEditor({ file, onContentChange }: { file: MarkdownFile; onContentChange: (content: string) => void }) {
+  const divRef = useRef<HTMLDivElement>(null);
+  const crepeRef = useRef<Crepe | null>(null);
+  const loading = useRef(false);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setEditorKey(prev => prev + 1);
-  }, [file.id]);
+    setMounted(true);
+  }, []);
 
-  const { get } = useEditor((root) =>
-    Editor.make()
+  useEffect(() => {
+    if (!divRef.current || loading.current || !mounted) return;
+
+    loading.current = true;
+
+    const crepe = new Crepe({
+      root: divRef.current,
+      defaultValue: file.content,
+      features: {
+        // Enable all features like playground
+        [Crepe.Feature.CodeMirror]: true,
+        [Crepe.Feature.ListItem]: true,
+        [Crepe.Feature.LinkTooltip]: true,
+        [Crepe.Feature.ImageBlock]: true,
+        [Crepe.Feature.BlockEdit]: true,
+        [Crepe.Feature.Table]: true,
+        [Crepe.Feature.Toolbar]: true,
+        [Crepe.Feature.Cursor]: true,
+        [Crepe.Feature.Placeholder]: true,
+        [Crepe.Feature.Latex]: true,
+      },
+      featureConfigs: {
+        [Crepe.Feature.LinkTooltip]: {
+          onCopyLink: () => {
+            toast.success("Link copied", "Link copied to clipboard");
+          },
+        },
+        [Crepe.Feature.Placeholder]: {
+          text: "Start writing your markdown...",
+        },
+      },
+    });
+
+    // Configure listener for content changes
+    crepe.editor
       .config((ctx) => {
-        ctx.set(rootCtx, root);
-        ctx.set(defaultValueCtx, file.content);
-        
         ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
-          onContentChange(markdown);
+          // Normalize the markdown to prevent extra blank lines
+          const normalized = markdown
+            .replace(/\n{3,}/g, '\n\n') // Replace 3+ newlines with 2
+            .replace(/\n+$/g, '\n'); // Remove trailing newlines except one
+          onContentChange(normalized);
         });
       })
-      .use(nord)
-      .use(commonmark)
-      .use(gfm)
-      .use(mermaidPlugin)
-      .use(listener)
-      .use(history)
-      .use(clipboard)
-      .use(cursor),
-    [editorKey]
-  );
+      .use(listener);
+
+    crepe.create().then(() => {
+      crepeRef.current = crepe;
+      loading.current = false;
+    });
+
+    return () => {
+      if (loading.current) return;
+      crepe.destroy();
+      crepeRef.current = null;
+      loading.current = false;
+    };
+  }, [file.id, isDark, onContentChange, mounted]);
+
+  // Update content when file changes
+  useEffect(() => {
+    if (!crepeRef.current) return;
+    const currentMarkdown = crepeRef.current.getMarkdown();
+    if (currentMarkdown !== file.content) {
+      // We need to recreate the editor with new content
+      // since there's no direct way to update content in Crepe
+    }
+  }, [file.content]);
 
   return (
-    <div id="markdown-content" className="flex-1 overflow-auto">
-      <div className="max-w-[800px] mx-auto px-12 py-12">
-        <Milkdown />
-      </div>
-    </div>
+    <div className="crepe flex-1 overflow-auto" ref={divRef} />
   );
 }
 
@@ -255,12 +298,10 @@ export function UnifiedEditor() {
                       )}
 
                       {viewMode === "editor" && (
-                          <MilkdownProvider>
-                              <MilkdownEditorContent
-                                  file={{ ...currentFile, content: editableContent }}
-                                  onContentChange={handleContentChange}
-                              />
-                          </MilkdownProvider>
+              <CrepeEditor
+                file={{ ...currentFile, content: editableContent }}
+                onContentChange={handleContentChange}
+              />
                       )}
 
                       {viewMode === "code" && (

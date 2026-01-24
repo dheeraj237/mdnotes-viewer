@@ -485,7 +485,7 @@
     "@codemirror/language" "^6.0.0"
     "@codemirror/legacy-modes" "^6.4.0"
 
-"@codemirror/language@^6.0.0", "@codemirror/language@^6.10.1", "@codemirror/language@^6.3.0", "@codemirror/language@^6.4.0", "@codemirror/language@^6.6.0", "@codemirror/language@^6.8.0":
+"@codemirror/language@^6.0.0", "@codemirror/language@^6.10.1", "@codemirror/language@^6.12.1", "@codemirror/language@^6.3.0", "@codemirror/language@^6.4.0", "@codemirror/language@^6.6.0", "@codemirror/language@^6.8.0":
   version "6.12.1"
   resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@codemirror/language/-/language-6.12.1.tgz#d615f7b099a39248312feaaf0bfafce4418aac1b"
   integrity sha512-Fa6xkSiuGKc8XC8Cn96T+TQHYj4ZZ7RdFmXA3i9xe/3hLHfwPZdM+dqfX0Cp0zQklBKhVD8Yzc8LS45rkqcwpQ==
@@ -1069,7 +1069,7 @@
     remark-stringify "^11.0.0"
     unified "^11.0.3"
 
-"@milkdown/crepe@7.18.0":
+"@milkdown/crepe@7.18.0", "@milkdown/crepe@^7.18.0":
   version "7.18.0"
   resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@milkdown/crepe/-/crepe-7.18.0.tgz#9ee96187e86c6efca6b30b8367bec2d0df18410f"
   integrity sha512-GcHW6Use0MCRvFg6RQVN5EaeyMlxFxDEGbGwqApnBblxZi5PV9nlAAn0AfOhYvFHSDkQ3rQa5fuHQ0Bd0KobQQ==
@@ -1891,6 +1891,13 @@
   dependencies:
     "@types/lodash" "*"
 
+"@types/lodash.throttle@^4.1.9":
+  version "4.1.9"
+  resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@types/lodash.throttle/-/lodash.throttle-4.1.9.tgz#f17a6ae084f7c0117bd7df145b379537bc9615c5"
+  integrity sha512-PCPVfpfueguWZQB7pJQK890F2scYKoDUL3iM522AptHWn7d5NQmeS/LTEHIcLr5PaTzl3dK2Z0xSUHHTHwaL5g==
+  dependencies:
+    "@types/lodash" "*"
+
 "@types/lodash@*":
   version "4.17.23"
   resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@types/lodash/-/lodash-4.17.23.tgz#c1bb06db218acc8fc232da0447473fc2fb9d9841"
@@ -2060,6 +2067,22 @@
     "@codemirror/language" "^6.0.0"
     "@codemirror/lint" "^6.0.0"
     "@codemirror/search" "^6.0.0"
+    "@codemirror/state" "^6.0.0"
+    "@codemirror/view" "^6.0.0"
+
+"@uiw/codemirror-theme-eclipse@^4.25.4":
+  version "4.25.4"
+  resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@uiw/codemirror-theme-eclipse/-/codemirror-theme-eclipse-4.25.4.tgz#b43e1321a4c2c6b0875e25893b954607e7101684"
+  integrity sha512-02kVXT+Mo2BIeqg0s1R/aeXr5WuQDTBVAP5Q0MsDVmB9qmhSRRvyGrNaF4RdQHLAbuXlAyvkGwCxaxxbcA3SSA==
+  dependencies:
+    "@uiw/codemirror-themes" "4.25.4"
+
+"@uiw/codemirror-themes@4.25.4", "@uiw/codemirror-themes@^4.25.4":
+  version "4.25.4"
+  resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/@uiw/codemirror-themes/-/codemirror-themes-4.25.4.tgz#caa0df8b19368dfee6494f08c4983d1e36199500"
+  integrity sha512-2SLktItgcZC4p0+PfFusEbAHwbuAWe3bOOntCevVgHtrWGtGZX3IPv2k8IKZMgOXtAHyGKpJvT9/nspPn/uCQg==
+  dependencies:
+    "@codemirror/language" "^6.0.0"
     "@codemirror/state" "^6.0.0"
     "@codemirror/view" "^6.0.0"
 
@@ -4408,6 +4431,11 @@ lodash.merge@^4.6.2:
   version "4.6.2"
   resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/lodash.merge/-/lodash.merge-4.6.2.tgz#558aa53b43b661e1925a0afdfa36a9a1085fe57a"
   integrity sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==
+
+lodash.throttle@^4.1.1:
+  version "4.1.1"
+  resolved "https://artifactory.eng.medallia.com/api/npm/virtual-npm/lodash.throttle/-/lodash.throttle-4.1.1.tgz#c23e91b710242ac70c37f1e1cda9274cc39bf2f4"
+  integrity sha512-wIkUCfVKpVsWo3JSZlc+8MB5it+2AN5W8J7YVMST30UrvcQNZ1Okbj+rbVniijTWE6FGYy4XJq/rHkas8qJMLQ==
 
 longest-streak@^3.0.0:
   version "3.1.0"

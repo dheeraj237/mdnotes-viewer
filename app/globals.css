@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "@milkdown/crepe/theme/common/style.css";
+
+/* Import custom Milkdown styles from official website */
+@import "./styles/prosemirror.css";
+@import "./styles/crepe.css";
 
 @layer base {
   :root {
@@ -45,44 +50,45 @@
   }
   
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
+    /* Milkdown Crepe Dark Theme: #1b1c1d = HSL(210, 9%, 11%) */
+    --background: 210 9% 11%;
+    --foreground: 220 14% 91%;
     
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
+    --card: 210 9% 11%;
+    --card-foreground: 220 14% 91%;
     
-    --popover: 224 71% 4%;
-    --popover-foreground: 213 31% 91%;
+    --popover: 210 7% 7%;
+    --popover-foreground: 220 14% 91%;
     
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 211 100% 80%;
+    --primary-foreground: 210 9% 11%;
     
-    --secondary: 222.2 47.4% 11.2%;
-    --secondary-foreground: 213 31% 91%;
+    --secondary: 210 20% 25%;
+    --secondary-foreground: 220 14% 91%;
     
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
+    --muted: 210 15% 13%;
+    --muted-foreground: 218 11% 65%;
     
-    --accent: 216 34% 17%;
-    --accent-foreground: 213 31% 91%;
+    --accent: 210 15% 15%;
+    --accent-foreground: 220 14% 91%;
     
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 213 31% 91%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 220 14% 91%;
     
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 217.2 91.2% 59.8%;
+    --border: 215 14% 20%;
+    --input: 215 14% 20%;
+    --ring: 211 100% 80%;
     
-    /* VSCode-like dark sidebar */
-    --sidebar-background: 220 13% 18%;
-    --sidebar-foreground: 213 31% 91%;
-    --sidebar-border: 216 34% 17%;
-    --sidebar-hover: 217 33% 22%;
+    /* Crepe-style dark sidebar */
+    --sidebar-background: 210 10% 9%;
+    --sidebar-foreground: 220 14% 91%;
+    --sidebar-border: 215 14% 20%;
+    --sidebar-hover: 210 15% 15%;
     
-    /* Editor dark colors */
-    --editor-background: 220 13% 15%;
-    --editor-gutter: 220 13% 18%;
-    --editor-selection: 217 100% 25%;
+    /* Editor dark colors matching Crepe */
+    --editor-background: 210 9% 11%;
+    --editor-gutter: 210 10% 9%;
+    --editor-selection: 211 100% 50% / 0.2;
   }
 }
 
@@ -117,604 +123,358 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Prism Syntax Highlighting - Light Theme */
-:root {
-  --prism-background: hsl(var(--muted) / 0.3);
-  --prism-foreground: hsl(var(--foreground));
-  --prism-comment: #6a737d;
-  --prism-keyword: #d73a49;
-  --prism-function: #6f42c1;
-  --prism-string: #032f62;
-  --prism-number: #005cc5;
-  --prism-operator: #d73a49;
-  --prism-punctuation: #24292e;
-  --prism-class: #22863a;
-  --prism-property: #005cc5;
-  --prism-tag: #22863a;
-  --prism-attr-name: #6f42c1;
-  --prism-attr-value: #032f62;
-  --prism-regex: #032f62;
-  --prism-important: #d73a49;
+/* ============================================ */
+/* CREPE EDITOR CUSTOMIZATION (Milkdown Style) */
+/* ============================================ */
+
+/* Crepe container styling (from Milkdown website) */
+.crepe {
+  display: flow-root;
+  height: 100%;
+  flex: 1;
 }
 
-.dark {
-  --prism-background: hsl(var(--muted) / 0.3);
-  --prism-foreground: #e6edf3;
-  --prism-comment: #8b949e;
-  --prism-keyword: #ff7b72;
-  --prism-function: #d2a8ff;
-  --prism-string: #a5d6ff;
-  --prism-number: #79c0ff;
-  --prism-operator: #ff7b72;
-  --prism-punctuation: #e6edf3;
-  --prism-class: #7ee787;
-  --prism-property: #79c0ff;
-  --prism-tag: #7ee787;
-  --prism-attr-name: #d2a8ff;
-  --prism-attr-value: #a5d6ff;
-  --prism-regex: #a5d6ff;
-  --prism-important: #ff7b72;
+.crepe .milkdown {
+  display: flow-root;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-/* Base Prism Styles */
-code[class*="language-"],
-pre[class*="language-"] {
-  color: var(--prism-foreground);
-  background: none;
-  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
-  font-size: 0.9em;
-  text-align: left;
-  white-space: pre;
-  word-spacing: normal;
-  word-break: normal;
-  word-wrap: normal;
-  line-height: 1.6;
-  tab-size: 4;
-  hyphens: none;
+.crepe .milkdown > .ProseMirror {
+  height: auto;
+  min-height: 100%;
+  padding: 2rem 3rem;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
-pre[class*="language-"] {
-  padding: 0;
+/* Milkdown * reset (from Milkdown website) */
+.milkdown * {
   margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Crepe CSS Variables - Light Theme */
+.crepe .milkdown {
+  --crepe-color-background: #fdfcff;
+  --crepe-color-on-background: #1b1c1d;
+  --crepe-color-surface: #f8f9ff;
+  --crepe-color-surface-low: #f2f3fa;
+  --crepe-color-on-surface: #191c20;
+  --crepe-color-on-surface-variant: #43474e;
+  --crepe-color-outline: #73777f;
+  --crepe-color-primary: #37618e;
+  --crepe-color-secondary: #d7e3f8;
+  --crepe-color-on-secondary: #101c2b;
+  --crepe-color-inverse: #2e3135;
+  --crepe-color-on-inverse: #eff0f7;
+  --crepe-color-inline-code: #ba1a1a;
+  --crepe-color-error: #ba1a1a;
+  --crepe-color-hover: #eceef4;
+  --crepe-color-selected: #e1e2e8;
+  --crepe-color-inline-area: #d8dae0;
+
+  --crepe-font-title: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --crepe-font-default: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --crepe-font-code: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+
+  --crepe-shadow-1:
+    0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+  --crepe-shadow-2:
+    0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+}
+
+/* Crepe CSS Variables - Dark Theme */
+.dark .crepe .milkdown {
+  --crepe-color-background: #1b1c1d;
+  --crepe-color-on-background: #f8f9ff;
+  --crepe-color-surface: #111418;
+  --crepe-color-surface-low: #191c20;
+  --crepe-color-on-surface: #e1e2e8;
+  --crepe-color-on-surface-variant: #c3c6cf;
+  --crepe-color-outline: #8d9199;
+  --crepe-color-primary: #a1c9fd;
+  --crepe-color-secondary: #3c4858;
+  --crepe-color-on-secondary: #d7e3f8;
+  --crepe-color-inverse: #e1e2e8;
+  --crepe-color-on-inverse: #2e3135;
+  --crepe-color-inline-code: #ffb4ab;
+  --crepe-color-error: #ffb4ab;
+  --crepe-color-hover: #1d2024;
+  --crepe-color-selected: #32353a;
+  --crepe-color-inline-area: #111418;
+
+  --crepe-shadow-1:
+    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
+    0px 1px 3px 1px rgba(255, 255, 255, 0.15);
+  --crepe-shadow-2:
+    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
+    0px 2px 6px 2px rgba(255, 255, 255, 0.15);
+}
+
+/* Cursor styling (from Milkdown website) */
+.crepe .cm-cursor,
+.crepe .cm-dropCursor {
+  border-left-color: #000 !important;
+}
+
+.dark .crepe .cm-cursor,
+.dark .crepe .cm-dropCursor {
+  border-left-color: #fff !important;
+}
+
+/* Table overflow handling */
+.crepe table td {
   overflow: auto;
 }
 
-/* Inline code */
-:not(pre) > code[class*="language-"] {
-  padding: 0.1em 0.3em;
-  border-radius: 0.3em;
-  white-space: normal;
+/* CodeMirror editor basic styling */
+.crepe .cm-editor {
+  height: 100%;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+  font-size: 0.875rem;
+  background-color: #f6f8fa !important;
 }
 
-/* Token styles */
-.token.comment,
-.token.prolog,
-.token.doctype,
-.token.cdata {
-  color: var(--prism-comment);
-  font-style: italic;
+.dark .crepe .cm-editor {
+  background-color: #0d1117 !important;
 }
 
-.token.punctuation {
-  color: var(--prism-punctuation);
+.crepe .cm-scroller {
+  overflow: auto;
 }
 
-.token.namespace {
-  opacity: 0.7;
+/* CodeMirror line numbers */
+.crepe .cm-gutters {
+  background-color: #f6f8fa;
+  border-right: 1px solid #d0d7de;
+  color: #57606a;
+  padding-right: 0.5rem;
 }
 
-.token.property,
-.token.tag,
-.token.boolean,
-.token.constant,
-.token.symbol,
-.token.deleted {
-  color: var(--prism-property);
+.dark .crepe .cm-gutters {
+  background-color: #0d1117;
+  border-right: 1px solid #21262d;
+  color: #8b949e;
 }
 
-.token.selector,
-.token.attr-name,
-.token.string,
-.token.char,
-.token.builtin,
-.token.inserted {
-  color: var(--prism-string);
+.crepe .cm-lineNumbers .cm-gutterElement {
+  padding: 0 0.5rem;
+  min-width: 2rem;
+  text-align: right;
+  font-size: 0.75rem;
 }
 
-.token.operator,
-.token.entity,
-.token.url,
-.language-css .token.string,
-.style .token.string {
-  color: var(--prism-operator);
+.crepe .cm-activeLineGutter {
+  background-color: rgba(0, 0, 0, 0.03);
 }
 
-.token.atrule,
-.token.attr-value,
-.token.keyword {
-  color: var(--prism-keyword);
+.dark .crepe .cm-activeLineGutter {
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
-.token.function,
-.token.class-name {
-  color: var(--prism-function);
+/* Control paragraph/heading spacing in Crepe (minimal adjustments) */
+.crepe .milkdown .ProseMirror p {
+  margin: 0.5rem 0;
 }
 
-.token.regex,
-.token.important,
-.token.variable {
-  color: var(--prism-regex);
+.crepe .milkdown .ProseMirror h1,
+.crepe .milkdown .ProseMirror h2,
+.crepe .milkdown .ProseMirror h3,
+.crepe .milkdown .ProseMirror h4,
+.crepe .milkdown .ProseMirror h5,
+.crepe .milkdown .ProseMirror h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 
-.token.important,
-.token.bold {
-  font-weight: bold;
+.crepe .milkdown .ProseMirror h1:first-child,
+.crepe .milkdown .ProseMirror h2:first-child,
+.crepe .milkdown .ProseMirror h3:first-child {
+  margin-top: 0;
 }
 
-.token.italic {
-  font-style: italic;
+.crepe .milkdown .ProseMirror ul,
+.crepe .milkdown .ProseMirror ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
 }
 
-.token.entity {
-  cursor: help;
+.crepe .milkdown .ProseMirror li {
+  margin: 0.25rem 0;
 }
 
-/* Language specific */
-.token.number {
-  color: var(--prism-number);
+.crepe .milkdown .ProseMirror li > p {
+  margin: 0;
 }
 
-.token.tag {
-  color: var(--prism-tag);
-}
-
-.token.attr-name {
-  color: var(--prism-attr-name);
-}
-
-.token.attr-value {
-  color: var(--prism-attr-value);
-}
-
-/* Line highlighting */
-.line-highlight {
-  background: hsla(var(--primary), 0.08);
-  border-left: 3px solid hsl(var(--primary));
-}
-
-/* Line numbers */
-.line-numbers .line-numbers-rows {
-  border-right: 1px solid var(--prism-comment);
-  opacity: 0.5;
-}
-
-.line-numbers-rows > span:before {
-  color: var(--prism-comment);
-}
-
-/* Milkdown Editor Customization */
-.milkdown {
-  font-family: inherit;
-  color: hsl(var(--foreground)) !important;
-  background-color: hsl(var(--background)) !important;
-}
-
-.milkdown .editor {
+/* ProseMirror focus styling */
+.ProseMirror:focus-visible {
   outline: none;
-  min-height: 200px;
-  background-color: hsl(var(--background)) !important;
-  color: hsl(var(--foreground)) !important;
 }
 
-.milkdown .ProseMirror {
-  padding: 0;
+.ProseMirror-selectednode {
   outline: none;
-  background-color: transparent !important;
-  color: hsl(var(--foreground)) !important;
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
 }
 
-.milkdown h1,
-.milkdown h2,
-.milkdown h3,
-.milkdown h4,
-.milkdown h5,
-.milkdown h6 {
-  color: hsl(var(--foreground)) !important;
+/* Milkdown slash menu (from website) */
+.milkdown .milkdown-slash-menu .tab-group {
+  padding-bottom: 0.75rem;
+}
+
+/* ============================================ */
+/* MARKDOWN PREVIEW (Read-only mode)           */
+/* ============================================ */
+
+/* Markdown preview container */
+.markdown-preview {
+  padding: 2rem 3rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Typography */
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  color: hsl(var(--foreground));
   font-weight: 600;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
 }
 
-.milkdown h1 {
+.markdown-preview h1 {
   font-size: 2em;
   border-bottom: 1px solid hsl(var(--border));
   padding-bottom: 0.3rem;
 }
 
-.milkdown h2 {
+.markdown-preview h2 {
   font-size: 1.5em;
   border-bottom: 1px solid hsl(var(--border));
   padding-bottom: 0.3rem;
 }
 
-.milkdown h3 {
+.markdown-preview h3 {
   font-size: 1.25em;
 }
 
-.milkdown h4 {
-  font-size: 1.1em;
-}
-
-.milkdown p {
+.markdown-preview p {
   margin: 0.75rem 0;
   line-height: 1.6;
-  color: hsl(var(--foreground)) !important;
 }
 
-/* Inline code - keep for consistency */
-.milkdown :not(pre) > code {
-  background-color: hsl(var(--muted)) !important;
-  color: hsl(var(--primary)) !important;
-  padding: 0.2em 0.4em;
-  border-radius: 0.25rem;
-  font-size: 0.9em;
-  font-family: 'Consolas', 'Monaco', 'Andale Mono', monospace;
+/* Lists */
+.markdown-preview ul,
+.markdown-preview ol {
+  margin: 0.75rem 0;
+  padding-left: 2rem;
 }
 
-/* Milkdown Code Block Styling - Override Nord Theme */
-.milkdown pre,
-.milkdown .code-fence,
-.milkdown-theme-nord pre,
-.milkdown-theme-nord .code-fence,
-.milkdown .editor pre,
-.milkdown .ProseMirror pre {
-  position: relative;
-  margin: 1rem 0 !important;
-  border-radius: 0.5rem !important;
-  overflow: visible !important;
-  border: 1px solid hsl(var(--border)) !important;
-  background-color: #f6f8fa !important;
-  padding: 3rem 1rem 1rem 1rem !important;
+.markdown-preview li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
 }
 
-.milkdown pre code,
-.milkdown-theme-nord pre code,
-.milkdown .editor pre code,
-.milkdown .ProseMirror pre code {
-  background: none !important;
-  padding: 0 !important;
-  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace !important;
-  font-size: 0.9em !important;
-  line-height: 1.6 !important;
-  color: #24292e !important;
-  display: block !important;
-  white-space: pre !important;
-  word-spacing: normal !important;
-  word-break: normal !important;
-  tab-size: 4 !important;
+/* Links */
+.markdown-preview a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  font-weight: 500;
 }
 
-/* Language label */
-.milkdown pre::before,
-.milkdown .code-fence::before,
-.milkdown-theme-nord pre::before {
-  content: attr(data-language);
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: auto;
-  width: auto;
-  padding: 0.5rem 1rem;
-  font-size: 0.75rem;
-  font-family: 'Consolas', 'Monaco', monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: hsl(var(--muted-foreground)) !important;
-  background-color: transparent !important;
-  border-bottom: none !important;
-  font-weight: 600;
-  z-index: 2;
+.markdown-preview a:hover {
+  text-decoration: underline;
 }
 
-/* Simple code block styling */
-.milkdown pre {
-  margin: 1rem 0 !important;
-  padding: 1rem !important;
-  background-color: #f6f8fa !important;
-  border-radius: 0.5rem !important;
-  border: 1px solid hsl(var(--border)) !important;
-  overflow-x: auto;
-}
-
-.dark .milkdown pre {
-  background-color: #0d1117 !important;
-}
-
-
-/* Dark mode code blocks */
-.dark .milkdown pre,
-.dark .milkdown .code-fence,
-.dark .milkdown-theme-nord pre,
-.dark .milkdown-theme-nord .code-fence,
-.dark .milkdown .editor pre,
-.dark .milkdown .ProseMirror pre {
-  background-color: #0d1117 !important;
-  border-color: hsl(var(--border)) !important;
-}
-
-.dark .milkdown pre code,
-.dark .milkdown-theme-nord pre code,
-.dark .milkdown .editor pre code,
-.dark .milkdown .ProseMirror pre code {
-  color: #e6edf3 !important;
-}
-
-/* Syntax highlighting tokens - Light mode */
-.milkdown pre code .token.comment,
-.milkdown pre code .token.prolog,
-.milkdown pre code .token.doctype,
-.milkdown pre code .token.cdata {
-  color: #6a737d !important;
-  font-style: italic !important;
-}
-
-.milkdown pre code .token.punctuation {
-  color: #24292e !important;
-}
-
-.milkdown pre code .token.property,
-.milkdown pre code .token.tag,
-.milkdown pre code .token.boolean,
-.milkdown pre code .token.number,
-.milkdown pre code .token.constant,
-.milkdown pre code .token.symbol {
-  color: #005cc5 !important;
-}
-
-.milkdown pre code .token.selector,
-.milkdown pre code .token.attr-name,
-.milkdown pre code .token.string,
-.milkdown pre code .token.char,
-.milkdown pre code .token.builtin {
-  color: #032f62 !important;
-}
-
-.milkdown pre code .token.operator,
-.milkdown pre code .token.entity,
-.milkdown pre code .token.url {
-  color: #d73a49 !important;
-}
-
-.milkdown pre code .token.atrule,
-.milkdown pre code .token.attr-value,
-.milkdown pre code .token.keyword {
-  color: #d73a49 !important;
-  font-weight: 600 !important;
-}
-
-.milkdown pre code .token.function,
-.milkdown pre code .token.class-name {
-  color: #6f42c1 !important;
-  font-weight: 600 !important;
-}
-
-.milkdown pre code .token.regex,
-.milkdown pre code .token.important,
-.milkdown pre code .token.variable {
-  color: #e36209 !important;
-}
-
-/* Syntax highlighting tokens - Dark mode */
-.dark .milkdown pre code .token.comment,
-.dark .milkdown pre code .token.prolog,
-.dark .milkdown pre code .token.doctype,
-.dark .milkdown pre code .token.cdata {
-  color: #8b949e !important;
-}
-
-.dark .milkdown pre code .token.punctuation {
-  color: #e6edf3 !important;
-}
-
-.dark .milkdown pre code .token.property,
-.dark .milkdown pre code .token.tag,
-.dark .milkdown pre code .token.boolean,
-.dark .milkdown pre code .token.number,
-.dark .milkdown pre code .token.constant,
-.dark .milkdown pre code .token.symbol {
-  color: #79c0ff !important;
-}
-
-.dark .milkdown pre code .token.selector,
-.dark .milkdown pre code .token.attr-name,
-.dark .milkdown pre code .token.string,
-.dark .milkdown pre code .token.char,
-.dark .milkdown pre code .token.builtin {
-  color: #a5d6ff !important;
-}
-
-.dark .milkdown pre code .token.operator,
-.dark .milkdown pre code .token.entity,
-.dark .milkdown pre code .token.url {
-  color: #ff7b72 !important;
-}
-
-.dark .milkdown pre code .token.atrule,
-.dark .milkdown pre code .token.attr-value,
-.dark .milkdown pre code .token.keyword {
-  color: #ff7b72 !important;
-  font-weight: 600 !important;
-}
-
-.dark .milkdown pre code .token.function,
-.dark .milkdown pre code .token.class-name {
-  color: #d2a8ff !important;
-  font-weight: 600 !important;
-}
-
-.dark .milkdown pre code .token.regex,
-.dark .milkdown pre code .token.important,
-.dark .milkdown pre code .token.variable {
-  color: #ffa657 !important;
-}
-
-.milkdown pre code .token.important,
-.milkdown pre code .token.bold {
-  font-weight: bold !important;
-}
-
-.milkdown pre code .token.italic {
-  font-style: italic !important;
-}
-
-/* Mermaid diagrams styling */
-.milkdown .mermaid {
-  background-color: transparent !important;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid hsl(var(--border));
-}
-
-.milkdown .code-fence code {
-  background-color: transparent !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Mermaid diagrams styling */
-.milkdown .mermaid {
-  background-color: transparent !important;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid hsl(var(--border));
-}
-
-.milkdown blockquote {
+/* Blockquotes */
+.markdown-preview blockquote {
   border-left: 4px solid hsl(var(--primary));
   background-color: hsl(var(--muted) / 0.5);
   padding: 0.5rem 1rem;
   margin: 1rem 0;
   font-style: italic;
-  color: hsl(var(--foreground)) !important;
 }
 
-.milkdown a {
-  color: hsl(var(--primary)) !important;
-  text-decoration: none;
-  font-weight: 500;
+/* Inline code */
+.markdown-preview code {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--primary));
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
 }
 
-.milkdown a:hover {
-  text-decoration: underline;
+/* Code blocks */
+.markdown-preview pre {
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f6f8fa;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+  overflow-x: auto;
 }
 
-/* Table styling - Light & Dark theme support */
-.milkdown table,
-.milkdown .tableWrapper table,
-.milkdown-theme-nord table {
-  border-collapse: collapse !important;
-  width: 100% !important;
-  margin: 1.5rem 0 !important;
-  display: table !important;
-  overflow-x: auto !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: 0.5rem !important;
-  background-color: transparent !important;
+.dark .markdown-preview pre {
+  background-color: #0d1117;
 }
 
-.milkdown thead,
-.milkdown .tableWrapper thead,
-.milkdown-theme-nord thead {
-  background-color: hsl(var(--muted)) !important;
-}
-
-.milkdown tbody tr,
-.milkdown .tableWrapper tbody tr,
-.milkdown-theme-nord tbody tr {
-  border-bottom: 1px solid hsl(var(--border)) !important;
-  background-color: transparent !important;
-}
-
-.milkdown tbody tr:last-child,
-.milkdown .tableWrapper tbody tr:last-child,
-.milkdown-theme-nord tbody tr:last-child {
-  border-bottom: none !important;
-}
-
-.milkdown tbody tr:hover,
-.milkdown .tableWrapper tbody tr:hover,
-.milkdown-theme-nord tbody tr:hover {
-  background-color: hsl(var(--muted) / 0.3) !important;
-}
-
-.milkdown th,
-.milkdown td,
-.milkdown .tableWrapper th,
-.milkdown .tableWrapper td,
-.milkdown-theme-nord th,
-.milkdown-theme-nord td {
-  border: 1px solid hsl(var(--border)) !important;
-  padding: 0.75rem 1rem !important;
-  text-align: left !important;
-  vertical-align: top !important;
-  background-color: transparent !important;
-}
-
-.milkdown th,
-.milkdown .tableWrapper th,
-.milkdown-theme-nord th {
-  background-color: hsl(var(--muted)) !important;
-  font-weight: 600 !important;
-  color: hsl(var(--foreground)) !important;
-  border-bottom: 2px solid hsl(var(--border)) !important;
-}
-
-.milkdown td,
-.milkdown .tableWrapper td,
-.milkdown-theme-nord td {
-  background-color: hsl(var(--background)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Table cell selection in edit mode */
-.milkdown .selectedCell,
-.milkdown .tableWrapper .selectedCell {
-  background-color: hsl(var(--primary) / 0.1) !important;
-}
-
-/* Lists */
-.milkdown ul,
-.milkdown ol {
-  margin: 0.75rem 0;
-  padding-left: 2rem;
-}
-
-.milkdown li {
-  margin: 0.25rem 0;
+.markdown-preview pre code {
+  background: none;
+  padding: 0;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+  font-size: 0.9em;
   line-height: 1.6;
+  color: #24292e;
 }
 
-.milkdown ul {
-  list-style-type: disc;
+.dark .markdown-preview pre code {
+  color: #e6edf3;
 }
 
-.milkdown ol {
-  list-style-type: decimal;
+/* Tables */
+.markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5rem 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
 }
 
-/* Task lists */
-.milkdown input[type="checkbox"] {
-  margin-right: 0.5rem;
-  cursor: pointer;
+.markdown-preview thead {
+  background-color: hsl(var(--muted));
 }
 
-.milkdown hr {
-  border: none;
-  border-top: 2px solid hsl(var(--border));
-  margin: 2rem 0;
+.markdown-preview tbody tr {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.markdown-preview tbody tr:hover {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.markdown-preview th {
+  font-weight: 600;
+  border-bottom: 2px solid hsl(var(--border));
 }
 
 /* Images */
-.milkdown img {
+.markdown-preview img {
   max-width: 100%;
   height: auto;
   border-radius: 0.5rem;
@@ -722,107 +482,23 @@ pre[class*="language-"] {
   border: 1px solid hsl(var(--border));
 }
 
-/* Selection */
-.milkdown .ProseMirror-selectednode {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 2px;
+/* Horizontal rules */
+.markdown-preview hr {
+  border: none;
+  border-top: 2px solid hsl(var(--border));
+  margin: 2rem 0;
 }
 
-/* Placeholder */
-.milkdown .ProseMirror p.is-empty::before {
-  content: attr(data-placeholder);
-  float: left;
-  color: hsl(var(--muted-foreground));
-  pointer-events: none;
-  height: 0;
+/* Task lists */
+.markdown-preview input[type="checkbox"] {
+  margin-right: 0.5rem;
+  cursor: pointer;
 }
 
-/* Dark mode specific overrides */
-.dark .milkdown,
-.dark .milkdown .editor,
-.dark .milkdown .ProseMirror {
-  background-color: hsl(var(--background)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.dark .milkdown h1,
-.dark .milkdown h2,
-.dark .milkdown h3,
-.dark .milkdown h4,
-.dark .milkdown h5,
-.dark .milkdown h6,
-.dark .milkdown p,
-.dark .milkdown li,
-.dark .milkdown blockquote {
-  color: hsl(var(--foreground)) !important;
-}
-
-.dark .milkdown table,
-.dark .milkdown .tableWrapper table,
-.dark .milkdown-theme-nord table {
-  border-color: hsl(var(--border)) !important;
-  background-color: transparent !important;
-}
-
-.dark .milkdown th,
-.dark .milkdown .tableWrapper th,
-.dark .milkdown-theme-nord th {
-  background-color: hsl(var(--muted)) !important;
-  color: hsl(var(--foreground)) !important;
-  border-color: hsl(var(--border)) !important;
-}
-
-.dark .milkdown td,
-.dark .milkdown .tableWrapper td,
-.dark .milkdown-theme-nord td {
-  background-color: hsl(var(--card)) !important;
-  color: hsl(var(--foreground)) !important;
-  border-color: hsl(var(--border)) !important;
-}
-
-.dark .milkdown tbody tr:hover,
-.dark .milkdown .tableWrapper tbody tr:hover,
-.dark .milkdown-theme-nord tbody tr:hover {
-  background-color: hsl(var(--accent) / 0.5) !important;
-}
-
-/* Keep inline code styling */
-.dark .milkdown :not(pre) > code {
-  background-color: hsl(var(--muted)) !important;
-  color: hsl(var(--primary)) !important;
-}
-
-/* Let Nord theme handle dark mode code blocks */
-
-.dark .milkdown blockquote {
-  background-color: hsl(var(--muted) / 0.6) !important;
-  border-left-color: hsl(var(--primary)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Override Nord theme table styles with maximum specificity */
-.milkdown-theme-nord .editor table,
-.milkdown .editor .tableWrapper table,
-.milkdown .ProseMirror table {
-  background: transparent !important;
-}
-
-.milkdown-theme-nord .editor th,
-.milkdown .editor .tableWrapper th,
-.milkdown .ProseMirror th {
-  background-color: hsl(var(--muted)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.milkdown-theme-nord .editor td,
-.milkdown .editor .tableWrapper td,
-.milkdown .ProseMirror td {
-  background-color: hsl(var(--background)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.milkdown-theme-nord .editor tbody tr,
-.milkdown .editor .tableWrapper tbody tr,
-.milkdown .ProseMirror tbody tr {
-  background: transparent !important;
+/* Mermaid diagrams */
+.markdown-preview .mermaid {
+  background-color: transparent;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
 }
