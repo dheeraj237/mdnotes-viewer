@@ -75,7 +75,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <PanelResizeHandle className="w-1 bg-sidebar-border hover:bg-primary hover:w-1.5 transition-all cursor-col-resize data-[panel-group-direction=horizontal]:w-1" />
 
           <Panel id="center-panel" minSize={30} defaultSize={50}>
-            <div className="h-full overflow-auto bg-editor-background">
+            <div className="h-full overflow-hidden bg-editor-background">
               {children}
             </div>
           </Panel>

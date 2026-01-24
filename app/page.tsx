@@ -1,10 +1,12 @@
+"use client";
+
 import { AppShell } from "@/shared/components/app-shell";
-import { MarkdownPreview } from "@/features/markdown-preview/components/markdown-preview";
+import { UnifiedEditor } from "@/features/markdown-editor/components/unified-editor";
 
 export default function Home() {
   return (
     <AppShell>
-      <MarkdownPreview />
+      <UnifiedEditor />
     </AppShell>
   );
 }

@@ -12,8 +12,8 @@ interface ViewModeToggleProps {
 
 export function ViewModeToggle({ mode, onModeChange }: ViewModeToggleProps) {
   const modes: { value: ViewMode; icon: React.ReactNode; label: string }[] = [
+    { value: "editor", icon: <Edit className="h-4 w-4" />, label: "Editor" },
     { value: "preview", icon: <Eye className="h-4 w-4" />, label: "Preview" },
-    { value: "edit", icon: <Edit className="h-4 w-4" />, label: "Edit" },
     {
       value: "split",
       icon: <SplitSquareHorizontal className="h-4 w-4" />,

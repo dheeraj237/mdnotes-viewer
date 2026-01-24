@@ -16,7 +16,7 @@ export interface MarkdownFile {
   updatedAt?: string;
 }
 
-export type ViewMode = "preview" | "edit" | "split";
+export type ViewMode = "preview" | "editor" | "code";
 
 export interface EditorState {
   currentFile: MarkdownFile | null;
@@ -30,4 +30,5 @@ export interface Feature {
   version: string;
   enabled: boolean;
   experimental?: boolean;
+  description?: string;
 }

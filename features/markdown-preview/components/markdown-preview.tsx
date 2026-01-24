@@ -19,37 +19,37 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 1);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h1 id={id} {...props}>{children}</h1>;
+      return <h1 id={id} className="text-3xl font-semibold mt-0 mb-6 tracking-tight" {...props}>{children}</h1>;
     },
     h2: ({ node, children, ...props }: any) => {
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 2);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h2 id={id} {...props}>{children}</h2>;
+      return <h2 id={id} className="text-2xl font-semibold mt-10 mb-4 pb-2 border-b border-border tracking-tight" {...props}>{children}</h2>;
     },
     h3: ({ node, children, ...props }: any) => {
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 3);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h3 id={id} {...props}>{children}</h3>;
+      return <h3 id={id} className="text-xl font-semibold mt-8 mb-3 tracking-tight" {...props}>{children}</h3>;
     },
     h4: ({ node, children, ...props }: any) => {
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 4);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h4 id={id} {...props}>{children}</h4>;
+      return <h4 id={id} className="text-lg font-semibold mt-6 mb-2 tracking-tight" {...props}>{children}</h4>;
     },
     h5: ({ node, children, ...props }: any) => {
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 5);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h5 id={id} {...props}>{children}</h5>;
+      return <h5 id={id} className="text-base font-semibold mt-4 mb-2 tracking-tight" {...props}>{children}</h5>;
     },
     h6: ({ node, children, ...props }: any) => {
       const text = String(children);
       const index = headings.findIndex(h => h.text === text && h.level === 6);
       const id = index >= 0 ? headings[index].id : undefined;
-      return <h6 id={id} {...props}>{children}</h6>;
+      return <h6 id={id} className="text-sm font-semibold mt-4 mb-2 tracking-tight" {...props}>{children}</h6>;
     },
     a: ({ href, children }: any) => (
       <a
@@ -133,12 +133,15 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
 
 MarkdownContent.displayName = 'MarkdownContent';
 
-export function MarkdownPreview() {
-  const { currentFile, isLoading } = useEditorStore();
+interface MarkdownPreviewProps {
+  content?: string;
+}
+
+export function MarkdownPreview({ content: propContent }: MarkdownPreviewProps = {}) {
   const { setItems, setActiveId } = useTocStore();
-  const headings = useTableOfContents(currentFile?.content || "");
+  const content = propContent || "";
+  const headings = useTableOfContents(content);
   const activeId = useActiveHeading(headings.map(h => h.id));
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Update TOC store when headings change
   useEffect(() => {
@@ -150,20 +153,11 @@ export function MarkdownPreview() {
     setActiveId(activeId);
   }, [activeId, setActiveId]);
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
-  if (!currentFile) {
+  if (!content) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8">
         <FileText className="h-24 w-24 text-muted-foreground mb-6" />
-        <h2 className="text-xl font-semibold mb-2">No file selected</h2>
+        <h2 className="text-xl font-semibold mb-2">No content to preview</h2>
         <p className="text-muted-foreground text-center max-w-md">
           Select a markdown file from the explorer to view its contents
         </p>
@@ -172,12 +166,8 @@ export function MarkdownPreview() {
   }
 
   return (
-    <div ref={containerRef} className="h-full overflow-auto" id="markdown-content">
-      <div className="max-w-[800px] mx-auto px-12 py-12">
-        <article className="markdown-body prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-3xl prose-h1:mt-0 prose-h1:mb-6 prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-3 prose-h4:text-lg prose-h4:mt-6 prose-h4:mb-2 prose-p:leading-7 prose-p:mb-4 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:font-semibold prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:bg-muted/50 prose-blockquote:py-1 prose-blockquote:not-italic prose-ul:my-4 prose-ol:my-4 prose-li:my-1 prose-table:border-collapse prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-hr:border-border prose-img:rounded-lg prose-img:shadow-sm">
-          <MarkdownContent content={currentFile.content} headings={headings} />
-        </article>
-      </div>
-    </div>
+    <article className="markdown-body prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-3xl prose-h1:mt-0 prose-h1:mb-6 prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-3 prose-h4:text-lg prose-h4:mt-6 prose-h4:mb-2 prose-p:leading-7 prose-p:mb-4 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:font-semibold prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:bg-muted/50 prose-blockquote:py-1 prose-blockquote:not-italic prose-ul:my-4 prose-ol:my-4 prose-li:my-1 prose-table:border-collapse prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-hr:border-border prose-img:rounded-lg prose-img:shadow-sm">
+      <MarkdownContent content={content} headings={headings} />
+    </article>
   );
 }

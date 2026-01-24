@@ -14,7 +14,7 @@ interface FileTreeItemProps {
 export function FileTreeItem({ node, level }: FileTreeItemProps) {
   const { expandedFolders, selectedFileId, toggleFolder, setSelectedFile } =
     useFileExplorerStore();
-  const { setCurrentFile, setIsLoading } = useEditorStore();
+  const { openFile, setIsLoading } = useEditorStore();
 
   const isExpanded = expandedFolders.has(node.id);
   const isSelected = selectedFileId === node.id;
@@ -31,7 +31,7 @@ export function FileTreeItem({ node, level }: FileTreeItemProps) {
         const result = await response.json();
 
         if (result.success) {
-          setCurrentFile({
+          openFile({
             id: node.id,
             path: node.path,
             name: node.name,

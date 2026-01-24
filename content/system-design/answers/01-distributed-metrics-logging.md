@@ -2,15 +2,16 @@
 
 [← Back to Topics](../topics.md#distributed-metrics-logging-and-aggregation-system-like-datadog-prometheus)
 
-## Problem Statement
+## Problem Statements
 
 Design a system that can collect, aggregate, and query metrics from millions of servers processing billions of events per day. Support real-time alerting and historical analysis.
 
----
+***
 
 ## Requirements
 
 ### Functional Requirements
+
 1. **Metric Collection**: Collect metrics from millions of servers (CPU, memory, disk, custom application metrics)
 2. **Real-time Ingestion**: Process billions of data points per day with low latency
 3. **Query Interface**: Support complex queries with filtering, grouping, and aggregation
@@ -19,23 +20,32 @@ Design a system that can collect, aggregate, and query metrics from millions of 
 6. **Dashboards**: Support real-time dashboard updates
 
 ### Non-Functional Requirements
+
 1. **Scalability**: Handle 10M+ metrics/second write throughput
 2. **Availability**: 99.9% uptime
-3. **Latency**: 
-   - Write latency: <100ms p99
-   - Query latency: <1s for real-time dashboards
+3. **Latency**:
+
+   * Write latency: <100ms p99
+
+   * Query latency: <1s for real-time dashboards
 4. **Retention**: Configurable (7 days full resolution, 1 year downsampled)
 5. **Durability**: No data loss for critical metrics
 
 ### Scale Estimates
-- **Servers**: 1 million servers
-- **Metrics per server**: 100 metrics
-- **Collection interval**: 10 seconds
-- **Write rate**: 1M * 100 / 10 = **10M data points/second**
-- **Daily volume**: 10M * 86,400 = **864 billion data points/day**
-- **Storage** (assuming 12 bytes per point): ~10TB/day raw data
 
----
+* **Servers**: 1 million servers
+
+* **Metrics per server**: 100 metrics
+
+* **Collection interval**: 10 seconds
+
+* **Write rate**: 1M \* 100 / 10 = **10M data points/second**
+
+* **Daily volume**: 10M \* 86,400 = **864 billion data points/day**
+
+* **Storage** (assuming 12 bytes per point): \~10TB/day raw data
+
+***
 
 ## High-Level Architecture
 
@@ -118,13 +128,14 @@ graph TB
     F2 --> G3
 ```
 
----
+***
 
 ## Detailed Design
 
 ### 1. Metric Collection (Push vs Pull)
 
 #### Push Model (Recommended for this scale)
+
 ```mermaid
 sequenceDiagram
     participant Agent as Metrics Agent
@@ -143,12 +154,17 @@ sequenceDiagram
 ```
 
 **Advantages of Push:**
-- Agents control send rate (no thundering herd)
-- Better for auto-scaling environments
-- Works behind firewalls/NAT
-- Easier to implement backpressure
+
+* Agents control send rate (no thundering herd)
+
+* Better for auto-scaling environments
+
+* Works behind firewalls/NAT
+
+* Easier to implement backpressure
 
 #### Data Format Example
+
 ```json
 {
   "source": "server-123.prod.us-east-1",
@@ -177,11 +193,12 @@ sequenceDiagram
 }
 ```
 
----
+***
 
 ### 2. Ingestion Layer
 
 #### Components
+
 ```mermaid
 graph LR
     subgraph "Ingestion Service"
@@ -195,6 +212,7 @@ graph LR
 ```
 
 **Responsibilities:**
+
 1. **Validation**: Check metric format, required fields
 2. **Normalization**: Convert units, standardize tag names
 3. **Enrichment**: Add metadata (region, cluster info)
@@ -202,6 +220,7 @@ graph LR
 5. **Rate Limiting**: Per-source rate limiting
 
 #### Partitioning Strategy
+
 ```python
 # Partition by metric name + tags hash for even distribution
 def get_partition(metric_name, tags):
@@ -209,7 +228,7 @@ def get_partition(metric_name, tags):
     return hash(key) % num_partitions
 ```
 
----
+***
 
 ### 3. Stream Processing & Aggregation
 
@@ -229,6 +248,7 @@ graph TB
 ```
 
 #### Aggregation Example (Flink)
+
 ```java
 DataStream<Metric> metrics = kafka.readFrom("raw-metrics");
 
@@ -262,30 +282,40 @@ class MetricAggregator implements AggregateFunction<Metric, MetricStats, Aggrega
 }
 ```
 
----
+***
 
 ### 4. Storage Layer
 
 #### Time-Series Database (Hot Storage)
 
 **Option 1: InfluxDB**
-- Optimized for time-series data
-- Built-in downsampling
-- InfluxQL for queries
+
+* Optimized for time-series data
+
+* Built-in downsampling
+
+* InfluxQL for queries
 
 **Option 2: TimescaleDB (PostgreSQL extension)**
-- SQL interface
-- Better for complex joins
-- Automatic partitioning by time
+
+* SQL interface
+
+* Better for complex joins
+
+* Automatic partitioning by time
 
 **Option 3: Prometheus (with Thanos for long-term storage)**
-- Pull-based collection
-- PromQL query language
-- Service discovery
+
+* Pull-based collection
+
+* PromQL query language
+
+* Service discovery
 
 **Recommended: TimescaleDB** for flexibility
 
 #### Schema Design
+
 ```sql
 CREATE TABLE metrics (
     time        TIMESTAMPTZ NOT NULL,
@@ -304,6 +334,7 @@ CREATE INDEX idx_tags ON metrics USING GIN (tags);
 ```
 
 #### Data Retention Policy
+
 ```mermaid
 graph LR
     A[Raw Data<br/>10s resolution<br/>7 days] --> B[1 min rollup<br/>30 days]
@@ -319,6 +350,7 @@ graph LR
 ```
 
 #### Downsampling Jobs
+
 ```sql
 -- Continuous aggregate for 1-minute rollups
 CREATE MATERIALIZED VIEW metrics_1min
@@ -335,7 +367,7 @@ FROM metrics
 GROUP BY bucket, metric_name, tags;
 ```
 
----
+***
 
 ### 5. Metadata Store (Series Index)
 
@@ -353,6 +385,7 @@ graph TB
 ```
 
 #### Schema (Redis or Cassandra)
+
 ```python
 # Key: metric_name:tag1=value1,tag2=value2
 # Value: series_id (uint64)
@@ -366,7 +399,7 @@ if not series_id:
     redis.sadd("all_series", series_key)
 ```
 
----
+***
 
 ### 6. Query Layer
 
@@ -403,6 +436,7 @@ sequenceDiagram
 #### Query API Examples
 
 **PromQL-style Query Language:**
+
 ```
 # Average CPU usage across all servers in us-east datacenter
 avg(cpu.usage{datacenter="us-east"}[5m])
@@ -417,6 +451,7 @@ histogram_quantile(0.99, http.request.duration)
 #### Query Optimization Techniques
 
 1. **Query Result Caching**
+
 ```python
 def query_metrics(metric_name, time_range, tags):
     cache_key = f"{metric_name}:{time_range}:{tags}"
@@ -436,11 +471,11 @@ def query_metrics(metric_name, time_range, tags):
     return result
 ```
 
-2. **Pre-aggregation for Common Queries**
-3. **Parallel query execution across time chunks**
-4. **Down-sampling for large time ranges**
+1. **Pre-aggregation for Common Queries**
+2. **Parallel query execution across time chunks**
+3. **Down-sampling for large time ranges**
 
----
+***
 
 ### 7. Alerting System
 
@@ -465,6 +500,7 @@ graph TB
 ```
 
 #### Alert Rule Definition
+
 ```yaml
 alerts:
   - name: high_cpu_usage
@@ -480,6 +516,7 @@ alerts:
 ```
 
 #### Alert State Machine
+
 ```mermaid
 stateDiagram-v2
     [*] --> Normal
@@ -492,6 +529,7 @@ stateDiagram-v2
 ```
 
 #### Alert Evaluation (Pseudo-code)
+
 ```python
 class AlertEvaluator:
     def evaluate_rule(self, rule, metrics):
@@ -524,7 +562,7 @@ class AlertEvaluator:
                 redis.hset(f"alert:{rule.name}", "state", "resolved")
 ```
 
----
+***
 
 ### 8. Cardinality Management
 
@@ -545,6 +583,7 @@ graph TB
 #### Best Practices
 
 **❌ Bad: High-cardinality tags**
+
 ```json
 {
   "name": "http.request.duration",
@@ -557,6 +596,7 @@ graph TB
 ```
 
 **✅ Good: Low-cardinality tags**
+
 ```json
 {
   "name": "http.request.duration",
@@ -570,6 +610,7 @@ graph TB
 ```
 
 #### Cardinality Monitoring
+
 ```python
 def check_cardinality(metric_name):
     # Count unique series for this metric
@@ -580,7 +621,7 @@ def check_cardinality(metric_name):
         alert(f"High cardinality detected for {metric_name}: {unique_series} series")
 ```
 
----
+***
 
 ## Deep Dive Topics
 
@@ -614,6 +655,7 @@ sequenceDiagram
 ```
 
 **Optimizations:**
+
 1. **Batching at agent**: Send 10-100 metrics per request
 2. **Batching at Kafka producer**: Accumulate before sending
 3. **Compression**: Use Snappy/LZ4 for Kafka messages
@@ -623,6 +665,7 @@ sequenceDiagram
 ### B. Query Path Optimization
 
 **Multi-level Caching:**
+
 ```mermaid
 graph TB
     A[Query Request] --> B[L1: In-memory Cache<br/>Recent/Popular queries]
@@ -641,68 +684,80 @@ graph TB
 **Time-series compression algorithms:**
 
 1. **Delta-of-delta encoding** (Gorilla compression)
+
 ```
 Original:  [100, 102, 104, 106, 108]
 Deltas:    [2, 2, 2, 2]
 Delta-delta: [0, 0, 0]  // Highly compressible!
 ```
 
-2. **Run-length encoding** for repeated values
-3. **XOR compression** for floating-point values
+1. **Run-length encoding** for repeated values
+2. **XOR compression** for floating-point values
 
 **Compression Ratios:**
-- Raw data: 12 bytes/point
-- Compressed: 1-2 bytes/point
-- **Compression ratio: 6-12x**
 
----
+* Raw data: 12 bytes/point
+
+* Compressed: 1-2 bytes/point
+
+* **Compression ratio: 6-12x**
+
+***
 
 ## Technology Stack
 
-| Component | Technology Options | Recommended |
-|-----------|-------------------|-------------|
-| **Ingestion** | Golang, Java Spring Boot | Golang (performance) |
-| **Message Queue** | Kafka, Pulsar, RabbitMQ | Kafka (throughput) |
+| Component             | Technology Options                    | Recommended                  |
+| --------------------- | ------------------------------------- | ---------------------------- |
+| **Ingestion**         | Golang, Java Spring Boot              | Golang (performance)         |
+| **Message Queue**     | Kafka, Pulsar, RabbitMQ               | Kafka (throughput)           |
 | **Stream Processing** | Flink, Spark Streaming, Kafka Streams | Flink (complex aggregations) |
-| **Time-Series DB** | InfluxDB, TimescaleDB, Prometheus | TimescaleDB (flexibility) |
-| **Cache** | Redis, Memcached | Redis (data structures) |
-| **Cold Storage** | S3, GCS, Azure Blob | S3 (cost-effective) |
-| **Metadata Store** | Cassandra, DynamoDB, Redis | Cassandra (scale) |
-| **Query Engine** | Custom, Presto, ClickHouse | Custom + ClickHouse |
+| **Time-Series DB**    | InfluxDB, TimescaleDB, Prometheus     | TimescaleDB (flexibility)    |
+| **Cache**             | Redis, Memcached                      | Redis (data structures)      |
+| **Cold Storage**      | S3, GCS, Azure Blob                   | S3 (cost-effective)          |
+| **Metadata Store**    | Cassandra, DynamoDB, Redis            | Cassandra (scale)            |
+| **Query Engine**      | Custom, Presto, ClickHouse            | Custom + ClickHouse          |
 
----
+***
 
 ## Capacity Planning
 
 ### Storage Calculation
 
 **Hot Storage (7 days, full resolution):**
+
 ```
 10M points/sec * 86,400 sec/day * 7 days * 12 bytes/point
 = 72 TB raw (compressed to ~10 TB)
 ```
 
 **Cold Storage (1 year, 1-hour rollups):**
+
 ```
 10M points/sec * 86,400 sec/day * 365 days * 2 bytes/point / 360 (hourly rollup)
 = 18 TB
 ```
 
-**Total Storage: ~30 TB**
+**Total Storage: \~30 TB**
 
 ### Compute Requirements
 
 **Ingestion Servers:**
-- 10M writes/sec
-- Each server: 100K writes/sec
-- **Need: 100 servers** (with 2x redundancy)
+
+* 10M writes/sec
+
+* Each server: 100K writes/sec
+
+* **Need: 100 servers** (with 2x redundancy)
 
 **Kafka Cluster:**
-- 10M msgs/sec * 100 bytes/msg = 1 GB/sec
-- 3x replication = 3 GB/sec
-- **Need: 10-20 brokers**
 
----
+* 10M msgs/sec \* 100 bytes/msg = 1 GB/sec
+
+* 3x replication = 3 GB/sec
+
+* **Need: 10-20 brokers**
+
+***
 
 ## Monitoring & Observability
 
@@ -730,38 +785,49 @@ Data Quality:
   - duplicate.metrics (count)
 ```
 
----
+***
 
 ## Trade-offs and Considerations
 
 ### 1. Push vs Pull
-| Aspect | Push | Pull |
-|--------|------|------|
-| **Scalability** | ✅ Better (clients control rate) | ❌ Server polls all targets |
-| **Firewall-friendly** | ✅ Yes | ❌ Needs inbound access |
-| **Service discovery** | ❌ Clients need endpoints | ✅ Server discovers targets |
-| **Short-lived jobs** | ✅ Can push before exit | ❌ Might miss data |
+
+| Aspect                | Push                            | Pull                       |
+| --------------------- | ------------------------------- | -------------------------- |
+| **Scalability**       | ✅ Better (clients control rate) | ❌ Server polls all targets |
+| **Firewall-friendly** | ✅ Yes                           | ❌ Needs inbound access     |
+| **Service discovery** | ❌ Clients need endpoints        | ✅ Server discovers targets |
+| **Short-lived jobs**  | ✅ Can push before exit          | ❌ Might miss data          |
 
 ### 2. Consistency vs Availability
-- **Chose**: Eventual consistency (AP in CAP)
-- **Why**: Metrics can tolerate small delays; availability more important
+
+* **Chose**: Eventual consistency (AP in CAP)
+
+* **Why**: Metrics can tolerate small delays; availability more important
 
 ### 3. Accuracy vs Performance
-- **Strategy**: 
-  - Real-time queries: Approximate (sampling, downsampling)
-  - Historical queries: Exact (from aggregated data)
+
+* **Strategy**:
+
+  * Real-time queries: Approximate (sampling, downsampling)
+
+  * Historical queries: Exact (from aggregated data)
 
 ### 4. Storage Costs vs Query Speed
-- **Solution**: Multi-tier storage
-  - Hot: Fast SSD for recent data
-  - Warm: Slower SSD for last month
-  - Cold: S3 for historical
 
----
+* **Solution**: Multi-tier storage
+
+  * Hot: Fast SSD for recent data
+
+  * Warm: Slower SSD for last month
+
+  * Cold: S3 for historical
+
+***
 
 ## Failure Scenarios & Handling
 
 ### 1. Ingestion Service Failure
+
 ```mermaid
 graph LR
     A[Agent] -->|Retry| B[Load Balancer]
@@ -771,74 +837,105 @@ graph LR
     style D fill:#ff6b6b
     style C fill:#1dd1a1
 ```
+
 **Solution**: Load balancer health checks, automatic failover
 
 ### 2. Kafka Partition Failure
+
 **Solution**: Replication factor = 3, min in-sync replicas = 2
 
 ### 3. TSDB Failure
-**Solution**: 
-- Data replicated in Kafka (replay capability)
-- Multi-region TSDB deployment
-- Automated backups
+
+**Solution**:
+
+* Data replicated in Kafka (replay capability)
+
+* Multi-region TSDB deployment
+
+* Automated backups
 
 ### 4. Query Service Overload
-**Solution**:
-- Rate limiting per user/dashboard
-- Query result caching
-- Query complexity limits
-- Auto-scaling based on CPU/memory
 
----
+**Solution**:
+
+* Rate limiting per user/dashboard
+
+* Query result caching
+
+* Query complexity limits
+
+* Auto-scaling based on CPU/memory
+
+***
 
 ## Security Considerations
 
 1. **Authentication**: API keys, OAuth 2.0
 2. **Authorization**: Role-based access control (RBAC)
-3. **Encryption**: 
-   - In transit: TLS 1.3
-   - At rest: AES-256
+3. **Encryption**:
+
+   * In transit: TLS 1.3
+
+   * At rest: AES-256
 4. **Data isolation**: Multi-tenancy with strict data separation
 5. **Audit logging**: Track all data access
 
----
+***
 
 ## Extensions & Future Enhancements
 
 1. **Machine Learning Integration**
-   - Anomaly detection
-   - Predictive alerting
-   - Automatic baseline detection
+
+   * Anomaly detection
+
+   * Predictive alerting
+
+   * Automatic baseline detection
 
 2. **Distributed Tracing Integration**
-   - Correlate metrics with traces
-   - Exemplar support (link metric spikes to traces)
+
+   * Correlate metrics with traces
+
+   * Exemplar support (link metric spikes to traces)
 
 3. **Log Integration**
-   - Unified observability platform
-   - Correlated logs, metrics, traces
+
+   * Unified observability platform
+
+   * Correlated logs, metrics, traces
 
 4. **Cost Optimization**
-   - Intelligent downsampling based on query patterns
-   - Automatic archival of unused metrics
+
+   * Intelligent downsampling based on query patterns
+
+   * Automatic archival of unused metrics
 
 5. **Advanced Querying**
-   - Natural language queries
-   - Saved queries and templates
 
----
+   * Natural language queries
+
+   * Saved queries and templates
+
+***
 
 ## Summary
 
 This design provides:
-- ✅ **10M+ writes/second** throughput
-- ✅ **Sub-second query** latency for recent data
-- ✅ **Scalable** to millions of servers
-- ✅ **Cost-effective** with tiered storage
-- ✅ **Real-time alerting** with low false positives
-- ✅ **High availability** with no single point of failure
+
+* ✅ **10M+ writes/second** throughput
+
+* ✅ **Sub-second query** latency for recent data
+
+* ✅ **Scalable** to millions of servers
+
+* ✅ **Cost-effective** with tiered storage
+
+* ✅ **Real-time alerting** with low false positives
+
+* ✅ **High availability** with no single point of failure
 
 **Key Design Decisions:**
+
 1. Push-based collection for scalability
 2. Kafka for buffering and replay capability
 3. Stream processing for real-time aggregation

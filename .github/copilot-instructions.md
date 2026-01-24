@@ -2,17 +2,39 @@
 
 ## Project Overview
 
-**MDNotes Viewer** is a modern, VSCode-inspired markdown documentation viewer built with Next.js 15. It provides a professional interface for viewing and editing markdown files with Mermaid diagram support, syntax highlighting, and a feature-rich editing experience.
+**MDNotes Viewer** is a modern, VSCode-inspired markdown documentation viewer built with Next.js 15. It provides a professional interface for viewing and editing markdown files with syntax highlighting, auto-save, and a feature-rich editing experience.
 
 ### Key Technologies
-- **Framework**: Next.js 15 (App Router) with TypeScript
+- **Framework**: Next.js 16.1.4 (App Router) with TypeScript 5
 - **Package Manager**: Yarn (for faster development)
-- **Styling**: Tailwind CSS with CSS Variables for theming
-- **State Management**: Zustand with persistence
+- **React**: 19.2.3 with Server/Client Components
+- **Styling**: Tailwind CSS 4 with CSS Variables for theming
+- **State Management**: Zustand 5.0.10 with persistence
 - **UI Components**: Custom components + Radix UI primitives
-- **Markdown**: react-markdown, remark-gfm, Mermaid
-- **Editor**: CodeMirror 6
-- **Icons**: lucide-react
+- **Markdown Rendering**: react-markdown 10.1.0, remark-gfm 4.0.1
+- **Markdown Editor**: Milkdown 7.18.0 (WYSIWYG editor framework)
+- **Syntax Highlighting**: rehype-prism-plus 2.0.1 with custom theme
+- **Panel Layout**: react-resizable-panels 2.0.0
+- **Icons**: lucide-react 0.563.0
+- **File Tree**: react-complex-tree 2.6.1
+
+### Active Features
+- ✅ Three-panel layout (explorer, editor/preview, TOC)
+- ✅ Resizable and collapsible panels
+- ✅ File explorer with tree navigation
+- ✅ Markdown preview with GFM support
+- ✅ Milkdown WYSIWYG editor
+- ✅ Table of Contents with scroll sync
+- ✅ Code blocks with syntax highlighting and copy button
+- ✅ Auto-save with 2-second debouncing
+- ✅ View mode switching (editor/preview)
+- ✅ Theme switching (light/dark)
+- ✅ Feature flag management system
+
+### In Development
+- 🔄 Mermaid diagram support (feature flag: disabled)
+- 🔄 Full-text search
+- 🔄 Split view mode (side-by-side editor and preview)
 
 ---
 
@@ -21,35 +43,65 @@
 ### 1. Feature-Based Structure
 ```
 features/
-├── file-explorer/      # File tree and navigation
-├── markdown-preview/   # Markdown rendering
-├── markdown-editor/    # CodeMirror integration
-└── roadmap-tracker/    # Development roadmap UI
+├── file-explorer/        # File tree and navigation
+│   ├── components/       # FileExplorer component
+│   └── store/           # File tree state management
+├── markdown-preview/     # Markdown rendering
+│   ├── components/       # MarkdownPreview, CodeBlock, MermaidDiagram, TOC
+│   └── store/           # TOC state for scroll sync
+├── markdown-editor/      # Milkdown integration
+│   ├── components/       # MilkdownEditor
+│   ├── plugins/         # Custom Milkdown plugins (mermaid - WIP)
+│   └── store/           # Editor state (currentFile, viewMode)
+└── roadmap-tracker/      # Development roadmap (disabled)
 ```
 
 Each feature is self-contained with:
 - `components/` - Feature-specific React components
-- `hooks/` - Custom hooks for feature logic
+- `hooks/` - Custom hooks for feature logic (if needed)
 - `store/` - Zustand store for feature state
+- `plugins/` - Feature-specific plugins or extensions
 
 ### 2. Shared Resources
 ```
 shared/
-├── components/ui/      # Reusable UI components
-├── hooks/             # Shared hooks
-├── utils/             # Utility functions (cn, etc.)
-└── types/             # TypeScript type definitions
+├── components/
+│   ├── ui/              # Reusable UI primitives (Button, Separator)
+│   ├── app-shell.tsx    # Main layout with resizable panels
+│   ├── app-toolbar.tsx  # Top toolbar with view toggle
+│   ├── theme-provider.tsx
+│   ├── theme-toggle.tsx
+│   └── view-mode-toggle.tsx
+├── hooks/               # Shared custom hooks
+├── utils/
+│   └── cn.ts           # Class name utility (clsx + tailwind-merge)
+└── types/
+    └── index.ts        # TypeScript type definitions
 ```
 
 ### 3. Core Configuration
 ```
 core/
-├── config/            # Feature flags, settings
-├── plugins/           # Plugin system
-└── store/             # Global state (panels, etc.)
+├── config/
+│   ├── features.ts                        # Feature flag management
+│   └── feature-flag-provider.example.tsx  # GrowthBook integration template
+└── store/
+    └── panel-store.ts                     # Global panel state
 ```
 
-### 4. Design Tokens
+### 4. App Structure
+```
+app/
+├── layout.tsx           # Root layout with providers
+├── page.tsx            # Main page with editor/preview routing
+├── globals.css         # Global styles and Milkdown customizations
+└── api/
+    └── files/
+        └── [...path]/
+            └── route.ts  # File system API endpoints
+```
+
+### 5. Design Tokens
 All colors use HSL format with CSS variables for theme switching:
 ```css
 --background: 0 0% 100%;
@@ -140,28 +192,67 @@ export const useFeatureStore = create<StoreState>()(
 
 ## Current Project Status
 
-### ✅ Completed (Phase 1-2)
-- Next.js 15 project setup with TypeScript
-- Tailwind CSS with design tokens (light/dark theme)
+### ✅ Completed
+- Next.js 16.1.4 project with TypeScript 5
+- Tailwind CSS 4 with design tokens (light/dark theme)
 - Feature-based folder structure
-- Zustand stores (panel, editor, file-explorer)
+- Zustand stores (panel, editor, file-explorer, toc)
 - Theme provider with next-themes
-- VSCode-like layout with resizable panels
-- App toolbar with view mode toggle
-- Theme toggle button
-- Basic UI components (Button, Separator)
-- ROADMAP.md with detailed feature tracking
-
-### 🚧 In Progress (Phase 2-3)
-- File explorer with react-complex-tree
+- VSCode-like three-panel layout with resizable panels
+- App toolbar with view mode toggle and theme toggle
+- File explorer with tree navigation
+- Markdown preview with react-markdown and GFM support
+- Code blocks with syntax highlighting (rehype-prism-plus) and copy button
+- Table of Contents with scroll sync and active heading detection
+- Milkdown WYSIWYG editor integration
+- Auto-save with 2-second debouncing
 - File system API routes
-- Markdown preview with react-markdown
-- Mermaid diagram rendering
+- Feature flag management system with GrowthBook integration template
 
-### 📋 Roadmap Reference
-See [ROADMAP.md](./ROADMAP.md) for complete feature roadmap and development phases.
+### 🚧 In Progress
+- Mermaid diagram support (disabled via feature flag)
+- Split view mode (side-by-side editor and preview)
+- Full-text search functionality
 
-**Current Focus**: Phase 2 - VSCode-like UI completion and Phase 3 - Markdown rendering
+---
+
+## Feature Flag Management
+
+### Overview
+The application uses a centralized feature flag system located in `core/config/features.ts`. Features can be toggled on/off at runtime and support integration with third-party services like GrowthBook for A/B testing and gradual rollouts.
+
+### Usage
+```typescript
+import { isFeatureEnabled, getFeature } from "@/core/config/features";
+
+// Check if a feature is enabled
+if (isFeatureEnabled("mermaidDiagrams")) {
+  // Render mermaid diagrams
+}
+
+// Get feature details
+const feature = getFeature("markdownEditor");
+console.log(feature?.version); // "1.0.0"
+```
+
+### Available Features
+- `fileExplorer` - Tree-based file navigation (enabled)
+- `markdownPreview` - Read-only markdown rendering (enabled)
+- `markdownEditor` - Milkdown WYSIWYG editor (enabled)
+- `mermaidDiagrams` - Mermaid diagram support (disabled, experimental)
+- `tableOfContents` - Auto-generated TOC (enabled)
+- `roadmapTracker` - Development roadmap (disabled, experimental)
+- `searchFeature` - Full-text search (disabled, experimental)
+- `aiAssistant` - AI-powered assistance (disabled, experimental)
+
+### GrowthBook Integration
+To integrate with GrowthBook or similar services:
+1. Install SDK: `yarn add @growthbook/growthbook-react`
+2. Copy `core/config/feature-flag-provider.example.tsx` to `feature-flag-provider.tsx`
+3. Configure API key in environment variables
+4. Wrap app with provider in `app/layout.tsx`
+
+See `feature-flag-provider.example.tsx` for complete implementation template.
 
 ---
 
@@ -169,11 +260,12 @@ See [ROADMAP.md](./ROADMAP.md) for complete feature roadmap and development phas
 
 ### Adding a New Feature
 1. Create feature directory: `features/feature-name/`
-2. Add subdirectories: `components/`, `hooks/`, `store/`
+2. Add subdirectories: `components/`, `hooks/`, `store/`, `plugins/` (if needed)
 3. Create store if needed: `store/feature-store.ts`
-4. Update feature flags: `core/config/features.ts`
+4. **Add feature flag**: Update `core/config/features.ts` with new feature entry
 5. Implement components using shared UI components
-6. Export main component from `components/index.ts`
+6. Guard feature with `isFeatureEnabled()` check in consuming components
+7. Export main component from `components/index.ts`
 
 ### Creating a UI Component
 ```typescript
@@ -314,6 +406,23 @@ export function MermaidDiagram({ code }: { code: string }) {
 ### Code Splitting
 - Feature components should be lazy-loaded when not immediately needed
 - Use React.lazy() for route-level splitting
+- Milkdown and Mermaid should be dynamically imported
+
+### Optimization
+- Use `useMemo` for expensive computations
+- Use `useCallback` for stable function references
+- Implement virtualization for large file lists
+- Debounce search inputs (300ms)
+
+---
+  const MermaidDiagram = dynamic(() => import("./mermaid-diagram"), {
+    loading: () => <div>Loading diagram...</div>,
+  });
+  ```
+
+### Code Splitting
+- Feature components should be lazy-loaded when not immediately needed
+- Use React.lazy() for route-level splitting
 - CodeMirror and Mermaid should be dynamically imported
 
 ### Optimization
@@ -390,18 +499,6 @@ export async function GET(request: NextRequest) {
 
 ---
 
-## Git Commit Conventions
-
-Format: `[Phase X] Brief description`
-
-Examples:
-- `[Phase 2] Add file explorer component`
-- `[Phase 3] Implement markdown preview`
-- `[Fix] Resolve theme switching issue`
-- `[Refactor] Optimize panel state management`
-
----
-
 ## VSCode Settings
 
 Recommended `.vscode/settings.json`:
@@ -434,6 +531,7 @@ Recommended `.vscode/settings.json`:
 - `core/store/panel-store.ts` - Panel visibility and sizes
 - `features/markdown-editor/store/editor-store.ts` - Editor state and mode
 - `features/file-explorer/store/file-explorer-store.ts` - File tree state
+- `features/markdown-preview/store/toc-store.ts` - TOC state for scroll sync
 
 ### Key Components
 - `shared/components/app-shell.tsx` - Main layout with panels
@@ -444,28 +542,6 @@ Recommended `.vscode/settings.json`:
 ### Utilities
 - `shared/utils/cn.ts` - Class name merger (clsx + tailwind-merge)
 - `shared/types/index.ts` - Core TypeScript types
-
----
-
-## Next Development Steps
-
-Refer to [ROADMAP.md](./ROADMAP.md) for detailed roadmap. Current priorities:
-
-1. **File Explorer** (Phase 2)
-   - Implement react-complex-tree for file navigation
-   - Create file system API routes
-   - Add search functionality
-
-2. **Markdown Preview** (Phase 3)
-   - Integrate react-markdown with plugins
-   - Add Mermaid diagram support
-   - Implement custom link resolver
-   - Style with @tailwindcss/typography
-
-3. **CodeMirror Editor** (Phase 4)
-   - Add markdown editing capability
-   - Implement view mode switching
-   - Sync scroll in split mode
 
 ---
 
@@ -480,6 +556,7 @@ Refer to [ROADMAP.md](./ROADMAP.md) for detailed roadmap. Current priorities:
 ✅ Use semantic HTML  
 ✅ Implement error boundaries  
 ✅ Optimize for performance  
+✅ Check feature flags before rendering experimental features
 
 ### DON'T
 ❌ Use class components  
@@ -500,11 +577,11 @@ Refer to [ROADMAP.md](./ROADMAP.md) for detailed roadmap. Current priorities:
 - [Zustand Docs](https://github.com/pmndrs/zustand)
 - [react-markdown](https://github.com/remarkjs/react-markdown)
 - [Mermaid Docs](https://mermaid.js.org/)
-- [CodeMirror 6](https://codemirror.net/)
+- [Milkdown](https://milkdown.dev/)
 - [Radix UI](https://www.radix-ui.com/)
 
 ---
 
-**Last Updated**: January 23, 2026  
+**Last Updated**: January 24, 2026  
 **Version**: 1.0.0-alpha  
 **Maintainer**: Development Team

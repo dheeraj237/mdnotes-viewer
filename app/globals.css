@@ -80,7 +80,7 @@
     --sidebar-hover: 217 33% 22%;
     
     /* Editor dark colors */
-    --editor-background: 222 47% 11%;
+    --editor-background: 220 13% 15%;
     --editor-gutter: 220 13% 18%;
     --editor-selection: 217 100% 25%;
   }
@@ -290,4 +290,539 @@ pre[class*="language-"] {
 
 .line-numbers-rows > span:before {
   color: var(--prism-comment);
+}
+
+/* Milkdown Editor Customization */
+.milkdown {
+  font-family: inherit;
+  color: hsl(var(--foreground)) !important;
+  background-color: hsl(var(--background)) !important;
+}
+
+.milkdown .editor {
+  outline: none;
+  min-height: 200px;
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.milkdown .ProseMirror {
+  padding: 0;
+  outline: none;
+  background-color: transparent !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.milkdown h1,
+.milkdown h2,
+.milkdown h3,
+.milkdown h4,
+.milkdown h5,
+.milkdown h6 {
+  color: hsl(var(--foreground)) !important;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.milkdown h1 {
+  font-size: 2em;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 0.3rem;
+}
+
+.milkdown h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 0.3rem;
+}
+
+.milkdown h3 {
+  font-size: 1.25em;
+}
+
+.milkdown h4 {
+  font-size: 1.1em;
+}
+
+.milkdown p {
+  margin: 0.75rem 0;
+  line-height: 1.6;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Inline code - keep for consistency */
+.milkdown :not(pre) > code {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--primary)) !important;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+  font-family: 'Consolas', 'Monaco', 'Andale Mono', monospace;
+}
+
+/* Milkdown Code Block Styling - Override Nord Theme */
+.milkdown pre,
+.milkdown .code-fence,
+.milkdown-theme-nord pre,
+.milkdown-theme-nord .code-fence,
+.milkdown .editor pre,
+.milkdown .ProseMirror pre {
+  position: relative;
+  margin: 1rem 0 !important;
+  border-radius: 0.5rem !important;
+  overflow: visible !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background-color: #f6f8fa !important;
+  padding: 3rem 1rem 1rem 1rem !important;
+}
+
+.milkdown pre code,
+.milkdown-theme-nord pre code,
+.milkdown .editor pre code,
+.milkdown .ProseMirror pre code {
+  background: none !important;
+  padding: 0 !important;
+  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace !important;
+  font-size: 0.9em !important;
+  line-height: 1.6 !important;
+  color: #24292e !important;
+  display: block !important;
+  white-space: pre !important;
+  word-spacing: normal !important;
+  word-break: normal !important;
+  tab-size: 4 !important;
+}
+
+/* Language label */
+.milkdown pre::before,
+.milkdown .code-fence::before,
+.milkdown-theme-nord pre::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: auto;
+  width: auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground)) !important;
+  background-color: transparent !important;
+  border-bottom: none !important;
+  font-weight: 600;
+  z-index: 2;
+}
+
+/* Simple code block styling */
+.milkdown pre {
+  margin: 1rem 0 !important;
+  padding: 1rem !important;
+  background-color: #f6f8fa !important;
+  border-radius: 0.5rem !important;
+  border: 1px solid hsl(var(--border)) !important;
+  overflow-x: auto;
+}
+
+.dark .milkdown pre {
+  background-color: #0d1117 !important;
+}
+
+
+/* Dark mode code blocks */
+.dark .milkdown pre,
+.dark .milkdown .code-fence,
+.dark .milkdown-theme-nord pre,
+.dark .milkdown-theme-nord .code-fence,
+.dark .milkdown .editor pre,
+.dark .milkdown .ProseMirror pre {
+  background-color: #0d1117 !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .milkdown pre code,
+.dark .milkdown-theme-nord pre code,
+.dark .milkdown .editor pre code,
+.dark .milkdown .ProseMirror pre code {
+  color: #e6edf3 !important;
+}
+
+/* Syntax highlighting tokens - Light mode */
+.milkdown pre code .token.comment,
+.milkdown pre code .token.prolog,
+.milkdown pre code .token.doctype,
+.milkdown pre code .token.cdata {
+  color: #6a737d !important;
+  font-style: italic !important;
+}
+
+.milkdown pre code .token.punctuation {
+  color: #24292e !important;
+}
+
+.milkdown pre code .token.property,
+.milkdown pre code .token.tag,
+.milkdown pre code .token.boolean,
+.milkdown pre code .token.number,
+.milkdown pre code .token.constant,
+.milkdown pre code .token.symbol {
+  color: #005cc5 !important;
+}
+
+.milkdown pre code .token.selector,
+.milkdown pre code .token.attr-name,
+.milkdown pre code .token.string,
+.milkdown pre code .token.char,
+.milkdown pre code .token.builtin {
+  color: #032f62 !important;
+}
+
+.milkdown pre code .token.operator,
+.milkdown pre code .token.entity,
+.milkdown pre code .token.url {
+  color: #d73a49 !important;
+}
+
+.milkdown pre code .token.atrule,
+.milkdown pre code .token.attr-value,
+.milkdown pre code .token.keyword {
+  color: #d73a49 !important;
+  font-weight: 600 !important;
+}
+
+.milkdown pre code .token.function,
+.milkdown pre code .token.class-name {
+  color: #6f42c1 !important;
+  font-weight: 600 !important;
+}
+
+.milkdown pre code .token.regex,
+.milkdown pre code .token.important,
+.milkdown pre code .token.variable {
+  color: #e36209 !important;
+}
+
+/* Syntax highlighting tokens - Dark mode */
+.dark .milkdown pre code .token.comment,
+.dark .milkdown pre code .token.prolog,
+.dark .milkdown pre code .token.doctype,
+.dark .milkdown pre code .token.cdata {
+  color: #8b949e !important;
+}
+
+.dark .milkdown pre code .token.punctuation {
+  color: #e6edf3 !important;
+}
+
+.dark .milkdown pre code .token.property,
+.dark .milkdown pre code .token.tag,
+.dark .milkdown pre code .token.boolean,
+.dark .milkdown pre code .token.number,
+.dark .milkdown pre code .token.constant,
+.dark .milkdown pre code .token.symbol {
+  color: #79c0ff !important;
+}
+
+.dark .milkdown pre code .token.selector,
+.dark .milkdown pre code .token.attr-name,
+.dark .milkdown pre code .token.string,
+.dark .milkdown pre code .token.char,
+.dark .milkdown pre code .token.builtin {
+  color: #a5d6ff !important;
+}
+
+.dark .milkdown pre code .token.operator,
+.dark .milkdown pre code .token.entity,
+.dark .milkdown pre code .token.url {
+  color: #ff7b72 !important;
+}
+
+.dark .milkdown pre code .token.atrule,
+.dark .milkdown pre code .token.attr-value,
+.dark .milkdown pre code .token.keyword {
+  color: #ff7b72 !important;
+  font-weight: 600 !important;
+}
+
+.dark .milkdown pre code .token.function,
+.dark .milkdown pre code .token.class-name {
+  color: #d2a8ff !important;
+  font-weight: 600 !important;
+}
+
+.dark .milkdown pre code .token.regex,
+.dark .milkdown pre code .token.important,
+.dark .milkdown pre code .token.variable {
+  color: #ffa657 !important;
+}
+
+.milkdown pre code .token.important,
+.milkdown pre code .token.bold {
+  font-weight: bold !important;
+}
+
+.milkdown pre code .token.italic {
+  font-style: italic !important;
+}
+
+/* Mermaid diagrams styling */
+.milkdown .mermaid {
+  background-color: transparent !important;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.milkdown .code-fence code {
+  background-color: transparent !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Mermaid diagrams styling */
+.milkdown .mermaid {
+  background-color: transparent !important;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.milkdown blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  background-color: hsl(var(--muted) / 0.5);
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: hsl(var(--foreground)) !important;
+}
+
+.milkdown a {
+  color: hsl(var(--primary)) !important;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.milkdown a:hover {
+  text-decoration: underline;
+}
+
+/* Table styling - Light & Dark theme support */
+.milkdown table,
+.milkdown .tableWrapper table,
+.milkdown-theme-nord table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 1.5rem 0 !important;
+  display: table !important;
+  overflow-x: auto !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.5rem !important;
+  background-color: transparent !important;
+}
+
+.milkdown thead,
+.milkdown .tableWrapper thead,
+.milkdown-theme-nord thead {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.milkdown tbody tr,
+.milkdown .tableWrapper tbody tr,
+.milkdown-theme-nord tbody tr {
+  border-bottom: 1px solid hsl(var(--border)) !important;
+  background-color: transparent !important;
+}
+
+.milkdown tbody tr:last-child,
+.milkdown .tableWrapper tbody tr:last-child,
+.milkdown-theme-nord tbody tr:last-child {
+  border-bottom: none !important;
+}
+
+.milkdown tbody tr:hover,
+.milkdown .tableWrapper tbody tr:hover,
+.milkdown-theme-nord tbody tr:hover {
+  background-color: hsl(var(--muted) / 0.3) !important;
+}
+
+.milkdown th,
+.milkdown td,
+.milkdown .tableWrapper th,
+.milkdown .tableWrapper td,
+.milkdown-theme-nord th,
+.milkdown-theme-nord td {
+  border: 1px solid hsl(var(--border)) !important;
+  padding: 0.75rem 1rem !important;
+  text-align: left !important;
+  vertical-align: top !important;
+  background-color: transparent !important;
+}
+
+.milkdown th,
+.milkdown .tableWrapper th,
+.milkdown-theme-nord th {
+  background-color: hsl(var(--muted)) !important;
+  font-weight: 600 !important;
+  color: hsl(var(--foreground)) !important;
+  border-bottom: 2px solid hsl(var(--border)) !important;
+}
+
+.milkdown td,
+.milkdown .tableWrapper td,
+.milkdown-theme-nord td {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Table cell selection in edit mode */
+.milkdown .selectedCell,
+.milkdown .tableWrapper .selectedCell {
+  background-color: hsl(var(--primary) / 0.1) !important;
+}
+
+/* Lists */
+.milkdown ul,
+.milkdown ol {
+  margin: 0.75rem 0;
+  padding-left: 2rem;
+}
+
+.milkdown li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+.milkdown ul {
+  list-style-type: disc;
+}
+
+.milkdown ol {
+  list-style-type: decimal;
+}
+
+/* Task lists */
+.milkdown input[type="checkbox"] {
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+
+.milkdown hr {
+  border: none;
+  border-top: 2px solid hsl(var(--border));
+  margin: 2rem 0;
+}
+
+/* Images */
+.milkdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+  border: 1px solid hsl(var(--border));
+}
+
+/* Selection */
+.milkdown .ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Placeholder */
+.milkdown .ProseMirror p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+/* Dark mode specific overrides */
+.dark .milkdown,
+.dark .milkdown .editor,
+.dark .milkdown .ProseMirror {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .milkdown h1,
+.dark .milkdown h2,
+.dark .milkdown h3,
+.dark .milkdown h4,
+.dark .milkdown h5,
+.dark .milkdown h6,
+.dark .milkdown p,
+.dark .milkdown li,
+.dark .milkdown blockquote {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .milkdown table,
+.dark .milkdown .tableWrapper table,
+.dark .milkdown-theme-nord table {
+  border-color: hsl(var(--border)) !important;
+  background-color: transparent !important;
+}
+
+.dark .milkdown th,
+.dark .milkdown .tableWrapper th,
+.dark .milkdown-theme-nord th {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .milkdown td,
+.dark .milkdown .tableWrapper td,
+.dark .milkdown-theme-nord td {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .milkdown tbody tr:hover,
+.dark .milkdown .tableWrapper tbody tr:hover,
+.dark .milkdown-theme-nord tbody tr:hover {
+  background-color: hsl(var(--accent) / 0.5) !important;
+}
+
+/* Keep inline code styling */
+.dark .milkdown :not(pre) > code {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* Let Nord theme handle dark mode code blocks */
+
+.dark .milkdown blockquote {
+  background-color: hsl(var(--muted) / 0.6) !important;
+  border-left-color: hsl(var(--primary)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Override Nord theme table styles with maximum specificity */
+.milkdown-theme-nord .editor table,
+.milkdown .editor .tableWrapper table,
+.milkdown .ProseMirror table {
+  background: transparent !important;
+}
+
+.milkdown-theme-nord .editor th,
+.milkdown .editor .tableWrapper th,
+.milkdown .ProseMirror th {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.milkdown-theme-nord .editor td,
+.milkdown .editor .tableWrapper td,
+.milkdown .ProseMirror td {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.milkdown-theme-nord .editor tbody tr,
+.milkdown .editor .tableWrapper tbody tr,
+.milkdown .ProseMirror tbody tr {
+  background: transparent !important;
 }
