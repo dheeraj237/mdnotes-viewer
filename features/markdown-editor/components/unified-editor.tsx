@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Crepe } from "@milkdown/crepe";
-import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { FileText, Save } from "lucide-react";
 import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
 import { Button } from "@/shared/components/ui/button";
@@ -10,102 +8,12 @@ import { FileTabs } from "./file-tabs";
 import { EditorModeToggle } from "./editor-mode-toggle";
 import { CodeEditor } from "./code-editor";
 import { MarkdownPreview } from "@/features/markdown-preview/components/markdown-preview";
-import { MarkdownFile } from "@/shared/types";
 import { useTocStore } from "@/features/markdown-preview/store/toc-store";
 import { useTableOfContents } from "@/features/markdown-preview/hooks/use-table-of-contents";
 import { useActiveHeading } from "@/features/markdown-preview/hooks/use-active-heading";
 import { sanitizeMarkdown } from "@/shared/utils/sanitize";
 import { toast } from "@/shared/utils/toast";
-import { useTheme } from "next-themes";
-import "@milkdown/crepe/theme/common/style.css";
-import "@milkdown/crepe/theme/frame.css";
 import { LiveMarkdownEditor } from "./live-markdown-editor";
-
-function CrepeEditor({ file, onContentChange }: { file: MarkdownFile; onContentChange: (content: string) => void }) {
-  const divRef = useRef<HTMLDivElement>(null);
-  const crepeRef = useRef<Crepe | null>(null);
-  const loading = useRef(false);
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!divRef.current || loading.current || !mounted) return;
-
-    loading.current = true;
-
-    const crepe = new Crepe({
-      root: divRef.current,
-      defaultValue: file.content,
-      features: {
-        // Enable all features like playground
-        [Crepe.Feature.CodeMirror]: true,
-        [Crepe.Feature.ListItem]: true,
-        [Crepe.Feature.LinkTooltip]: true,
-        [Crepe.Feature.ImageBlock]: true,
-        [Crepe.Feature.BlockEdit]: true,
-        [Crepe.Feature.Table]: true,
-        [Crepe.Feature.Toolbar]: true,
-        [Crepe.Feature.Cursor]: true,
-        [Crepe.Feature.Placeholder]: true,
-        [Crepe.Feature.Latex]: true,
-      },
-      featureConfigs: {
-        [Crepe.Feature.LinkTooltip]: {
-          onCopyLink: () => {
-            toast.success("Link copied", "Link copied to clipboard");
-          },
-        },
-        [Crepe.Feature.Placeholder]: {
-          text: "Start writing your markdown...",
-        },
-      },
-    });
-
-    // Configure listener for content changes
-    crepe.editor
-      .config((ctx) => {
-        ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
-          // Normalize the markdown to prevent extra blank lines
-          const normalized = markdown
-            .replace(/\n{3,}/g, '\n\n') // Replace 3+ newlines with 2
-            .replace(/\n+$/g, '\n'); // Remove trailing newlines except one
-          onContentChange(normalized);
-        });
-      })
-      .use(listener);
-
-    crepe.create().then(() => {
-      crepeRef.current = crepe;
-      loading.current = false;
-    });
-
-    return () => {
-      if (loading.current) return;
-      crepe.destroy();
-      crepeRef.current = null;
-      loading.current = false;
-    };
-  }, [file.id, isDark, onContentChange, mounted]);
-
-  // Update content when file changes
-  useEffect(() => {
-    if (!crepeRef.current) return;
-    const currentMarkdown = crepeRef.current.getMarkdown();
-    if (currentMarkdown !== file.content) {
-      // We need to recreate the editor with new content
-      // since there's no direct way to update content in Crepe
-    }
-  }, [file.content]);
-
-  return (
-    <div className="crepe flex-1 overflow-auto" ref={divRef} />
-  );
-}
 
 export function UnifiedEditor() {
   const { viewMode, setViewMode, isLoading, updateFileContent } = useEditorStore();
@@ -296,13 +204,6 @@ export function UnifiedEditor() {
                                   <MarkdownPreview content={editableContent} />
                               </div>
                           </div>
-                      )}
-
-                      {viewMode === "editor" && (
-              <CrepeEditor
-                file={{ ...currentFile, content: editableContent }}
-                onContentChange={handleContentChange}
-              />
                       )}
 
             {viewMode === "live" && (

@@ -18,7 +18,7 @@ interface EditorStore {
 export const useEditorStore = create<EditorStore>((set, get) => ({
   openTabs: [],
   activeTabId: null,
-  viewMode: "code",
+  viewMode: "live",
   isLoading: false,
 
   openFile: (file) => set((state) => {

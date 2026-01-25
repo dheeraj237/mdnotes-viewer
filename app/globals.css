@@ -1,9 +1,4 @@
 @import "tailwindcss";
-@import "@milkdown/crepe/theme/common/style.css";
-
-/* Import custom Milkdown styles from official website */
-@import "./styles/prosemirror.css";
-@import "./styles/crepe.css";
 
 /* Import Obsidian-like editor styles */
 @import "./styles/obsidian-editor.css";

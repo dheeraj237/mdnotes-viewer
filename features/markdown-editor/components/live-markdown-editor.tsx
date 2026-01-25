@@ -25,10 +25,7 @@ import { MarkdownFile } from "@/shared/types";
 import { Eye, Code2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { mermaidField, updateMermaidDiagrams } from "./mermaid-live-plugin";
-
-// Import themes
-import { eclipse } from "@uiw/codemirror-theme-eclipse";
-import { vscodeDark } from "@uiw/codemirror-theme-vscode";
+import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
 
 // Import KaTeX CSS
 import "katex/dist/katex.min.css";
@@ -46,6 +43,8 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   const [isPreviewMode, setIsPreviewMode] = useState(true);
   const themeCompartment = useRef(new Compartment());
   const modeCompartment = useRef(new Compartment());
+    const scrollPosRef = useRef<number>(0);
+    const lastFileContentRef = useRef<string>("");
 
   useEffect(() => {
     setMounted(true);
@@ -70,7 +69,12 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   useEffect(() => {
     if (!editorRef.current || !mounted) return;
 
-    const currentTheme = theme === "dark" ? vscodeDark : eclipse;
+      const isDark = theme === "dark";
+      const currentTheme = getAppTheme(isDark);
+      const syntaxHighlighting = isDark ? appSyntaxHighlightingDark : appSyntaxHighlighting;
+
+      // Set initial content ref
+      lastFileContentRef.current = file.content;
 
     const state = EditorState.create({
       doc: file.content,
@@ -98,10 +102,18 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           mermaidField(),
         ]),
         editorTheme,
+          syntaxHighlighting,
         themeCompartment.current.of(currentTheme),
         EditorView.updateListener.of((update) => {
+            // Track scroll position on every update
+            if (update.view) {
+                scrollPosRef.current = update.view.scrollDOM.scrollTop;
+            }
+
           if (update.docChanged) {
             const content = update.state.doc.toString();
+              // Update the ref whenever content changes in the editor
+              lastFileContentRef.current = content;
             onContentChange(content);
           }
         }),
@@ -135,7 +147,10 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   useEffect(() => {
     if (!viewRef.current || !mounted) return;
 
-    const currentTheme = theme === "dark" ? vscodeDark : eclipse;
+      const isDark = theme === "dark";
+      const currentTheme = getAppTheme(isDark);
+      const syntaxHighlighting = isDark ? appSyntaxHighlightingDark : appSyntaxHighlighting;
+
     viewRef.current.dispatch({
       effects: themeCompartment.current.reconfigure(currentTheme),
     });
@@ -176,21 +191,48 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
     setIsPreviewMode(!isPreviewMode);
   };
 
-  // Update content when file changes
+    // Update content when file changes (preserve scroll position)
   useEffect(() => {
     if (!viewRef.current) return;
     
     const currentContent = viewRef.current.state.doc.toString();
-    if (currentContent !== file.content) {
+
+      // If the incoming file content matches what's currently in the editor,
+      // this is likely a save operation - just update the ref and skip the update
+      if (file.content === currentContent) {
+          lastFileContentRef.current = file.content;
+          return;
+      }
+
+      // Only update if this is truly new external content (e.g., file changed externally)
+      // Skip if this is the same content we just processed
+      if (file.content === lastFileContentRef.current) {
+          return;
+      }
+
+      // This is new external content, so update the editor
+      lastFileContentRef.current = file.content;
+
+      // Save current scroll position before update
+      const scrollDOM = viewRef.current.scrollDOM;
+      const savedScrollPos = scrollDOM.scrollTop;
+
       viewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: currentContent.length,
-          insert: file.content,
-        },
+          changes: {
+              from: 0,
+              to: currentContent.length,
+              insert: file.content,
+          },
       });
-    }
-  }, [file.content]);
+
+      // Restore scroll position after content is updated
+      // Use setTimeout to ensure DOM has settled
+      setTimeout(() => {
+          if (viewRef.current) {
+              viewRef.current.scrollDOM.scrollTop = savedScrollPos;
+      }
+    }, 0);
+  }, [file.content, file.id]);
 
   return (
     <div className="h-full w-full flex flex-col obsidian-editor">

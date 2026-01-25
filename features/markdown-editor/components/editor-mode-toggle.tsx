@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Eye, Code2, Sparkles } from "lucide-react";
+import { Eye, Code2, Sparkles } from "lucide-react";
 import { ViewMode } from "@/shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils/cn";
@@ -48,18 +48,6 @@ export function EditorModeToggle({ mode, onModeChange }: EditorModeToggleProps) 
               title="Preview Mode"
           >
               <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                  "h-8 w-8 cursor-pointer",
-                  mode === "editor" && "bg-background shadow-sm"
-              )}
-              onClick={() => onModeChange("editor")}
-              title="Rich Text Editor (Milkdown)"
-          >
-              <FileText className="h-4 w-4" />
           </Button>
     </div>
   );

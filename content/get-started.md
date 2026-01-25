@@ -55,19 +55,19 @@ list with
     - Double nested item
 - Item 3
 
-### Ordered Lists
+### Ordered Lists 
 1. First item
 2. Second item
    1. Nested numbered item
    2. Another nested item
 3. Third item
 
-### Task Lists
+### Task Lists 
 - [x] Completed task
 - [ ] Incomplete task
 - [x] Another completed task
 
-## Links and Images
+## Links and Images 
 
 ### Links
 [External link](https://github.com)
