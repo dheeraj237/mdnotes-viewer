@@ -16,6 +16,7 @@ export interface MarkdownFile {
   updatedAt?: string;
   fileHandle?: FileSystemFileHandle; // For local files opened via File System Access API
   isLocal?: boolean; // Flag to indicate if file is from local system
+  isExternalUpdate?: boolean; // Flag to indicate content was updated externally (not from editor)
 }
 
 export type ViewMode = "preview" | "code" | "live";

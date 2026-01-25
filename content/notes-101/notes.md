@@ -1,6 +1,32 @@
-# Markdown Syntax Examples
+# Markdown Syntax Examples Saved
 
 ## Headers
+
+We are using https://github.com/blueberrycongee/codemirror-live-markdown/ and its demo is 
+
+## Header
+
+### TODO List
+[ ] first
+[ ] second
+[ ] third
+
+defining todo / tasks with `- [ ]` or `[ ]` is not working
+list with 
+
+
+### Sample List 
+- sdfsdfds
+- dsfsddsf
+- dsfdsfds
+---
+horizental `---` or `***` line are not working
+
+> block quote sample
+blockquotes with `>` are not working
+
+
+
 
 # H1 - Main Title
 ## H2 - Section Title  
@@ -23,7 +49,7 @@
 
 ## Lists
 
-### Unordered Lists
+### Unordered Lists 
 - Item 1
 - Item 2
   - Nested item 2.1
@@ -31,14 +57,14 @@
     - Double nested item
 - Item 3
 
-### Ordered Lists
+### Ordered Lists 
 1. First item
 2. Second item
    1. Nested numbered item
    2. Another nested item
 3. Third item
 
-### Task Lists
+### Task Lists 
 - [x] Completed task
 - [ ] Incomplete task
 - [x] Another completed task
@@ -271,6 +297,7 @@ $$
 \frac{d}{dx}\int_{a}^{x} f(t) dt = f(x)
 $$
 
+
 ## Footnotes
 
 Here's a sentence with a footnote[^1].
@@ -334,4 +361,4 @@ This document demonstrates various Markdown syntax elements including:
 - Math expressions and footnotes
 - HTML integration and special features
 
-Perfect for testing Markdown renderers and learning syntax! 
+Perfect for testing Markdown renderers and learning syntax!

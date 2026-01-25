@@ -50,56 +50,70 @@
   display: block;
 }
 
-/* Lists */
-.obsidian-editor .cm-list-1,
-.obsidian-editor .cm-list-2,
-.obsidian-editor .cm-list-3 {
-  line-height: 1.6;
-}
-
-/* Unordered list bullets */
-.obsidian-editor .cm-list-marker {
-  color: hsl(var(--foreground));
-  font-weight: 600;
-}
-
-/* Make sure list items are properly displayed */
-.obsidian-editor .cm-line:has(.cm-list-marker) {
-  display: block;
+/* Lists - Custom list plugin with bullets and checkboxes */
+.obsidian-editor .cm-line {
   position: relative;
-  padding-left: 0;
+}
+
+/* Visual bullet replacements for list markers */
+.obsidian-editor .cm-list-bullet {
+  display: inline-block;
+  width: 1.5em;
+  text-align: center;
+  color: hsl(var(--primary));
+  font-weight: 700;
+  margin-right: 0.25em;
+  user-select: none;
+}
+
+.obsidian-editor .cm-list-bullet[data-level="1"] {
+  color: hsl(var(--primary));
+}
+
+.obsidian-editor .cm-list-bullet[data-level="2"] {
+  color: hsl(var(--primary) / 0.8);
+  margin-left: 2em;
+}
+
+.obsidian-editor .cm-list-bullet[data-level="3"] {
+  color: hsl(var(--primary) / 0.6);
+  margin-left: 4em;
 }
 
 /* Task list checkboxes */
-.obsidian-editor .cm-task-marker {
-  display: inline-block;
-  width: 1.2em;
-  height: 1.2em;
-  vertical-align: middle;
+.obsidian-editor .cm-task-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
   margin-right: 0.5em;
   border: 2px solid hsl(var(--border));
   border-radius: 3px;
   background: hsl(var(--background));
   cursor: pointer;
+  vertical-align: middle;
   position: relative;
-  top: -0.1em;
+  top: -0.05em;
+  user-select: none;
+  transition: all 0.15s ease;
 }
 
-.obsidian-editor .cm-task-marker[data-checked="true"],
-.obsidian-editor .cm-task-marker[checked] {
+.obsidian-editor .cm-task-checkbox:hover {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+}
+
+.obsidian-editor .cm-task-checkbox-checked {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
+  color: white;
+  font-size: 0.85em;
+  font-weight: bold;
 }
 
-.obsidian-editor .cm-task-marker[data-checked="true"]::after,
-.obsidian-editor .cm-task-marker[checked]::after {
-  content: "✓";
-  color: white;
-  position: absolute;
-  top: -2px;
-  left: 2px;
-  font-size: 0.9em;
-  font-weight: bold;
+.obsidian-editor .cm-task-checkbox-checked:hover {
+  background: hsl(var(--primary) / 0.9);
 }
 
 /* Horizontal rules */
@@ -218,4 +232,63 @@
 /* Empty line spacing */
 .obsidian-editor .cm-line:empty {
   min-height: 1.6em;
+}
+
+/* Images - centered with max width */
+.obsidian-editor img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5em auto;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px hsl(var(--foreground) / 0.1);
+}
+
+/* Image widget wrapper centering */
+.obsidian-editor .cm-image-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 1.5em 0;
+  width: 100%;
+}
+
+.obsidian-editor .cm-image-widget img {
+  margin: 0 auto;
+}
+
+/* Image title/alt text below image */
+.obsidian-editor .cm-image-widget .cm-image-title,
+.obsidian-editor .cm-image-alt {
+  display: block;
+  text-align: center;
+  font-style: italic;
+  font-size: 0.9em;
+  color: hsl(var(--muted-foreground));
+  margin-top: 0.5em;
+  width: 100%;
+}
+
+/* Mermaid diagrams - fit to page */
+.obsidian-editor .cm-mermaid-diagram {
+  max-width: 100%;
+  overflow: hidden;
+  margin: 1.5em 0;
+}
+
+.obsidian-editor .cm-mermaid-diagram svg {
+  max-width: 100% !important;
+  max-height: 500px !important;
+  height: auto !important;
+  width: auto !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+.obsidian-editor .mermaid-container {
+  max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }

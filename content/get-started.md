@@ -1,29 +1,31 @@
-# Markdown Syntax Examples 
+# Markdown Syntax Examples Saved
 
 ## Headers
 
+We are using https://github.com/blueberrycongee/codemirror-live-markdown/ and its demo is 
+
 ## Header
 
-[ ] asfsdfds
-sfsdfdsf
+### TODO List
+[ ] first
+[ ] second
+[ ] third
+
+defining todo / tasks with `- [ ]` or `[ ]` is not working
+list with 
+
+
+### Sample List 
 - sdfsdfds
 - dsfsddsf
 - dsfdsfds
+---
+horizental `---` or `***` line are not working
 
-defining list with `- [ ]` or `[ ]` is not working
-list with 
-* asfsdfsdfds
-* sfsdfds
-
-- sdfsdggds
-- sdfsdsdf
-- 
+> block quote sample
+blockquotes with `>` are not working
 
 
-
-> sfsfsdgfsdf
-> dsfsdfdsf
-> 
 
 
 # H1 - Main Title
@@ -47,7 +49,7 @@ list with
 
 ## Lists
 
-### Unordered Lists
+### Unordered Lists 
 - Item 1
 - Item 2
   - Nested item 2.1
@@ -67,7 +69,7 @@ list with
 - [ ] Incomplete task
 - [x] Another completed task
 
-## Links and Images 
+## Links and Images
 
 ### Links
 [External link](https://github.com)
@@ -294,6 +296,7 @@ Block math:
 $$
 \frac{d}{dx}\int_{a}^{x} f(t) dt = f(x)
 $$
+
 
 ## Footnotes
 

@@ -1,17 +1,32 @@
 "use client";
 
 import { StateField, StateEffect, EditorState } from "@codemirror/state";
-import { Decoration, DecorationSet, EditorView, WidgetType, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { Decoration, DecorationSet, EditorView, WidgetType, ViewPlugin } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import mermaid from "mermaid";
+import { shouldShowSource } from "codemirror-live-markdown";
 
-// Initialize mermaid
+// Initialize mermaid with all diagram types enabled
 if (typeof window !== "undefined") {
   mermaid.initialize({
-    startOnLoad: false,
+      startOnLoad: true,
     theme: "default",
     securityLevel: "loose",
     fontFamily: "inherit",
+      maxTextSize: 100000,
+      // Enable all diagram types
+      flowchart: { useMaxWidth: true, htmlLabels: true },
+      sequence: { useMaxWidth: true },
+      gantt: { useMaxWidth: true },
+      journey: { useMaxWidth: true },
+      class: { useMaxWidth: true },
+      state: { useMaxWidth: true },
+      er: { useMaxWidth: true },
+      pie: { useMaxWidth: true },
+      quadrantChart: { useMaxWidth: true },
+      requirement: { useMaxWidth: true },
+      gitGraph: { useMaxWidth: true },
+      c4: { useMaxWidth: true },
   });
 }
 
@@ -19,8 +34,7 @@ if (typeof window !== "undefined") {
 const updateMermaidEffect = StateEffect.define<null>();
 
 class MermaidWidget extends WidgetType {
-  private id: string;
-  private renderPromise: Promise<{ svg: string }> | null = null;
+    private id: string;
 
   constructor(readonly code: string, readonly isDark: boolean) {
     super();
@@ -36,10 +50,11 @@ class MermaidWidget extends WidgetType {
     wrap.className = "cm-mermaid-diagram";
     wrap.style.cssText = `
       margin: 1em 0;
-      padding: 1em;
+      padding: 0.5em;
       background: ${this.isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.02)"};
       border-radius: 8px;
-      overflow-x: auto;
+      overflow: hidden;
+      max-width: 100%;
     `;
 
     const container = document.createElement("div");
@@ -49,52 +64,84 @@ class MermaidWidget extends WidgetType {
       justify-content: center;
       align-items: center;
       min-height: 100px;
+      max-width: 100%;
+      width: 100%;
     `;
 
     wrap.appendChild(container);
 
-    // Render mermaid diagram
+      // Render mermaid diagram immediately
     this.renderDiagram(container);
 
     return wrap;
   }
 
-  async renderDiagram(container: HTMLElement) {
-    try {
-      // Update theme based on isDark
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: this.isDark ? "dark" : "default",
-        securityLevel: "loose",
-        fontFamily: "inherit",
-      });
+    renderDiagram(container: HTMLElement) {
+        // Use requestAnimationFrame to ensure DOM is mounted
+        requestAnimationFrame(async () => {
+            try {
+                // Update theme and config
+                mermaid.initialize({
+                    startOnLoad: true,
+                    theme: this.isDark ? "dark" : "default",
+                    securityLevel: "loose",
+                    fontFamily: "inherit",
+                    flowchart: { useMaxWidth: true, htmlLabels: true },
+                    sequence: { useMaxWidth: true },
+                    gantt: { useMaxWidth: true },
+                    journey: { useMaxWidth: true },
+                    class: { useMaxWidth: true },
+                    state: { useMaxWidth: true },
+                    er: { useMaxWidth: true },
+                    pie: { useMaxWidth: true },
+                });
 
-      container.innerHTML = '<div style="color: hsl(var(--muted-foreground)); font-size: 0.875rem;">Rendering diagram...</div>';
+                // Show loading state
+                container.innerHTML = '<div style="color: hsl(var(--muted-foreground)); font-size: 0.875rem;">Rendering...</div>';
 
-      // Render the diagram
-      const { svg } = await mermaid.render(this.id, this.code);
-      
-      container.innerHTML = svg;
-      
-      // Style the SVG
-      const svgElement = container.querySelector("svg");
-      if (svgElement) {
-        svgElement.style.maxWidth = "100%";
-        svgElement.style.height = "auto";
-      }
-    } catch (error) {
-      console.error("Mermaid rendering error:", error);
-      container.innerHTML = `
-        <div style="color: hsl(var(--destructive)); font-size: 0.875rem; padding: 1em; background: hsl(var(--destructive) / 0.1); border-radius: 4px;">
-          <strong>Mermaid Error:</strong><br/>
-          ${error instanceof Error ? error.message : "Failed to render diagram"}
-        </div>
-      `;
-    }
+                // Render the diagram
+                const { svg } = await mermaid.render(this.id, this.code);
+
+                container.innerHTML = svg;
+
+                // Style the SVG to fit and be responsive
+                const svgElement = container.querySelector("svg");
+                if (svgElement) {
+                    // Get original dimensions
+                    const originalWidth = svgElement.getAttribute("width");
+                    const originalHeight = svgElement.getAttribute("height");
+
+                    // Remove fixed dimensions
+                    svgElement.removeAttribute("width");
+                    svgElement.removeAttribute("height");
+
+                    // Ensure viewBox is set for proper scaling
+                    if (!svgElement.hasAttribute("viewBox") && originalWidth && originalHeight) {
+                        svgElement.setAttribute("viewBox", `0 0 ${originalWidth} ${originalHeight}`);
+                    }
+
+                    // Apply responsive styling
+                    svgElement.style.maxWidth = "100%";
+                    svgElement.style.maxHeight = "500px";
+                    svgElement.style.height = "auto";
+                    svgElement.style.width = "auto";
+                    svgElement.style.display = "block";
+                    svgElement.style.margin = "0 auto";
+                }
+            } catch (error) {
+                console.error("Mermaid rendering error:", error);
+                container.innerHTML = `
+          <div style="color: hsl(var(--destructive)); font-size: 0.875rem; padding: 1em; background: hsl(var(--destructive) / 0.1); border-radius: 4px;">
+            <strong>Mermaid Error:</strong><br/>
+            ${error instanceof Error ? error.message : "Failed to render diagram"}
+          </div>
+        `;
+            }
+        });
   }
 
   ignoreEvent() {
-    return true;
+      return false; // Allow clicking to edit
   }
 }
 
@@ -118,13 +165,18 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
           const code = match[1].trim();
           
           if (code) {
-            // Add decoration to replace the code block with rendered diagram
-            decorations.push(
-              Decoration.replace({
-                widget: new MermaidWidget(code, isDark),
-                block: true,
-              }).range(from, to)
-            );
+              // Check if we should show source or preview
+              const showSource = shouldShowSource(state, from, to);
+
+              if (!showSource) {
+                // Add decoration to replace the code block with rendered diagram
+                decorations.push(
+                    Decoration.replace({
+                        widget: new MermaidWidget(code, isDark),
+                        block: true,
+                    }).range(from, to)
+                );
+            }
           }
         }
       }
@@ -134,6 +186,7 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
   return Decoration.set(decorations, true);
 }
 
+// Use StateField instead of ViewPlugin for block decorations
 export const mermaidField = () => {
   return StateField.define<DecorationSet>({
     create(state) {

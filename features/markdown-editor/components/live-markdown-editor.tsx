@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { Table, TaskList, GFM, Strikethrough } from "@lezer/markdown";
 import { 
@@ -26,6 +26,7 @@ import { Eye, Code2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { mermaidField, updateMermaidDiagrams } from "./mermaid-live-plugin";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
+import { listPlugin } from "../plugins/list-plugin";
 
 // Import KaTeX CSS
 import "katex/dist/katex.min.css";
@@ -44,7 +45,8 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   const themeCompartment = useRef(new Compartment());
   const modeCompartment = useRef(new Compartment());
     const scrollPosRef = useRef<number>(0);
-    const lastFileContentRef = useRef<string>("");
+    const currentFileIdRef = useRef<string>("");
+    const isExternalUpdateRef = useRef<boolean>(false);
 
   useEffect(() => {
     setMounted(true);
@@ -73,14 +75,14 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
       const currentTheme = getAppTheme(isDark);
       const syntaxHighlighting = isDark ? appSyntaxHighlightingDark : appSyntaxHighlighting;
 
-      // Set initial content ref
-      lastFileContentRef.current = file.content;
+      // Track current file ID
+      currentFileIdRef.current = file.id;
 
     const state = EditorState.create({
       doc: file.content,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         markdown({ 
           base: markdownLanguage, 
           extensions: [Table, TaskList, Strikethrough, GFM] 
@@ -100,6 +102,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
             openInNewTab: true,
           }),
           mermaidField(),
+            listPlugin,
         ]),
         editorTheme,
           syntaxHighlighting,
@@ -112,8 +115,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
 
           if (update.docChanged) {
             const content = update.state.doc.toString();
-              // Update the ref whenever content changes in the editor
-              lastFileContentRef.current = content;
+              // Notify parent of content change - parent will handle save
             onContentChange(content);
           }
         }),
@@ -136,6 +138,15 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
 
     viewRef.current = view;
     setupMouseSelecting(view);
+    
+    // Keep focus in editor when interacting with it
+    const editorDom = view.dom;
+    editorDom.addEventListener('mousedown', (e) => {
+      // Prevent losing focus when clicking inside editor
+      if (e.target instanceof HTMLElement && editorDom.contains(e.target)) {
+        setTimeout(() => view.focus(), 0);
+      }
+    });
 
     return () => {
       view.destroy();
@@ -188,35 +199,46 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   }, [isPreviewMode, mounted]);
 
   const togglePreviewMode = () => {
-    setIsPreviewMode(!isPreviewMode);
+      setIsPreviewMode(!isPreviewMode)
   };
 
-    // Update content when file changes (preserve scroll position)
+    // Handle file changes: both switching files and external updates
   useEffect(() => {
-    if (!viewRef.current) return;
+      if (!viewRef.current || !mounted) return;
     
     const currentContent = viewRef.current.state.doc.toString();
+      const isFileSwitched = file.id !== currentFileIdRef.current;
+      const isExternalUpdate = (file as any).isExternalUpdate === true;
 
-      // If the incoming file content matches what's currently in the editor,
-      // this is likely a save operation - just update the ref and skip the update
-      if (file.content === currentContent) {
-          lastFileContentRef.current = file.content;
+      // Scenario 1: Switching to a different file
+      if (isFileSwitched) {
+          currentFileIdRef.current = file.id;
+
+          if (currentContent !== file.content) {
+              viewRef.current.dispatch({
+                  changes: {
+                      from: 0,
+                      to: currentContent.length,
+                      insert: file.content,
+                  },
+              });
+
+              // Scroll to top for new files
+              setTimeout(() => {
+                  if (viewRef.current) {
+                      viewRef.current.scrollDOM.scrollTop = 0;
+                  }
+              }, 0);
+          }
           return;
       }
 
-      // Only update if this is truly new external content (e.g., file changed externally)
-      // Skip if this is the same content we just processed
-      if (file.content === lastFileContentRef.current) {
-          return;
-      }
+      // Scenario 2: External file update (file modified outside editor)
+      if (isExternalUpdate && currentContent !== file.content) {
+          // Save current scroll position
+          const savedScrollPos = viewRef.current.scrollDOM.scrollTop;
 
-      // This is new external content, so update the editor
-      lastFileContentRef.current = file.content;
-
-      // Save current scroll position before update
-      const scrollDOM = viewRef.current.scrollDOM;
-      const savedScrollPos = scrollDOM.scrollTop;
-
+          // Update content seamlessly
       viewRef.current.dispatch({
           changes: {
               from: 0,
@@ -225,14 +247,20 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           },
       });
 
-      // Restore scroll position after content is updated
-      // Use setTimeout to ensure DOM has settled
+          // Preserve scroll position for external updates
       setTimeout(() => {
           if (viewRef.current) {
               viewRef.current.scrollDOM.scrollTop = savedScrollPos;
+          }
+      }, 0);
+
+          // Clear the external update flag
+          delete (file as any).isExternalUpdate;
       }
-    }, 0);
-  }, [file.content, file.id]);
+
+      // Scenario 3: Internal save (file.content updated from store after save)
+      // Do nothing - editor is source of truth
+  }, [file.id, file.content, (file as any).isExternalUpdate, mounted]);
 
   return (
     <div className="h-full w-full flex flex-col obsidian-editor">

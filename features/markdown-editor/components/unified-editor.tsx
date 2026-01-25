@@ -16,13 +16,14 @@ import { toast } from "@/shared/utils/toast";
 import { LiveMarkdownEditor } from "./live-markdown-editor";
 
 export function UnifiedEditor() {
-  const { viewMode, setViewMode, isLoading, updateFileContent } = useEditorStore();
+  const { viewMode, setViewMode, isLoading, applyEditorPatch } = useEditorStore();
   const currentFile = useCurrentFile();
   const [editableContent, setEditableContent] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastContentRef = useRef<string>("");
   
   // TOC integration
   const { setItems, setActiveId } = useTocStore();
@@ -32,6 +33,7 @@ export function UnifiedEditor() {
   useEffect(() => {
     if (currentFile) {
       setEditableContent(currentFile.content);
+      lastContentRef.current = currentFile.content;
       setHasChanges(false);
     }
   }, [currentFile?.id]);
@@ -51,63 +53,55 @@ export function UnifiedEditor() {
 
     setIsSaving(true);
 
-      // Sanitize content before saving
-      const sanitizedContent = sanitizeMarkdown(editableContent);
+    // Sanitize content before saving
+    const sanitizedContent = sanitizeMarkdown(editableContent);
 
     try {
-        // If it's a local file with fileHandle, save directly to local file system
+      // Try to use FileManager if file is in cache, otherwise fallback to direct API
+      try {
+        await applyEditorPatch(currentFile.id, sanitizedContent);
+      } catch (fileManagerError) {
+        // If file not in cache, use legacy save method
+        console.warn("FileManager not available, using direct save:", fileManagerError);
+
+      // For local files with fileHandle
         if (currentFile.isLocal && currentFile.fileHandle) {
-            try {
-                const writable = await currentFile.fileHandle.createWritable();
-                await writable.write(sanitizedContent);
-                await writable.close();
+          const writable = await currentFile.fileHandle.createWritable();
+          await writable.write(sanitizedContent);
+          await writable.close();
+        } else {
+          // For server files
+          const response = await fetch(`/api/files/${currentFile.path}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ content: sanitizedContent }),
+          });
 
-                updateFileContent(currentFile.id, sanitizedContent);
-                setHasChanges(false);
-                setLastSaved(new Date());
-
-                if (!isAutoSave) {
-                    toast.success("File saved", `${currentFile.name} saved successfully`);
-                }
-                return;
-            } catch (error) {
-                console.error("Failed to save local file:", error);
-                toast.error("Save failed", (error as Error).message);
-                throw new Error("Failed to save local file: " + (error as Error).message);
-            }
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "Failed to save file");
+          }
         }
-
-        // Otherwise, save to server
-      const response = await fetch(`/api/files/${currentFile.path}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-          body: JSON.stringify({ content: sanitizedContent }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-          toast.error("Save failed", error.error || "Failed to save file");
-        throw new Error(error.error || "Failed to save file");
       }
 
-        updateFileContent(currentFile.id, sanitizedContent);
       setHasChanges(false);
       setLastSaved(new Date());
+      lastContentRef.current = sanitizedContent;
 
-        if (!isAutoSave) {
-            toast.success("File saved", `${currentFile.name} saved successfully`);
-        }
+      if (!isAutoSave) {
+        toast.success("File saved", `${currentFile.name} saved successfully`);
+      }
     } catch (error) {
       console.error("Failed to save file:", error);
-        if (!isAutoSave) {
-            toast.error("Save failed", error instanceof Error ? error.message : "Unknown error");
-        }
+      if (!isAutoSave) {
+        toast.error("Save failed", error instanceof Error ? error.message : "Unknown error");
+      }
     } finally {
       setIsSaving(false);
     }
-  }, [currentFile, hasChanges, editableContent, updateFileContent]);
+  }, [currentFile, hasChanges, editableContent, applyEditorPatch]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
