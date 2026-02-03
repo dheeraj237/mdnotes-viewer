@@ -24,7 +24,6 @@ import { useTheme } from "next-themes";
 import { MarkdownFile } from "@/shared/types";
 import { Eye, Code2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
-import { mermaidField, updateMermaidDiagrams } from "./mermaid-live-plugin";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
 import { listPlugin } from "../plugins/list-plugin";
 
@@ -101,8 +100,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           linkPlugin({
             openInNewTab: true,
           }),
-          mermaidField(),
-            listPlugin,
+          listPlugin,
         ]),
         editorTheme,
           syntaxHighlighting,
@@ -165,9 +163,6 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
     viewRef.current.dispatch({
       effects: themeCompartment.current.reconfigure(currentTheme),
     });
-    
-    // Update mermaid diagrams with new theme
-    updateMermaidDiagrams(viewRef.current);
   }, [theme, mounted]);
 
   // Update preview mode when it changes (like the demo)
@@ -189,10 +184,10 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           linkPlugin({
             openInNewTab: true,
           }),
-          mermaidField(),
+          listPlugin,
         ] : [
           collapseOnSelectionFacet.of(false),
-          markdownStylePlugin,
+            markdownStylePlugin
         ]
       ),
     });

@@ -44,10 +44,49 @@
   font-weight: 500;
 }
 
-/* Blockquotes */
+/* Blockquotes with left border */
 .obsidian-editor .cm-blockquote {
   margin: 0.5em 0;
   display: block;
+}
+
+.obsidian-editor .cm-blockquote-line {
+  padding-left: 1.5em;
+  border-left: 3px solid hsl(var(--primary) / 0.5);
+  margin: 0;
+  position: relative;
+  background: hsl(var(--muted) / 0.3);
+}
+
+.obsidian-editor .cm-blockquote-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Nested blockquotes */
+.obsidian-editor .cm-blockquote-level-2 {
+  padding-left: 3em;
+  border-left-width: 3px;
+}
+
+.obsidian-editor .cm-blockquote-level-3 {
+  padding-left: 4.5em;
+  border-left-width: 3px;
+}
+
+/* Dim the > marker */
+.obsidian-editor .cm-blockquote-marker {
+  opacity: 0.3;
+  user-select: none;
+}
+
+.obsidian-editor .cm-activeLine .cm-blockquote-marker {
+  opacity: 0.6;
 }
 
 /* Lists - Custom list plugin with bullets and checkboxes */
@@ -56,64 +95,48 @@
 }
 
 /* Visual bullet replacements for list markers */
-.obsidian-editor .cm-list-bullet {
-  display: inline-block;
-  width: 1.5em;
-  text-align: center;
+.obsidian-editor .cm-list-bullet,
+.obsidian-editor .cm-list-number {
   color: hsl(var(--primary));
-  font-weight: 700;
-  margin-right: 0.25em;
+  font-weight: 600;
   user-select: none;
 }
 
-.obsidian-editor .cm-list-bullet[data-level="1"] {
+.obsidian-editor .cm-list-bullet[data-level="1"],
+.obsidian-editor .cm-list-number[data-level="1"] {
   color: hsl(var(--primary));
 }
 
-.obsidian-editor .cm-list-bullet[data-level="2"] {
+.obsidian-editor .cm-list-bullet[data-level="2"],
+.obsidian-editor .cm-list-number[data-level="2"] {
   color: hsl(var(--primary) / 0.8);
-  margin-left: 2em;
 }
 
-.obsidian-editor .cm-list-bullet[data-level="3"] {
+.obsidian-editor .cm-list-bullet[data-level="3"],
+.obsidian-editor .cm-list-number[data-level="3"] {
   color: hsl(var(--primary) / 0.6);
-  margin-left: 4em;
 }
 
-/* Task list checkboxes */
+/* Task list checkboxes - simple text styling */
 .obsidian-editor .cm-task-checkbox {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1em;
-  height: 1.1em;
-  margin-right: 0.5em;
-  border: 2px solid hsl(var(--border));
-  border-radius: 3px;
-  background: hsl(var(--background));
   cursor: pointer;
-  vertical-align: middle;
-  position: relative;
-  top: -0.05em;
   user-select: none;
-  transition: all 0.15s ease;
+  color: hsl(var(--border));
+  transition: color 0.15s ease;
+  font-size: 1em;
 }
 
 .obsidian-editor .cm-task-checkbox:hover {
-  border-color: hsl(var(--primary));
-  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 .obsidian-editor .cm-task-checkbox-checked {
-  background: hsl(var(--primary));
-  border-color: hsl(var(--primary));
-  color: white;
-  font-size: 0.85em;
-  font-weight: bold;
+  color: hsl(var(--primary));
+  font-weight: 600;
 }
 
 .obsidian-editor .cm-task-checkbox-checked:hover {
-  background: hsl(var(--primary) / 0.9);
+  color: hsl(var(--primary) / 0.9);
 }
 
 /* Horizontal rules */
@@ -226,12 +249,12 @@
 
 /* Paragraph spacing */
 .obsidian-editor .cm-line {
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* Empty line spacing */
 .obsidian-editor .cm-line:empty {
-  min-height: 1.6em;
+  min-height: 1.5em;
 }
 
 /* Images - centered with max width */
