@@ -100,6 +100,9 @@
   color: hsl(var(--primary));
   font-weight: 600;
   user-select: none;
+  display: inline;
+  line-height: 1;
+  vertical-align: baseline;
 }
 
 .obsidian-editor .cm-list-bullet[data-level="1"],
@@ -117,22 +120,54 @@
   color: hsl(var(--primary) / 0.6);
 }
 
-/* Task list checkboxes - simple text styling */
+/* Force cm-widgetBuffer to be completely invisible and non-space-consuming in list lines */
+.obsidian-editor .cm-line:has(.cm-list-bullet) .cm-widgetBuffer,
+.obsidian-editor .cm-line:has(.cm-list-number) .cm-widgetBuffer,
+.obsidian-editor .cm-line:has(.cm-task-checkbox) .cm-widgetBuffer {
+  height: 0 !important;
+  width: 0 !important;
+  display: inline !important;
+  vertical-align: baseline !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* Force list widget spans to not expand line height */
+.obsidian-editor .cm-line:has(.cm-list-bullet) .cm-list-bullet,
+.obsidian-editor .cm-line:has(.cm-list-number) .cm-list-number,
+.obsidian-editor .cm-line:has(.cm-task-checkbox) .cm-task-checkbox {
+  height: 1em !important;
+  max-height: 1em !important;
+  line-height: 1 !important;
+  vertical-align: baseline !important;
+}
+
+/* Task list checkboxes - styled with border and green check */
 .obsidian-editor .cm-task-checkbox {
   cursor: pointer;
   user-select: none;
-  color: hsl(var(--border));
-  transition: color 0.15s ease;
-  font-size: 1em;
+  transition: all 0.15s ease;
+  font-size: 1.2em;
+  display: inline;
+  line-height: 1;
+  vertical-align: baseline;
+  /* Unchecked: gray border with empty square */
+  color: hsl(var(--muted-foreground));
+  filter: grayscale(0.3);
 }
 
 .obsidian-editor .cm-task-checkbox:hover {
   color: hsl(var(--primary));
+  filter: grayscale(0);
 }
 
 .obsidian-editor .cm-task-checkbox-checked {
   color: hsl(var(--primary));
   font-weight: 600;
+  filter: grayscale(0);
 }
 
 .obsidian-editor .cm-task-checkbox-checked:hover {
@@ -250,6 +285,21 @@
 /* Paragraph spacing */
 .obsidian-editor .cm-line {
   line-height: 1.5;
+}
+
+/* Reduce line height for list items to match text size exactly */
+.obsidian-editor .cm-line:has(.cm-list-bullet),
+.obsidian-editor .cm-line:has(.cm-list-number),
+.obsidian-editor .cm-line:has(.cm-task-checkbox) {
+  line-height: 1.4 !important;
+  min-height: 0 !important;
+}
+
+/* Override any CodeMirror content wrapper heights in list lines */
+.obsidian-editor .cm-line:has(.cm-list-bullet) .cm-content,
+.obsidian-editor .cm-line:has(.cm-list-number) .cm-content,
+.obsidian-editor .cm-line:has(.cm-task-checkbox) .cm-content {
+  line-height: 1.4 !important;
 }
 
 /* Empty line spacing */

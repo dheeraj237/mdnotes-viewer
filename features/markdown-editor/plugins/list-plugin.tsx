@@ -137,8 +137,9 @@ class CheckboxWidget extends WidgetType {
     }
   }
 
-  ignoreEvent() {
-    return false;
+  ignoreEvent(event: Event) {
+    // Ignore click and keyboard events to allow widget's own handlers to work
+    return event.type === 'mousedown' || event.type === 'keydown';
   }
 }
 

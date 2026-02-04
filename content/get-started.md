@@ -7,7 +7,7 @@ We are using https://github.com/blueberrycongee/codemirror-live-markdown/ and it
 ## Header
 
 ### TODO List
-- [x] first
+- [ ] first
 - [ ] 
 [ ] second
 [ ] third
@@ -69,9 +69,9 @@ blockquotes with `>` are not working
 3. Third item
 
 ### Task Lists 
-- [x] Completed task
+- [ ] Completed task
 - [ ] Incomplete task
-- [x] Another completed task
+- [ ] Another completed task
 
 ## Links and Images
 
@@ -82,7 +82,6 @@ blockquotes with `>` are not working
 
 ### Images
 ![Alt text for image](https://picsum.photos/400/200)
-
 ![Image with title](https://picsum.photos/300/150 "This is a sample image")
 
 ## Code Blocks
