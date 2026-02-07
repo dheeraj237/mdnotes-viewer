@@ -1,6 +1,6 @@
 # Tables and Blockquotes
 
-This document demonstrates tables, blockquotes, and related formatting features.
+This document demonstrates tables, blockquotes, and related formatting features. 
 
 ## Basic Tables
 

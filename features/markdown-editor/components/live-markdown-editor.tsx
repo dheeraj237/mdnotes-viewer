@@ -21,9 +21,8 @@ import {
 } from "codemirror-live-markdown";
 import { useTheme } from "next-themes";
 import { MarkdownFile } from "@/shared/types";
-import { Eye, Code2 } from "lucide-react";
-import { Button } from "@/shared/components/ui/button";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
+import { useEditorStore } from "@/features/markdown-editor/store/editor-store";
 import { listPlugin } from "../plugins/list-plugin";
 import { horizontalRulePlugin } from "../plugins/horizontal-rule-plugin";
 import { mermaidPlugin } from "../plugins/mermaid-plugin";
@@ -47,7 +46,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   const viewRef = useRef<EditorView | null>(null);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [isPreviewMode, setIsPreviewMode] = useState(true);
+  const { isLivePreviewMode: isPreviewMode } = useEditorStore();
   const themeCompartment = useRef(new Compartment());
   const modeCompartment = useRef(new Compartment());
   const scrollPosRef = useRef<number>(0);
@@ -318,10 +317,6 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
     });
   }, [isPreviewMode, mounted]);
 
-  const togglePreviewMode = () => {
-      setIsPreviewMode(!isPreviewMode)
-  };
-
     // Handle file changes: both switching files and external updates
   useEffect(() => {
       if (!viewRef.current || !mounted) return;
@@ -386,27 +381,6 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
 
   return (
     <div className="h-full w-full flex flex-col obsidian-editor">
-      <div className="flex items-center justify-end px-4 py-2 border-b border-border bg-muted/20 shrink-0">
-        <Button
-          size="sm"
-          variant={isPreviewMode ? "default" : "outline"}
-          onClick={togglePreviewMode}
-          className="gap-2 h-8"
-          title={isPreviewMode ? "Switch to Source Mode" : "Switch to Live Preview"}
-        >
-          {isPreviewMode ? (
-            <>
-              <Eye className="h-3.5 w-3.5" />
-              Live Preview
-            </>
-          ) : (
-            <>
-              <Code2 className="h-3.5 w-3.5" />
-              Source Mode
-            </>
-          )}
-        </Button>
-      </div>
       <div ref={editorRef} className="flex-1 overflow-y-auto pl-2 overflow-x-hidden mb-10 pb-5" />
     </div>
   );

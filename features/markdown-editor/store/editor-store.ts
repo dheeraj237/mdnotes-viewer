@@ -33,6 +33,7 @@ interface EditorStore {
   openTabs: MarkdownFile[];
   activeTabId: string | null;
   viewMode: ViewMode;
+  isLivePreviewMode: boolean;
   isLoading: boolean;
   openFile: (file: MarkdownFile) => void;
   closeTab: (fileId: string) => void;
@@ -41,16 +42,20 @@ interface EditorStore {
   handleExternalUpdate: (fileId: string, content: string) => void;
   applyEditorPatch: (fileId: string, content: string) => Promise<void>;
   setViewMode: (mode: ViewMode) => void;
+  setLivePreviewMode: (isPreview: boolean) => void;
   setIsLoading: (loading: boolean) => void;
   openLocalFile: () => Promise<void>;
   loadFileFromManager: (path: string, isLocal?: boolean) => Promise<void>;
   openFileByPath: (relativePath: string, currentFilePath?: string, anchor?: string) => Promise<void>;
+  setFileSaving: (fileId: string, isSaving: boolean) => void;
+  setFileLastSaved: (fileId: string, lastSaved: Date) => void;
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
   openTabs: [],
   activeTabId: null,
   viewMode: "live",
+  isLivePreviewMode: true,
   isLoading: false,
 
   openFile: (file) => set((state) => {
@@ -92,6 +97,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   updateFileContent: (fileId, content) => set((state) => ({
     openTabs: state.openTabs.map(tab =>
       tab.id === fileId ? { ...tab, content } : tab
+    ),
+  })),
+
+  setFileSaving: (fileId, isSaving) => set((state) => ({
+    openTabs: state.openTabs.map(tab =>
+      tab.id === fileId ? { ...tab, isSaving } : tab
+    ),
+  })),
+
+  setFileLastSaved: (fileId, lastSaved) => set((state) => ({
+    openTabs: state.openTabs.map(tab =>
+      tab.id === fileId ? { ...tab, lastSaved } : tab
     ),
   })),
 
@@ -296,6 +313,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),
+
+  setLivePreviewMode: (isPreview) => set({ isLivePreviewMode: isPreview }),
+
   setIsLoading: (loading) => set({ isLoading: loading }),
 }));
 

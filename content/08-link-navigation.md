@@ -1,6 +1,6 @@
 # Link Navigation Testing
 
-This document is a comprehensive test page for verifying link navigation features in the MDNotes viewer.
+This document  is a comprehensive test page for verifying link navigation features in the MDNotes viewer.
 
 ## Features Being Tested
 

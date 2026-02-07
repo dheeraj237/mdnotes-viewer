@@ -93,11 +93,11 @@ export function InlineInput({
         style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
         {type === "folder" ? (
-          <Folder className="h-4 w-4 text-primary flex-shrink-0" />
+          <Folder className="h-4 w-4 text-primary shrink-0" />
         ) : (
           <>
             <div className="w-4" />
-            <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <File className="h-4 w-4 text-muted-foreground shrink-0" />
           </>
         )}
         <Input

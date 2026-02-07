@@ -4,15 +4,18 @@ import { PanelLeft, PanelRight, Eye, Code2, Sparkles } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
 import { usePanelStore } from "@/core/store/panel-store";
-import { useEditorStore } from "@/features/markdown-editor/store/editor-store";
+import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
 import { Separator } from "@/shared/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { cn } from "@/shared/utils/cn";
 
 export function AppToolbar() {
   const { toggleLeftPanel, toggleRightPanel } = usePanelStore();
   const { activeTabId, viewMode, setViewMode } = useEditorStore();
+  const currentFile = useCurrentFile();
 
   const hasActiveFile = activeTabId !== null;
+  const isMarkdownFile = currentFile?.name.endsWith('.md') ?? false;
 
   return (
     <div className="h-12 border-b bg-background px-4 flex items-center justify-between shrink-0">
@@ -23,47 +26,21 @@ export function AppToolbar() {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Mode Switcher - only show when file is open */}
-        {hasActiveFile && (
+        {/* Mode Switcher - only show when markdown file is open */}
+        {hasActiveFile && isMarkdownFile && (
           <>
-            <div className="flex items-center gap-0.5 bg-muted/30 rounded-md p-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 cursor-pointer",
-                  viewMode === "code" && "bg-background shadow-sm"
-                )}
-                onClick={() => setViewMode("code")}
-                title="Code Editor"
-              >
-                <Code2 className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 cursor-pointer",
-                  viewMode === "live" && "bg-background shadow-sm"
-                )}
-                onClick={() => setViewMode("live")}
-                title="Live Preview Editor"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 cursor-pointer",
-                  viewMode === "preview" && "bg-background shadow-sm"
-                )}
-                onClick={() => setViewMode("preview")}
-                title="Preview Mode"
-              >
-                <Eye className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+            <Tabs value={viewMode} onValueChange={(value: string) => setViewMode(value as "preview" | "code" | "live")}>
+              <TabsList className="h-8">
+                <TabsTrigger value="code" className="gap-1.5 cursor-pointer" title="Code Editor">
+                  <Code2 className="h-3.5 w-3.5" />
+                  <span className="text-xs">Code</span>
+                </TabsTrigger>
+                <TabsTrigger value="live" className="gap-1.5 cursor-pointer" title="Live Preview Editor">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span className="text-xs">Live</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             <Separator orientation="vertical" className="h-6" />
           </>
         )}

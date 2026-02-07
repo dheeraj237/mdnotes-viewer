@@ -52,7 +52,7 @@ export function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[160px] bg-popover border border-border rounded-md shadow-lg py-1"
+      className="fixed z-50 min-w-40 bg-popover border border-border rounded-md shadow-lg py-1"
       style={{ left: x, top: y }}
     >
       {isFolder && (
