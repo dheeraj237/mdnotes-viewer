@@ -26,6 +26,7 @@ import { Eye, Code2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
 import { listPlugin } from "../plugins/list-plugin";
+import { horizontalRulePlugin } from "../plugins/horizontal-rule-plugin";
 
 // Import KaTeX CSS
 import "katex/dist/katex.min.css";
@@ -101,6 +102,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
             openInNewTab: true,
           }),
           listPlugin,
+          horizontalRulePlugin,
         ]),
         editorTheme,
           syntaxHighlighting,
@@ -185,6 +187,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
             openInNewTab: true,
           }),
           listPlugin,
+          horizontalRulePlugin,
         ] : [
           collapseOnSelectionFacet.of(false),
             markdownStylePlugin

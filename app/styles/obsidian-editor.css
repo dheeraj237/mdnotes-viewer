@@ -120,10 +120,9 @@
   color: hsl(var(--primary) / 0.6);
 }
 
+/* HACK: Override cm-widgetBuffer to prevent it from adding extra height in list lines */
 /* Force cm-widgetBuffer to be completely invisible and non-space-consuming in list lines */
-.obsidian-editor .cm-line:has(.cm-list-bullet) .cm-widgetBuffer,
-.obsidian-editor .cm-line:has(.cm-list-number) .cm-widgetBuffer,
-.obsidian-editor .cm-line:has(.cm-task-checkbox) .cm-widgetBuffer {
+.obsidian-editor .cm-line .cm-widgetBuffer {
   height: 0 !important;
   width: 0 !important;
   display: inline !important;
@@ -175,13 +174,27 @@
 }
 
 /* Horizontal rules */
+.obsidian-editor .cm-hr-widget {
+  display: block;
+  width: 100%;
+  margin: 1.5em 0;
+  padding: 0.5em 0;
+}
+
 .obsidian-editor .cm-hr {
   display: block;
   height: 2px;
   background: hsl(var(--border));
   border: none;
-  margin: 2em auto;
+  margin: 0 auto;
   width: 100%;
+}
+
+/* Horizontal rule source mode (when editing) */
+.obsidian-editor .cm-hr-source {
+  background-color: hsl(var(--muted) / 0.3);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
 }
 
 /* Hide formatting marks when not in active line */

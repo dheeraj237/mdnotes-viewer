@@ -29,11 +29,11 @@ class BulletWidget extends WidgetType {
     span.className = "cm-list-bullet";
     span.setAttribute("data-level", this.level.toString());
     span.setAttribute("aria-hidden", "true");
-    
+
     // Different bullets for different levels
     const bullets = ["•", "◦", "▪"];
     span.textContent = bullets[Math.min(this.level - 1, 2)] + " "; // Add space after bullet
-    
+
     return span;
   }
 
@@ -89,14 +89,14 @@ class CheckboxWidget extends WidgetType {
     span.setAttribute("aria-checked", this.checked.toString());
     span.setAttribute("data-checked", this.checked.toString());
     span.setAttribute("tabindex", "0");
-    
+
     // Use unicode checkbox characters for natural text flow
     // Checked: ☑ (U+2611), Unchecked: ☐ (U+2610)
     span.textContent = this.checked ? "☑ " : "☐ ";
     if (this.checked) {
       span.classList.add("cm-task-checkbox-checked");
     }
-    
+
     // Make it clickable to toggle
     span.style.cursor = "pointer";
 
@@ -106,7 +106,7 @@ class CheckboxWidget extends WidgetType {
       e.stopPropagation();
       this.toggleCheckbox(view, this.pos);
     };
-    
+
     // Handle keyboard accessibility
     span.onkeydown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {

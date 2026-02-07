@@ -25,9 +25,9 @@
 
 ## Task Lists
 
-- [ ] Unchecked task
+- [x] Unchecked task
 - [ ] Checked task
-- [x] Another unchecked task
+- [ ] Another unchecked task
 - [x] Another checked task (uppercase X)
 
 ## Block Quotes

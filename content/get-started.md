@@ -7,21 +7,20 @@ We are using https://github.com/blueberrycongee/codemirror-live-markdown/ and it
 ## Header
 
 ### TODO List
-- [ ] first
-- [ ] 
-[ ] second
-[ ] third
+- [x] first
+- [x] second
 
 defining todo / tasks with `- [ ]` or `[ ]` is not working
-list with 
-
 
 ### Sample List 
 - sdfsdfds
 - dsfsddsf
 - dsfdsfds
+
 ---
-horizental `---` or `***` line are not working
+***
+___
+horizental `---` , `***`  or `___` line are not working
 
 > block quote sample
 blockquotes with `>` are not working
