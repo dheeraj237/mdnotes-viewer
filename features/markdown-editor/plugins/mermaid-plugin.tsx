@@ -6,7 +6,7 @@
 import { syntaxTree } from '@codemirror/language';
 import { EditorState, Range, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
-import { shouldShowSource } from 'codemirror-live-markdown';
+import { shouldShowWidgetSourceState } from './plugin-utils';
 
 // Mermaid instance counter to generate unique IDs
 let mermaidCounter = 0;
@@ -46,13 +46,6 @@ class MermaidWidget extends WidgetType {
       const isDark = htmlEl.classList.contains('dark');
       const theme = isDark ? "dark" : "default";
 
-      console.log('[Mermaid] Rendering with theme:', {
-        theme,
-        isDark,
-        htmlClasses: htmlEl.className,
-        id
-      });
-
       // Initialize mermaid with configuration
       mermaid.initialize({
         startOnLoad: false,
@@ -67,8 +60,6 @@ class MermaidWidget extends WidgetType {
       // Render the diagram
       const { svg } = await mermaid.render(id, code);
       container.innerHTML = svg;
-
-      console.log('[Mermaid] Rendered successfully:', id);
     } catch (err) {
       console.error("Mermaid rendering error:", err);
       container.innerHTML = `
@@ -111,10 +102,10 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
 
         if (!code) return;
 
-        // Check if cursor/selection is inside
-        const isTouched = shouldShowSource(state, node.from, node.to);
+        // Use shared utility to check if source should be shown
+        const shouldShowSource = shouldShowWidgetSourceState(state, node.from, node.to);
 
-        if (!isTouched) {
+        if (!shouldShowSource) {
           // Render mode: show widget
           const id = `mermaid-${node.from}-${mermaidCounter++}`;
           const widget = new MermaidWidget(code, id);
@@ -144,7 +135,7 @@ const mermaidField = StateField.define<DecorationSet>({
       return buildMermaidDecorations(tr.state);
     }
 
-    // Rebuild on selection change
+    // Rebuild on selection change to show source
     if (tr.selection) {
       return buildMermaidDecorations(tr.state);
     }
@@ -160,4 +151,3 @@ const mermaidField = StateField.define<DecorationSet>({
  * Renders mermaid diagrams in code blocks
  */
 export const mermaidPlugin = mermaidField;
-

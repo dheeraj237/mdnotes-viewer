@@ -7,7 +7,7 @@
 import { syntaxTree } from '@codemirror/language';
 import { EditorState as CMEditorState, Range, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
-import { shouldShowSource } from 'codemirror-live-markdown';
+import { shouldShowWidgetSourceState } from './plugin-utils';
 import { highlightTree, classHighlighter } from '@lezer/highlight';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -253,10 +253,10 @@ function buildCodeBlockDecorations(state: CMEditorState): DecorationSet {
 
         if (!code.trim()) return;
 
-        // Check if cursor/selection is inside
-        const isTouched = shouldShowSource(state, node.from, node.to);
+        // Use shared utility to check if source should be shown
+        const shouldShowSource = shouldShowWidgetSourceState(state, node.from, node.to);
 
-        if (!isTouched) {
+        if (!shouldShowSource) {
           // Render mode: show widget
           const widget = new CodeBlockWidget(code, language);
 

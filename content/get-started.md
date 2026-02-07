@@ -152,136 +152,6 @@ ORDER BY order_count DESC;
 ***
 ___
 
-## Mermaid Diagrams
-
-### Flowchart
-```mermaid
-flowchart TD
-    A[Start] --> B{Is it working?}
-    B -->|Yes| C[Great!]
-    B -->|No| D[Debug]
-    D --> E[Fix Issues]
-    E --> B
-    C --> F[End]
-```
-
-### Sequence Diagram
-```mermaid
-sequenceDiagram
-    participant User
-    participant Browser
-    participant Server
-    participant Database
-    
-    User->>Browser: Enter URL
-    Browser->>Server: HTTP Request
-    Server->>Database: Query Data
-    Database-->>Server: Return Data
-    Server-->>Browser: HTTP Response
-    Browser-->>User: Display Page
-```
-
-### Class Diagram
-```mermaid
-classDiagram
-    class Animal {
-        +String name
-        +int age
-        +makeSound()
-        +move()
-    }
-    
-    class Dog {
-        +String breed
-        +bark()
-        +wagTail()
-    }
-    
-    class Cat {
-        +String furColor
-        +meow()
-        +purr()
-    }
-    
-    Animal <|-- Dog
-    Animal <|-- Cat
-```
-
-### Gantt Chart
-```mermaid
-gantt
-    title Project Timeline
-    dateFormat YYYY-MM-DD
-    section Planning
-    Research :a1, 2024-01-01, 7d
-    Design :a2, after a1, 10d
-    section Development
-    Backend :b1, 2024-01-15, 20d
-    Frontend :b2, after a2, 15d
-    Testing :b3, after b1, 7d
-    section Deployment
-    Production Setup :c1, after b3, 3d
-    Go Live :c2, after c1, 1d
-```
-
-### Git Graph
-```mermaid
-gitgraph
-    commit id: "Initial commit"
-    branch develop
-    commit id: "Add feature A"
-    commit id: "Add feature B"
-    checkout main
-    merge develop
-    commit id: "Release v1.0"
-    branch hotfix
-    commit id: "Fix critical bug"
-    checkout main
-    merge hotfix
-```
-
-### Entity Relationship Diagram
-```mermaid
-erDiagram
-    USER ||--o{ ORDER : places
-    USER {
-        int id PK
-        string name
-        string email
-        datetime created_at
-    }
-    ORDER ||--|{ ORDER_ITEM : contains
-    ORDER {
-        int id PK
-        int user_id FK
-        datetime order_date
-        decimal total_amount
-    }
-    ORDER_ITEM }|--|| PRODUCT : references
-    ORDER_ITEM {
-        int order_id FK
-        int product_id FK
-        int quantity
-        decimal price
-    }
-    PRODUCT {
-        int id PK
-        string name
-        string description
-        decimal price
-        int stock_quantity
-    }
-```
-
-### Pie Chart
-```mermaid
-pie title Programming Languages Usage
-    "JavaScript" : 35
-    "Python" : 25
-    "Java" : 20
-    "TypeScript" : 10
-    "Others" : 10
-```
 
 ## Math Expressions (if supported)
 
@@ -313,7 +183,7 @@ Term 2
 
 ## Abbreviations
 
-*[HTML]: Hyper Text Markup Language
+*[HTML]: Hyper Text Markup Language*
 *[CSS]: Cascading Style Sheets
 
 HTML and CSS are essential for web development.
@@ -325,35 +195,3 @@ HTML and CSS are essential for web development.
 ## Escape Characters
 
 \*Not italic\* \\Backslash \`Not code\`
-
-## HTML in Markdown
-
-<div style="background-color: #f0f0f0; padding: 10px; border-radius: 5px;">
-This is HTML content within Markdown.
-</div>
-
-<details>
-<summary>Click to expand</summary>
-
-This content is hidden by default and can be expanded.
-
-```javascript
-console.log("Hidden code block");
-```
-
-</details>
-
-## Summary
-
-This document demonstrates various Markdown syntax elements including:
-
-- Headers and text formatting
-- Lists and tables  
-- Links and images
-- Code blocks and syntax highlighting
-- Mermaid diagrams (flowcharts, sequence diagrams, class diagrams, etc.)
-- Blockquotes and horizontal rules
-- Math expressions and footnotes
-- HTML integration and special features
-
-Perfect for testing Markdown renderers and learning syntax!

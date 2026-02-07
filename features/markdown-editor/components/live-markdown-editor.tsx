@@ -64,10 +64,9 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
       customLinkPlugin,
       listPlugin,
       horizontalRulePlugin,
-      htmlPlugin,
-      // codeBlockField()
-      mermaidPlugin,
       codeBlockPlugin,
+      mermaidPlugin,
+      htmlPlugin,
     ]
   }
 
