@@ -13,8 +13,9 @@ import { useActiveHeading } from "../hooks/use-active-heading";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { CodeBlock } from "./code-block";
 import { sanitizeMarkdown } from "@/shared/utils/sanitize";
+import { isMarkdownFileLink } from "@/shared/utils/file-path-resolver";
 
-const MarkdownContent = memo(({ content, headings }: { content: string; headings: any[] }) => {
+const MarkdownContent = memo(({ content, headings, currentFilePath }: { content: string; headings: any[]; currentFilePath?: string }) => {
   // Helper functions for link navigation
   const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const getModifierKeyName = () => isMac() ? 'Cmd' : 'Ctrl';
@@ -58,14 +59,32 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
       return <h6 id={id} className="text-sm font-semibold mt-4 mb-2 tracking-tight" {...props}>{children}</h6>;
     },
     a: ({ href, children }: any) => {
-      const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+      const { openFileByPath } = useEditorStore();
+
+      const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
         const isModifierPressed = isMac() ? e.metaKey : e.ctrlKey;
 
         if (isModifierPressed && href) {
           e.preventDefault();
-          window.open(href, '_blank', 'noopener,noreferrer');
+
+          // Check if this is a markdown file link
+          if (isMarkdownFileLink(href)) {
+            try {
+              await openFileByPath(href, currentFilePath);
+            } catch (error) {
+              console.error('Failed to open markdown file:', error);
+            }
+          } else {
+          // External link
+            window.open(href, '_blank', 'noopener,noreferrer');
+          }
         }
       };
+
+      const isMarkdownFile = href && isMarkdownFileLink(href);
+      const tooltipText = isMarkdownFile
+        ? `${getModifierKeyName()}+Click to open in new tab`
+        : `${getModifierKeyName()}+Click to open`;
 
       return (
         <a
@@ -74,8 +93,8 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
           onClick={handleClick}
         >
           {children}
-          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 text-xs font-medium text-popover-foreground bg-popover border border-border rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[9999] shadow-lg">
-            {getModifierKeyName()}+Click to open
+          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[100000]">
+            {tooltipText}
           </span>
         </a>
       );
@@ -148,7 +167,7 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
         {children}
       </summary>
     ),
-  }), [headings]);
+  }), [headings, currentFilePath]);
 
   return (
     <ReactMarkdown
@@ -168,9 +187,10 @@ MarkdownContent.displayName = 'MarkdownContent';
 
 interface MarkdownPreviewProps {
   content?: string;
+  currentFilePath?: string;
 }
 
-export function MarkdownPreview({ content: propContent }: MarkdownPreviewProps = {}) {
+export function MarkdownPreview({ content: propContent, currentFilePath }: MarkdownPreviewProps = {}) {
   const { setItems, setActiveId } = useTocStore();
   const rawContent = propContent || "";
 
@@ -204,7 +224,7 @@ export function MarkdownPreview({ content: propContent }: MarkdownPreviewProps =
 
   return (
     <article className="markdown-body prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-3xl prose-h1:mt-0 prose-h1:mb-6 prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-3 prose-h4:text-lg prose-h4:mt-6 prose-h4:mb-2 prose-p:leading-7 prose-p:mb-4 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:font-semibold prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:bg-muted/50 prose-blockquote:py-1 prose-blockquote:not-italic prose-ul:my-4 prose-ol:my-4 prose-li:my-1 prose-table:border-collapse prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-4 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-2 prose-hr:border-border prose-img:rounded-lg prose-img:shadow-sm">
-      <MarkdownContent content={content} headings={headings} />
+      <MarkdownContent content={content} headings={headings} currentFilePath={currentFilePath} />
     </article>
   );
 }

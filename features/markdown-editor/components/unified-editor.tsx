@@ -195,7 +195,7 @@ export function UnifiedEditor() {
             {viewMode === "preview" && (
               <div id="markdown-content" className="flex-1 overflow-y-auto overflow-x-hidden">
                 <div className="max-w-4xl mx-auto px-8 py-8 pb-24">
-                  <MarkdownPreview content={editableContent} />
+                  <MarkdownPreview content={editableContent} currentFilePath={currentFile.path} />
                 </div>
               </div>
             )}

@@ -1,6 +1,7 @@
 /**
  * Custom link plugin for CodeMirror to handle link navigation
  * Supports Cmd/Ctrl+Click to open links in new tab with tooltips
+ * Handles markdown file links for internal navigation
  * Based on official link plugin from codemirror-live-markdown
  */
 
@@ -8,6 +9,7 @@ import { syntaxTree } from '@codemirror/language';
 import { Range } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from '@codemirror/view';
 import { shouldShowSource, mouseSelectingField } from 'codemirror-live-markdown';
+import { isMarkdownFileLink } from '@/shared/utils/file-path-resolver';
 
 /**
  * Detect operating system
@@ -64,9 +66,10 @@ function parseLinkSyntax(text: string): LinkData | null {
 
 /**
  * Link widget that makes links clickable with modifier key
+ * Handles both external URLs and internal markdown file links
  */
 class LinkWidget extends WidgetType {
-  constructor(private linkData: LinkData) {
+  constructor(private linkData: LinkData, private currentFilePath?: string) {
     super();
   }
 
@@ -83,18 +86,46 @@ class LinkWidget extends WidgetType {
     link.href = '#';
     link.setAttribute('data-url', this.linkData.url);
 
-    // Tooltip element
+    const isMarkdownFile = isMarkdownFileLink(this.linkData.url);
+
+    // Tooltip element with Tailwind-style classes
     const tooltip = document.createElement('span');
-    tooltip.className = 'cm-link-tooltip';
-    tooltip.textContent = `${getModifierKeyName()}+Click to open`;
+    tooltip.className = 'absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 border border-gray-700 rounded-md shadow-xl opacity-0 pointer-events-none whitespace-nowrap transition-opacity duration-200';
+    tooltip.style.zIndex = '100000';
+    tooltip.textContent = isMarkdownFile
+      ? `${getModifierKeyName()}+Click to open in new tab`
+      : `${getModifierKeyName()}+Click to open`;
     link.appendChild(tooltip);
 
+    // Show/hide tooltip on hover
+    link.addEventListener('mouseenter', () => {
+      tooltip.classList.remove('opacity-0');
+      tooltip.classList.add('opacity-100');
+    });
+    link.addEventListener('mouseleave', () => {
+      tooltip.classList.remove('opacity-100');
+      tooltip.classList.add('opacity-0');
+    });
+
     // Handle click with modifier key
-    link.addEventListener('mousedown', (e) => {
+    link.addEventListener('mousedown', async (e) => {
       if (isModifierKeyPressed(e)) {
         e.preventDefault();
         e.stopPropagation();
-        window.open(this.linkData.url, '_blank', 'noopener,noreferrer');
+
+        if (isMarkdownFile) {
+          // Handle internal markdown file link
+          try {
+            const { useEditorStore } = await import('@/features/markdown-editor/store/editor-store');
+            const store = useEditorStore.getState();
+            await store.openFileByPath(this.linkData.url, this.currentFilePath);
+          } catch (error) {
+            console.error('Failed to open markdown file:', error);
+          }
+        } else {
+        // Handle external URL
+          window.open(this.linkData.url, '_blank', 'noopener,noreferrer');
+        }
       }
       // Let normal clicks through for editing
     });
@@ -122,9 +153,10 @@ class LinkWidget extends WidgetType {
 
 /**
  * Autolink widget for plain URLs
+ * Handles both external URLs and internal markdown file links
  */
 class AutolinkWidget extends WidgetType {
-  constructor(private url: string) {
+  constructor(private url: string, private currentFilePath?: string) {
     super();
   }
 
@@ -139,18 +171,46 @@ class AutolinkWidget extends WidgetType {
     link.href = '#';
     link.setAttribute('data-url', this.url);
 
-    // Tooltip element
+    const isMarkdownFile = isMarkdownFileLink(this.url);
+
+    // Tooltip element with Tailwind-style classes
     const tooltip = document.createElement('span');
-    tooltip.className = 'cm-link-tooltip';
-    tooltip.textContent = `${getModifierKeyName()}+Click to open`;
+    tooltip.className = 'absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 border border-gray-700 rounded-md shadow-xl opacity-0 pointer-events-none whitespace-nowrap transition-opacity duration-200';
+    tooltip.style.zIndex = '100000';
+    tooltip.textContent = isMarkdownFile
+      ? `${getModifierKeyName()}+Click to open in new tab`
+      : `${getModifierKeyName()}+Click to open`;
     link.appendChild(tooltip);
 
+    // Show/hide tooltip on hover
+    link.addEventListener('mouseenter', () => {
+      tooltip.classList.remove('opacity-0');
+      tooltip.classList.add('opacity-100');
+    });
+    link.addEventListener('mouseleave', () => {
+      tooltip.classList.remove('opacity-100');
+      tooltip.classList.add('opacity-0');
+    });
+
     // Handle click with modifier key
-    link.addEventListener('mousedown', (e) => {
+    link.addEventListener('mousedown', async (e) => {
       if (isModifierKeyPressed(e)) {
         e.preventDefault();
         e.stopPropagation();
-        window.open(this.url, '_blank', 'noopener,noreferrer');
+
+        if (isMarkdownFile) {
+          // Handle internal markdown file link
+          try {
+            const { useEditorStore } = await import('@/features/markdown-editor/store/editor-store');
+            const store = useEditorStore.getState();
+            await store.openFileByPath(this.url, this.currentFilePath);
+          } catch (error) {
+            console.error('Failed to open markdown file:', error);
+          }
+        } else {
+        // Handle external URL
+          window.open(this.url, '_blank', 'noopener,noreferrer');
+        }
       }
       // Let normal clicks through for editing
     });
@@ -184,7 +244,7 @@ const SKIP_PARENT_TYPES = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
 /**
  * Build link decorations
  */
-function buildLinkDecorations(view: EditorView): DecorationSet {
+function buildLinkDecorations(view: EditorView, currentFilePath?: string): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const state = view.state;
   const isDrag = state.field(mouseSelectingField, false);
@@ -229,7 +289,7 @@ function buildLinkDecorations(view: EditorView): DecorationSet {
 
         if (!isTouched && !isDrag) {
           // Render mode: show widget
-          const widget = new LinkWidget(linkData);
+          const widget = new LinkWidget(linkData, currentFilePath);
           decorations.push(Decoration.replace({ widget }).range(from, to));
         } else {
           // Edit mode: add background mark
@@ -264,7 +324,7 @@ function buildLinkDecorations(view: EditorView): DecorationSet {
 
         if (!isTouched && !isDrag) {
           // Render mode: show widget
-          const widget = new AutolinkWidget(url);
+          const widget = new AutolinkWidget(url, currentFilePath);
           decorations.push(Decoration.replace({ widget }).range(from, to));
         } else {
           // Edit mode: add background mark
@@ -281,19 +341,41 @@ function buildLinkDecorations(view: EditorView): DecorationSet {
 
 /**
  * Custom link plugin with Cmd/Ctrl+Click support
+ * Automatically detects current file path for relative link resolution
  */
 export const customLinkPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    currentFilePath: string | undefined;
 
     constructor(view: EditorView) {
-      this.decorations = buildLinkDecorations(view);
+      this.currentFilePath = this.getCurrentFilePath();
+      this.decorations = buildLinkDecorations(view, this.currentFilePath);
+    }
+
+    getCurrentFilePath(): string | undefined {
+      // Try to get current file path from editor store
+      try {
+        if (typeof window !== 'undefined') {
+          // Access Zustand store dynamically
+          return (window as any).__currentFilePath;
+        }
+      } catch (e) {
+        // Fallback if store is not accessible
+      }
+      return undefined;
     }
 
     update(update: ViewUpdate) {
+      // Update current file path if needed
+      const newFilePath = this.getCurrentFilePath();
+      if (newFilePath !== this.currentFilePath) {
+        this.currentFilePath = newFilePath;
+      }
+
       // Rebuild on document or viewport change
       if (update.docChanged || update.viewportChanged) {
-        this.decorations = buildLinkDecorations(update.view);
+        this.decorations = buildLinkDecorations(update.view, this.currentFilePath);
         return;
       }
 
@@ -302,7 +384,7 @@ export const customLinkPlugin = ViewPlugin.fromClass(
       const wasDragging = update.startState.field(mouseSelectingField, false);
 
       if (wasDragging && !isDragging) {
-        this.decorations = buildLinkDecorations(update.view);
+        this.decorations = buildLinkDecorations(update.view, this.currentFilePath);
         return;
       }
 
@@ -313,7 +395,7 @@ export const customLinkPlugin = ViewPlugin.fromClass(
 
       // Rebuild on selection change
       if (update.selectionSet) {
-        this.decorations = buildLinkDecorations(update.view);
+        this.decorations = buildLinkDecorations(update.view, this.currentFilePath);
       }
     }
   },

@@ -44,6 +44,7 @@ interface EditorStore {
   setIsLoading: (loading: boolean) => void;
   openLocalFile: () => Promise<void>;
   loadFileFromManager: (path: string, isLocal?: boolean) => Promise<void>;
+  openFileByPath: (relativePath: string, currentFilePath?: string) => Promise<void>;
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
@@ -198,6 +199,88 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         console.error('Error opening local file:', error);
         alert('Failed to open file: ' + (error as Error).message);
       }
+    }
+  },
+
+  openFileByPath: async (relativePath: string, currentFilePath?: string) => {
+    const { resolveRelativePath, findFileInTree } = await import("@/shared/utils/file-path-resolver");
+    const { useFileExplorerStore } = await import("@/features/file-explorer/store/file-explorer-store");
+
+    try {
+      set({ isLoading: true });
+
+      // Resolve the path relative to current file
+      let targetPath = relativePath;
+      if (currentFilePath) {
+        const resolved = resolveRelativePath(currentFilePath, relativePath);
+        if (!resolved) {
+          throw new Error(`Invalid link path: ${relativePath}`);
+        }
+        targetPath = resolved;
+      }
+
+      // Get file tree from explorer store
+      const fileTree = useFileExplorerStore.getState().fileTree;
+
+      // Search for the file in the tree
+      const fileNode = findFileInTree(fileTree, targetPath);
+
+      if (!fileNode) {
+        throw new Error(`File not found: ${targetPath}`);
+      }
+
+      // Check if this is a local file
+      if (fileNode.id.startsWith('local-file-')) {
+        // Read file from local file system
+        const dirHandle = (window as any).__localDirHandle;
+        if (!dirHandle) {
+          throw new Error('No directory handle available');
+        }
+
+        const pathParts = fileNode.path.split('/');
+        let currentHandle = dirHandle;
+
+        // Navigate to the file through directory structure
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
+        }
+
+        const fileHandle = await currentHandle.getFileHandle(pathParts[pathParts.length - 1]);
+        const file = await fileHandle.getFile();
+        const content = await file.text();
+
+        get().openFile({
+          id: fileNode.id,
+          path: fileNode.path,
+          name: fileNode.name,
+          content,
+          category: 'local',
+          fileHandle,
+          isLocal: true,
+        });
+      } else {
+        // Load from server
+        const response = await fetch(`/api/files/${fileNode.path}`);
+        const result = await response.json();
+
+        if (result.success) {
+          get().openFile({
+            id: fileNode.id,
+            path: fileNode.path,
+            name: fileNode.name,
+            content: result.data.content,
+            category: fileNode.path.split("/")[0],
+          });
+        } else {
+          throw new Error(result.error || 'Failed to load file');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open file by path:', error);
+      alert(error instanceof Error ? error.message : 'Failed to open file');
+      throw error;
+    } finally {
+      set({ isLoading: false });
     }
   },
 

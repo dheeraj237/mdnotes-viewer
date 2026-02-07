@@ -76,6 +76,18 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
     setMounted(true);
   }, []);
 
+  // Set current file path for link navigation plugin
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__currentFilePath = file.path;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__currentFilePath;
+      }
+    };
+  }, [file.path]);
+
   // Setup mouse selecting handler (like the demo)
   const setupMouseSelecting = (view: EditorView) => {
     view.contentDOM.addEventListener('mousedown', () => {

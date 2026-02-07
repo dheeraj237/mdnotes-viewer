@@ -48,6 +48,11 @@
 ### Links
 [External link](https://github.com)
 [Link with title](https://github.com "GitHub Homepage")
+
+### Relative Links (Test Navigation)
+- [Back to Test Links](../test-links.md) - Parent directory
+- [Basic Formatting](../01-basic-formatting.md) - Parent file
+- [Topics Overview](../topics/topics.md) - Sibling directory
 <https://www.example.com>
 
 ### Images
