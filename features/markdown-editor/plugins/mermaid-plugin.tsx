@@ -1,6 +1,6 @@
 /**
- * Mermaid plugin for CodeMirror to render mermaid diagrams
- * Converts ```mermaid code blocks into visual diagrams
+ * Mermaid Plugin - Renders ```mermaid code blocks as interactive diagrams
+ * Dynamically imports mermaid library to reduce bundle size
  */
 
 import { syntaxTree } from '@codemirror/language';
@@ -8,17 +8,19 @@ import { EditorState, Range, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { shouldShowWidgetSourceState } from './plugin-utils';
 
-// Mermaid instance counter to generate unique IDs
+// Counter for unique diagram IDs - prevents mermaid rendering conflicts
 let mermaidCounter = 0;
 
 /**
- * Widget to render Mermaid diagram
+ * Widget that replaces mermaid code block with rendered diagram
+ * Async rendering happens after DOM insertion to avoid blocking
  */
 class MermaidWidget extends WidgetType {
   constructor(private code: string, private id: string) {
     super();
   }
 
+  // Only re-render if code content changed (optimization)
   eq(other: MermaidWidget) {
     return other instanceof MermaidWidget && this.code === other.code;
   }
@@ -27,10 +29,9 @@ class MermaidWidget extends WidgetType {
     const container = document.createElement("div");
     container.className = "cm-mermaid-diagram";
 
-    // Add loading message
     container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--muted-foreground);">Loading diagram...</div>';
 
-    // Render mermaid asynchronously
+    // Async rendering to avoid blocking main thread
     this.renderMermaid(container, this.code, this.id);
 
     return container;
@@ -38,22 +39,21 @@ class MermaidWidget extends WidgetType {
 
   async renderMermaid(container: HTMLElement, code: string, id: string) {
     try {
-      // Dynamically import mermaid
+      // Dynamic import: only load mermaid when needed (reduces initial bundle)
       const mermaid = (await import("mermaid")).default;
 
-      // Detect theme - check for dark class on html element (next-themes sets it here)
+      // Sync theme with next-themes (dark class on html element)
       const htmlEl = document.documentElement;
       const isDark = htmlEl.classList.contains('dark');
       const theme = isDark ? "dark" : "default";
 
-      // Initialize mermaid with configuration
       mermaid.initialize({
         startOnLoad: false,
         theme: theme,
-        securityLevel: "loose",
+        securityLevel: "loose", // Allow custom styles in diagrams
         fontFamily: "inherit",
         flowchart: {
-          useMaxWidth: true,
+          useMaxWidth: true, // Responsive diagrams
         },
       });
 
@@ -77,7 +77,8 @@ class MermaidWidget extends WidgetType {
 }
 
 /**
- * Build decorations for mermaid diagrams
+ * Build decorations: Find all ```mermaid blocks and replace with widgets
+ * Skips blocks where cursor/selection is present (shows source instead)
  */
 function buildMermaidDecorations(state: EditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
@@ -85,16 +86,15 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
   syntaxTree(state).iterate({
     enter: (node) => {
       if (node.name === 'FencedCode') {
-        // Get language info
+        // Extract language from code info line (```mermaid)
         const codeInfo = node.node.getChild('CodeInfo');
         if (!codeInfo) return;
 
         const language = state.doc.sliceString(codeInfo.from, codeInfo.to).trim().toLowerCase();
 
-        // Only process mermaid blocks
         if (language !== 'mermaid') return;
 
-        // Get code content
+        // Get actual code content (between opening and closing ```)
         const codeText = node.node.getChild('CodeText');
         const code = codeText
           ? state.doc.sliceString(codeText.from, codeText.to).trim()
@@ -102,11 +102,10 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
 
         if (!code) return;
 
-        // Use shared utility to check if source should be shown
+        // Show source if cursor is inside or text is selected
         const shouldShowSource = shouldShowWidgetSourceState(state, node.from, node.to);
 
         if (!shouldShowSource) {
-          // Render mode: show widget
           const id = `mermaid-${node.from}-${mermaidCounter++}`;
           const widget = new MermaidWidget(code, id);
 
@@ -122,7 +121,8 @@ function buildMermaidDecorations(state: EditorState): DecorationSet {
 }
 
 /**
- * Create mermaid StateField
+ * StateField: Manages decoration lifecycle
+ * Rebuilds decorations on document or selection changes
  */
 const mermaidField = StateField.define<DecorationSet>({
   create(state) {
@@ -130,12 +130,12 @@ const mermaidField = StateField.define<DecorationSet>({
   },
 
   update(deco, tr) {
-    // Rebuild on document or config change
+    // Rebuild on document changes or selection changes
     if (tr.docChanged || tr.reconfigured) {
       return buildMermaidDecorations(tr.state);
     }
 
-    // Rebuild on selection change to show source
+    // Rebuild when selection changes to show/hide source
     if (tr.selection) {
       return buildMermaidDecorations(tr.state);
     }

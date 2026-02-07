@@ -1,6 +1,6 @@
 /**
  * Shared utility functions for CodeMirror plugins
- * Provides common functionality for rendering widgets and handling selections
+ * Handles selection detection, HTML sanitization, and widget visibility logic
  */
 
 import { EditorView } from '@codemirror/view';
@@ -8,12 +8,13 @@ import { EditorState } from '@codemirror/state';
 import { shouldShowSource } from 'codemirror-live-markdown';
 
 /**
- * Check if a range overlaps with any selection
- * Used to show source when user selects text that includes the widget
+ * Check if selection overlaps with widget range (ViewPlugin version)
+ * Returns true if any part of the selection touches the widget
  */
 export function hasSelectionOverlap(view: EditorView, from: number, to: number): boolean {
   const { selection } = view.state;
   for (const range of selection.ranges) {
+    // Check for any overlap: selection starts before end OR ends after start
     if (range.from < to && range.to > from) {
       return true;
     }
@@ -22,7 +23,8 @@ export function hasSelectionOverlap(view: EditorView, from: number, to: number):
 }
 
 /**
- * Check if a range overlaps with any selection (for StateField plugins)
+ * Check if selection overlaps with widget range (StateField version)
+ * Same logic as hasSelectionOverlap but for StateField plugins
  */
 export function hasSelectionOverlapState(state: EditorState, from: number, to: number): boolean {
   const { selection } = state;
@@ -35,39 +37,39 @@ export function hasSelectionOverlapState(state: EditorState, from: number, to: n
 }
 
 /**
- * Determine if source should be shown for a widget
- * Combines shouldShowSource with selection overlap check
+ * Determine if widget should show source instead of rendered view
+ * Combines cursor position check with selection overlap
  */
 export function shouldShowWidgetSource(view: EditorView, from: number, to: number): boolean {
   return shouldShowSource(view.state, from, to) || hasSelectionOverlap(view, from, to);
 }
 
 /**
- * Determine if source should be shown for a widget (StateField version)
+ * StateField version: Check if widget should show source
+ * Used by StateField-based plugins (mermaid, code blocks, HTML)
  */
 export function shouldShowWidgetSourceState(state: EditorState, from: number, to: number): boolean {
   return shouldShowSource(state, from, to) || hasSelectionOverlapState(state, from, to);
 }
 
 /**
- * Sanitize HTML to remove dangerous attributes
+ * Sanitize HTML by removing script tags and event handlers
+ * Prevents XSS attacks in user-provided HTML content
  */
 export function sanitizeHTML(html: string): string {
   return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/\son\w+\s*=\s*[^\s>]*/gi, '');
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove <script> tags
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '') // Remove onclick="..." type handlers
+    .replace(/\son\w+\s*=\s*[^\s>]*/gi, ''); // Remove onclick=handler type handlers
 }
 
 /**
- * Check if content contains markdown syntax
+ * Detect markdown syntax in HTML content
+ * Used to skip HTML blocks that contain markdown (prevents rendering conflicts)
  */
 export function containsMarkdown(content: string): boolean {
-  // Check for code blocks
-  if (/```/.test(content)) return true;
-  // Check for lists
-  if (/^\s*[-*+]\s/m.test(content)) return true;
-  // Check for headings
-  if (/^#{1,6}\s/m.test(content)) return true;
+  if (/```/.test(content)) return true; // Code blocks
+  if (/^\s*[-*+]\s/m.test(content)) return true; // Lists
+  if (/^#{1,6}\s/m.test(content)) return true; // Headings
   return false;
 }

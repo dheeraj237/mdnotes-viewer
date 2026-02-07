@@ -1,22 +1,28 @@
+/**
+ * Editor Store - Manages open files, tabs, and view mode
+ * Uses Zustand for state management with file manager integration
+ */
 import { create } from "zustand";
 import { MarkdownFile, ViewMode } from "@/shared/types";
 import { FileManager } from "@/core/file-manager";
 import { ServerFileSystemAdapter } from "@/core/file-manager/adapters/server-adapter";
 import { LocalFileSystemAdapter } from "@/core/file-manager/adapters/local-adapter";
 
-// Initialize file manager with server adapter as default
+// Singleton file manager instance - shared across all store instances
 const serverAdapter = new ServerFileSystemAdapter();
 const localAdapter = new LocalFileSystemAdapter();
 let fileManager: FileManager | null = null;
 
-// Get or create file manager instance
+/**
+ * Get or create file manager instance (lazy initialization)
+ * Sets up external update listener on first creation
+ */
 function getFileManager(isLocal: boolean = false): FileManager {
   if (!fileManager) {
     fileManager = new FileManager(isLocal ? localAdapter : serverAdapter);
 
-    // Setup event handlers
+    // Listen for external file changes (e.g., from disk, git pull, etc.)
     fileManager.onUpdate((fileId, content) => {
-      // Update store when file is pulled from external source
       useEditorStore.getState().handleExternalUpdate(fileId, content);
     });
   }
@@ -62,11 +68,11 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const newTabs = state.openTabs.filter(tab => tab.id !== fileId);
     let newActiveId = state.activeTabId;
 
-    // If closing active tab, switch to another tab
+    // When closing active tab, switch to adjacent tab (next or previous)
     if (state.activeTabId === fileId) {
       const currentIndex = state.openTabs.findIndex(tab => tab.id === fileId);
       if (newTabs.length > 0) {
-        // Switch to next tab, or previous if last
+        // Prefer next tab, fall back to previous if closing last tab
         const nextIndex = currentIndex < newTabs.length ? currentIndex : currentIndex - 1;
         newActiveId = newTabs[nextIndex]?.id || null;
       } else {
