@@ -3,7 +3,7 @@
  * Uses Zustand for state management with file manager integration
  */
 import { create } from "zustand";
-import { MarkdownFile, ViewMode } from "@/shared/types";
+import { MarkdownFile } from "@/shared/types";
 import { FileManager } from "@/core/file-manager";
 import { ServerFileSystemAdapter } from "@/core/file-manager/adapters/server-adapter";
 import { LocalFileSystemAdapter } from "@/core/file-manager/adapters/local-adapter";
@@ -32,18 +32,16 @@ function getFileManager(isLocal: boolean = false): FileManager {
 interface EditorStore {
   openTabs: MarkdownFile[];
   activeTabId: string | null;
-  viewMode: ViewMode;
-  isLivePreviewMode: boolean;
   isLoading: boolean;
+  isCodeViewMode: boolean;
   openFile: (file: MarkdownFile) => void;
   closeTab: (fileId: string) => void;
   setActiveTab: (fileId: string) => void;
   updateFileContent: (fileId: string, content: string) => void;
   handleExternalUpdate: (fileId: string, content: string) => void;
   applyEditorPatch: (fileId: string, content: string) => Promise<void>;
-  setViewMode: (mode: ViewMode) => void;
-  setLivePreviewMode: (isPreview: boolean) => void;
   setIsLoading: (loading: boolean) => void;
+  setCodeViewMode: (isCode: boolean) => void;
   openLocalFile: () => Promise<void>;
   loadFileFromManager: (path: string, isLocal?: boolean) => Promise<void>;
   openFileByPath: (relativePath: string, currentFilePath?: string, anchor?: string) => Promise<void>;
@@ -54,9 +52,8 @@ interface EditorStore {
 export const useEditorStore = create<EditorStore>((set, get) => ({
   openTabs: [],
   activeTabId: null,
-  viewMode: "live",
-  isLivePreviewMode: true,
   isLoading: false,
+  isCodeViewMode: false,
 
   openFile: (file) => set((state) => {
     // Check if file is already open
@@ -312,11 +309,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
   },
 
-  setViewMode: (mode) => set({ viewMode: mode }),
-
-  setLivePreviewMode: (isPreview) => set({ isLivePreviewMode: isPreview }),
-
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  setCodeViewMode: (isCode) => set({ isCodeViewMode: isCode }),
 }));
 
 // Helper to get current file

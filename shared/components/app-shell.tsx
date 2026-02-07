@@ -7,7 +7,8 @@ import { AppToolbar } from "@/shared/components/app-toolbar";
 import { FileExplorer } from "@/features/file-explorer/components/file-explorer";
 import { TableOfContents } from "@/features/markdown-preview/components/table-of-contents";
 import { useTocStore } from "@/features/markdown-preview/store/toc-store";
-import { useEditorStore } from "@/features/markdown-editor/store/editor-store";
+import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
+import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const leftPanelRef = useRef<ImperativePanelHandle>(null);
@@ -22,11 +23,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setRightPanelSize,
   } = usePanelStore();
 
-  const { activeTabId, viewMode } = useEditorStore();
+  const { activeTabId, isCodeViewMode } = useEditorStore();
+  const currentFile = useCurrentFile();
   const { items: tocItems, activeId } = useTocStore();
 
-  // Show TOC when a file is open in preview or live mode
-  const showToc = activeTabId !== null && (viewMode === "preview" || viewMode === "live");
+  // Show TOC only for markdown files when in live mode (not code mode)
+  const showToc = activeTabId !== null && currentFile && isMarkdownFile(currentFile.name) && !isCodeViewMode;
 
   useEffect(() => {
     if (leftPanelRef.current) {

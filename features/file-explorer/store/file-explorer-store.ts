@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { FileNode } from "@/shared/types";
+import { MARKDOWN_EXTENSIONS, CODE_EXTENSIONS, TEXT_EXTENSIONS } from "@/shared/utils/file-type-detector";
 
 interface FileExplorerStore {
   expandedFolders: Set<string>;
@@ -68,7 +69,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           // Recursively read directory structure
           const buildFileTree = async (handle: any, path: string = ''): Promise<FileNode[]> => {
             const nodes: FileNode[] = [];
-            const allowedExtensions = ['.md', '.markdown', '.txt'];
+            const allowedExtensions = [...MARKDOWN_EXTENSIONS, ...CODE_EXTENSIONS, ...TEXT_EXTENSIONS];
 
             for await (const entry of handle.values()) {
               const entryPath = path ? `${path}/${entry.name}` : entry.name;

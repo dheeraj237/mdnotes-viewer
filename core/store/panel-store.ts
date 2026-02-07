@@ -15,7 +15,7 @@ interface PanelState {
 export const usePanelStore = create<PanelState>()(
   persist(
     (set) => ({
-      leftPanelSize: 20,
+      leftPanelSize: 15,
       rightPanelSize: 15,
       leftPanelCollapsed: false,
       rightPanelCollapsed: false,

@@ -5,16 +5,15 @@ import { FileText } from "lucide-react";
 import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
 import { FileTabs } from "./file-tabs";
 import { CodeEditor } from "./code-editor";
-import { MarkdownPreview } from "@/features/markdown-preview/components/markdown-preview";
 import { useTocStore } from "@/features/markdown-preview/store/toc-store";
 import { useTableOfContents } from "@/features/markdown-preview/hooks/use-table-of-contents";
-import { useActiveHeading } from "@/features/markdown-preview/hooks/use-active-heading";
 import { sanitizeMarkdown } from "@/shared/utils/sanitize";
 import { toast } from "@/shared/utils/toast";
 import { LiveMarkdownEditor } from "./live-markdown-editor";
+import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 
-export function UnifiedEditor() {
-  const { viewMode, setViewMode, isLoading, applyEditorPatch, setFileSaving, setFileLastSaved } = useEditorStore();
+export function Editor() {
+  const { isLoading, applyEditorPatch, setFileSaving, setFileLastSaved, isCodeViewMode, setCodeViewMode } = useEditorStore();
   const currentFile = useCurrentFile();
   const [editableContent, setEditableContent] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
@@ -22,12 +21,10 @@ export function UnifiedEditor() {
   const lastContentRef = useRef<string>("");
   const currentFileRef = useRef(currentFile);
   
-  // TOC integration
+  // TOC integration - only for markdown files
   const { setItems, setActiveId } = useTocStore();
-  const headings = useTableOfContents(editableContent);
-  // Only use useActiveHeading for preview mode (it tracks scroll in #markdown-content)
-  // Live mode handles its own scroll tracking in LiveMarkdownEditor
-  const activeId = useActiveHeading(viewMode === "preview" ? headings.map(h => h.id) : []);
+  const isMarkdown = currentFile ? isMarkdownFile(currentFile.name) : false;
+  const headings = useTableOfContents(isMarkdown ? editableContent : "");
 
   // Sync currentFileRef with currentFile
   useEffect(() => {
@@ -42,18 +39,10 @@ export function UnifiedEditor() {
     }
   }, [currentFile?.id]);
 
-  // Update TOC when content or headings change
+  // Update TOC when headings change (markdown files only)
   useEffect(() => {
-    setItems(headings);
-  }, [headings, setItems]);
-
-  // Update active heading in TOC (only for preview mode)
-  // Live mode manages activeId through its own scroll tracking
-  useEffect(() => {
-    if (viewMode === "preview" && activeId) {
-      setActiveId(activeId);
-    }
-  }, [activeId, setActiveId, viewMode]);
+    setItems(isMarkdown ? headings : []);
+  }, [headings, setItems, isMarkdown]);
 
   const handleSave = useCallback(async (isAutoSave = false) => {
     if (!currentFile || !hasChanges) return;
@@ -173,22 +162,19 @@ export function UnifiedEditor() {
               </div>
           ) : (
               <>
-            {viewMode === "preview" && (
-              <div id="markdown-content" className="flex-1 overflow-y-auto overflow-x-hidden">
-                <div className="max-w-4xl mx-auto px-8 py-8 pb-24">
-                  <MarkdownPreview content={editableContent} currentFilePath={currentFile.path} />
-                </div>
-              </div>
-            )}
-
-            {viewMode === "live" && (
-              <LiveMarkdownEditor
-                file={{ ...currentFile, content: editableContent }}
-                onContentChange={handleContentChange}
-              />
-            )}
-
-            {viewMode === "code" && (
+            {isMarkdown ? (
+              isCodeViewMode ? (
+                <CodeEditor
+                  file={{ ...currentFile, content: editableContent }}
+                  onContentChange={handleContentChange}
+                />
+              ) : (
+                <LiveMarkdownEditor
+                  file={{ ...currentFile, content: editableContent }}
+                  onContentChange={handleContentChange}
+                />
+              )
+            ) : (
               <CodeEditor
                 file={{ ...currentFile, content: editableContent }}
                 onContentChange={handleContentChange}

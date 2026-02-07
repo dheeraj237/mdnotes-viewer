@@ -4,6 +4,7 @@ import { X, Loader2, Eye, Code2 } from "lucide-react";
 import { useEditorStore } from "@/features/markdown-editor/store/editor-store";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils/cn";
+import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 import {
   Tooltip,
   TooltipContent,
@@ -12,17 +13,15 @@ import {
 } from "@/shared/components/ui/tooltip";
 
 export function FileTabs() {
-  const { openTabs, activeTabId, setActiveTab, closeTab, viewMode, isLivePreviewMode, setLivePreviewMode } = useEditorStore();
+  const { openTabs, activeTabId, setActiveTab, closeTab, isCodeViewMode, setCodeViewMode } = useEditorStore();
+  const currentTab = openTabs.find(tab => tab.id === activeTabId);
+  const isMarkdown = currentTab ? isMarkdownFile(currentTab.name) : false;
 
   if (openTabs.length === 0) return null;
 
   const formatLastSaved = (lastSaved?: Date) => {
     if (!lastSaved) return "Not saved yet";
     return `Last saved: ${lastSaved.toLocaleString()}`;
-  };
-
-  const togglePreviewMode = () => {
-    setLivePreviewMode(!isLivePreviewMode);
   };
 
   return (
@@ -91,17 +90,17 @@ export function FileTabs() {
           </Tooltip>
         ))}
       </div>
-      {viewMode === "live" && openTabs.length > 0 && (
+      {isMarkdown && openTabs.length > 0 && (
         <div className="flex items-center px-3 border-l border-border scale-90">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="sm"
-                variant={isLivePreviewMode ? "default" : "outline"}
-                onClick={togglePreviewMode}
+                variant={isCodeViewMode ? "outline" : "default"}
+                onClick={() => setCodeViewMode(!isCodeViewMode)}
                 className="h-7 w-7 p-0 cursor-pointer"
               >
-                {isLivePreviewMode ? (
+                {isCodeViewMode ? (
                   <Eye className="h-3.5 w-3.5" />
                 ) : (
                     <Code2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -110,7 +109,7 @@ export function FileTabs() {
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">
-                {isLivePreviewMode ? "Switch to Source Mode" : "Switch to Live Preview"}
+                {isCodeViewMode ? "Switch to Live Preview" : "Switch to Code"}
               </p>
             </TooltipContent>
           </Tooltip>

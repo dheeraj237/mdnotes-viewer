@@ -21,7 +21,7 @@ export interface MarkdownFile {
   isSaving?: boolean; // Flag to indicate if file is currently being saved
 }
 
-export type ViewMode = "preview" | "code" | "live";
+export type ViewMode = "live";
 
 export interface EditorState {
   currentFile: MarkdownFile | null;
