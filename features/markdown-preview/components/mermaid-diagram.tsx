@@ -31,7 +31,6 @@ function MermaidDiagramComponent({ code }: MermaidDiagramProps) {
           theme: "default",
           securityLevel: "loose",
           fontFamily: "inherit",
-          suppressErrors: true,
         });
 
         // Use consistent ID for this instance

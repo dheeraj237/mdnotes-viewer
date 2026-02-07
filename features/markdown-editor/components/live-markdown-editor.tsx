@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EditorView, keymap } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { Table, TaskList, GFM, Strikethrough } from "@lezer/markdown";
-import { 
-  livePreviewPlugin, 
-  markdownStylePlugin, 
-  codeBlockField, 
-  linkPlugin, 
-  imageField, 
+import {
+  livePreviewPlugin,
+  markdownStylePlugin,
+  linkPlugin,
+  imageField,
   collapseOnSelectionFacet,
   mouseSelectingField,
   setMouseSelecting,
@@ -19,6 +18,7 @@ import {
   mathPlugin,
   blockMathField,
   tableField,
+  codeBlockField,
 } from "codemirror-live-markdown";
 import { useTheme } from "next-themes";
 import { MarkdownFile } from "@/shared/types";
@@ -27,6 +27,8 @@ import { Button } from "@/shared/components/ui/button";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
 import { listPlugin } from "../plugins/list-plugin";
 import { horizontalRulePlugin } from "../plugins/horizontal-rule-plugin";
+import { mermaidPlugin } from "../plugins/mermaid-plugin";
+import { codeBlockPlugin } from "../plugins/code-block-plugin";
 
 // Import KaTeX CSS
 import "katex/dist/katex.min.css";
@@ -44,9 +46,30 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   const [isPreviewMode, setIsPreviewMode] = useState(true);
   const themeCompartment = useRef(new Compartment());
   const modeCompartment = useRef(new Compartment());
-    const scrollPosRef = useRef<number>(0);
-    const currentFileIdRef = useRef<string>("");
-    const isExternalUpdateRef = useRef<boolean>(false);
+  const scrollPosRef = useRef<number>(0);
+  const currentFileIdRef = useRef<string>("");
+  const isExternalUpdateRef = useRef<boolean>(false);
+
+  function editorPlugins(isPreviewMode: boolean): Extension[] {
+    return [
+      collapseOnSelectionFacet.of(isPreviewMode),
+      mouseSelectingField,
+      livePreviewPlugin,
+      markdownStylePlugin,
+      mathPlugin,
+      blockMathField,
+      tableField,
+      imageField(),
+      linkPlugin({
+        openInNewTab: true,
+      }),
+      listPlugin,
+      horizontalRulePlugin,
+      // codeBlockField()
+      mermaidPlugin,
+      codeBlockPlugin,
+    ]
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -88,22 +111,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           extensions: [Table, TaskList, Strikethrough, GFM] 
         }),
         EditorView.lineWrapping,
-        modeCompartment.current.of([
-          collapseOnSelectionFacet.of(isPreviewMode),
-          mouseSelectingField,
-          livePreviewPlugin,
-          markdownStylePlugin,
-          mathPlugin,
-          blockMathField,
-          tableField,
-          codeBlockField(),
-          imageField(),
-          linkPlugin({
-            openInNewTab: true,
-          }),
-          listPlugin,
-          horizontalRulePlugin,
-        ]),
+        modeCompartment.current.of(editorPlugins(isPreviewMode)),
         editorTheme,
           syntaxHighlighting,
         themeCompartment.current.of(currentTheme),
@@ -173,22 +181,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
 
     viewRef.current.dispatch({
       effects: modeCompartment.current.reconfigure(
-        isPreviewMode ? [
-          collapseOnSelectionFacet.of(true),
-          mouseSelectingField,
-          livePreviewPlugin,
-          markdownStylePlugin,
-          mathPlugin,
-          blockMathField,
-          tableField,
-          codeBlockField(),
-          imageField(),
-          linkPlugin({
-            openInNewTab: true,
-          }),
-          listPlugin,
-          horizontalRulePlugin,
-        ] : [
+        isPreviewMode ? editorPlugins(isPreviewMode) : [
           collapseOnSelectionFacet.of(false),
             markdownStylePlugin
         ]
@@ -287,3 +280,4 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
     </div>
   );
 }
+
