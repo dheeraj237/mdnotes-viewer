@@ -4,14 +4,8 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder } from '@codemirror/state';
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-} from '@codemirror/view';
+import { EditorState, Range, StateField } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { shouldShowSource } from 'codemirror-live-markdown';
 
 // Mermaid instance counter to generate unique IDs
@@ -84,99 +78,78 @@ class MermaidWidget extends WidgetType {
 }
 
 /**
- * Check if a range overlaps with any selection
+ * Build decorations for mermaid diagrams
  */
-function hasSelectionOverlap(view: EditorView, from: number, to: number): boolean {
-  const { selection } = view.state;
-  for (const range of selection.ranges) {
-    if (range.from < to && range.to > from) {
-      return true;
-    }
-  }
-  return false;
+function buildMermaidDecorations(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === 'FencedCode') {
+        // Get language info
+        const codeInfo = node.node.getChild('CodeInfo');
+        if (!codeInfo) return;
+
+        const language = state.doc.sliceString(codeInfo.from, codeInfo.to).trim().toLowerCase();
+
+        // Only process mermaid blocks
+        if (language !== 'mermaid') return;
+
+        // Get code content
+        const codeText = node.node.getChild('CodeText');
+        const code = codeText
+          ? state.doc.sliceString(codeText.from, codeText.to).trim()
+          : '';
+
+        if (!code) return;
+
+        // Check if cursor/selection is inside
+        const isTouched = shouldShowSource(state, node.from, node.to);
+
+        if (!isTouched) {
+          // Render mode: show widget
+          const id = `mermaid-${node.from}-${mermaidCounter++}`;
+          const widget = new MermaidWidget(code, id);
+
+          decorations.push(
+            Decoration.replace({ widget, block: true }).range(node.from, node.to)
+          );
+        }
+      }
+    },
+  });
+
+  return Decoration.set(decorations.sort((a, b) => a.from - b.from), true);
 }
 
 /**
- * Build decorations for mermaid diagrams
+ * Create mermaid StateField
  */
-function buildMermaidDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const processedBlocks = new Set<number>();
+const mermaidField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildMermaidDecorations(state);
+  },
 
-  // Process each visible range
-  for (let { from, to } of view.visibleRanges) {
-    syntaxTree(view.state).iterate({
-      from,
-      to,
-      enter: (node) => {
-        // Look for FencedCode nodes
-        if (node.name === 'FencedCode') {
-          const blockStart = node.from;
-          const blockEnd = node.to;
+  update(deco, tr) {
+    // Rebuild on document or config change
+    if (tr.docChanged || tr.reconfigured) {
+      return buildMermaidDecorations(tr.state);
+    }
 
-          // Skip if already processed
-          if (processedBlocks.has(blockStart)) return;
-          processedBlocks.add(blockStart);
+    // Rebuild on selection change
+    if (tr.selection) {
+      return buildMermaidDecorations(tr.state);
+    }
 
-          // Get the full text of the code block
-          const blockText = view.state.doc.sliceString(blockStart, blockEnd);
+    return deco;
+  },
 
-          // Check if it's a mermaid code block - look for ```mermaid
-          if (!blockText.toLowerCase().includes('mermaid')) return;
-
-          // Extract code between ```mermaid and ```
-          const lines = blockText.split('\n');
-          if (lines.length < 3 || !lines[0].trim().match(/^```\s*mermaid\s*$/i)) return;
-
-          // Get code content (everything between first and last line)
-          const mermaidCode = lines.slice(1, -1).join('\n').trim();
-          if (!mermaidCode) return;
-
-          // Show raw source when caret is inside or selection overlaps
-          if (shouldShowSource(view.state, blockStart, blockEnd) ||
-              hasSelectionOverlap(view, blockStart, blockEnd)) {
-            return;
-          }
-
-          // Generate stable unique ID for this diagram
-          const id = `mermaid-${blockStart}-${mermaidCounter++}`;
-
-          // Replace the entire code block with the mermaid widget
-          const widget = new MermaidWidget(mermaidCode, id);
-          builder.add(
-            blockStart,
-            blockEnd,
-            Decoration.replace({ widget })
-          );
-        }
-      },
-    });
-  }
-
-  return builder.finish();
-}
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 /**
  * Mermaid plugin
  * Renders mermaid diagrams in code blocks
  */
-export const mermaidPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-
-    constructor(view: EditorView) {
-      this.decorations = buildMermaidDecorations(view);
-    }
-
-    update(update: any) {
-      // Rebuild on document, viewport, or selection changes
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildMermaidDecorations(update.view);
-      }
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-  }
-);
+export const mermaidPlugin = mermaidField;
 

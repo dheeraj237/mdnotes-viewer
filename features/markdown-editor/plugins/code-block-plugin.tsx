@@ -5,15 +5,14 @@
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder } from '@codemirror/state';
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-} from '@codemirror/view';
+import { EditorState, Range, StateField } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { shouldShowSource } from 'codemirror-live-markdown';
+
+/**
+ * Languages to skip (handled by other plugins)
+ */
+const SKIP_LANGUAGES = new Set(['mermaid', 'math', 'latex']);
 
 /**
  * Widget to render code block with syntax highlighting and line numbers
@@ -77,108 +76,81 @@ class CodeBlockWidget extends WidgetType {
 }
 
 /**
- * Check if a range overlaps with any selection
+ * Build decorations for code blocks
  */
-function hasSelectionOverlap(view: EditorView, from: number, to: number): boolean {
-  const { selection } = view.state;
-  for (const range of selection.ranges) {
-    if (range.from < to && range.to > from) {
-      return true;
-    }
-  }
-  return false;
+function buildCodeBlockDecorations(state: EditorState): DecorationSet {
+  const decorations: Range<Decoration>[] = [];
+
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === 'FencedCode') {
+        // Get language info
+        const codeInfo = node.node.getChild('CodeInfo');
+        let language = 'text';
+
+        if (codeInfo) {
+          language = state.doc.sliceString(codeInfo.from, codeInfo.to).trim().toLowerCase();
+        }
+
+        // Skip special languages (handled by other plugins)
+        if (SKIP_LANGUAGES.has(language)) {
+          return;
+        }
+
+        // Get code content
+        const codeText = node.node.getChild('CodeText');
+        const code = codeText
+          ? state.doc.sliceString(codeText.from, codeText.to)
+          : '';
+
+        if (!code.trim()) return;
+
+        // Check if cursor/selection is inside
+        const isTouched = shouldShowSource(state, node.from, node.to);
+
+        if (!isTouched) {
+          // Render mode: show widget
+          const widget = new CodeBlockWidget(code, language);
+
+          decorations.push(
+            Decoration.replace({ widget, block: true }).range(node.from, node.to)
+          );
+        }
+      }
+    },
+  });
+
+  return Decoration.set(decorations.sort((a, b) => a.from - b.from), true);
 }
 
 /**
- * Build decorations for code blocks
+ * Create code block StateField
  */
-function buildCodeBlockDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const processedBlocks = new Set<number>();
+const codeBlockField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildCodeBlockDecorations(state);
+  },
 
-  // Process each visible range
-  for (let { from, to } of view.visibleRanges) {
-    syntaxTree(view.state).iterate({
-      from,
-      to,
-      enter: (node) => {
-        // Look for FencedCode nodes
-        if (node.name === 'FencedCode') {
-          const blockStart = node.from;
-          const blockEnd = node.to;
+  update(deco, tr) {
+    // Rebuild on document or config change
+    if (tr.docChanged || tr.reconfigured) {
+      return buildCodeBlockDecorations(tr.state);
+    }
 
-          // Skip if already processed
-          if (processedBlocks.has(blockStart)) return;
-          processedBlocks.add(blockStart);
+    // Rebuild on selection change
+    if (tr.selection) {
+      return buildCodeBlockDecorations(tr.state);
+    }
 
-          // Get the full text of the code block
-          const blockText = view.state.doc.sliceString(blockStart, blockEnd);
+    return deco;
+  },
 
-          // Skip mermaid blocks (handled by mermaid plugin)
-          if (blockText.toLowerCase().includes('mermaid')) return;
-
-          // Skip math blocks (handled by math plugin)
-          if (blockText.match(/^```\s*(math|latex)\s*$/mi)) return;
-
-          // Extract language and code
-          const lines = blockText.split('\n');
-          if (lines.length < 2) return;
-
-          // First line is ```language
-          const firstLine = lines[0].trim();
-          const langMatch = firstLine.match(/^```\s*(\w+)?/);
-          if (!langMatch) return;
-
-          const language = langMatch[1] || 'text';
-
-          // Get code content (everything between first and last line)
-          const codeContent = lines.slice(1, -1).join('\n');
-
-          // Skip empty code blocks
-          if (!codeContent.trim()) return;
-
-          // Show raw source when caret is inside or selection overlaps
-          if (shouldShowSource(view.state, blockStart, blockEnd) ||
-              hasSelectionOverlap(view, blockStart, blockEnd)) {
-            return;
-          }
-
-          // Replace the entire code block with the widget
-          const widget = new CodeBlockWidget(codeContent, language);
-          builder.add(
-            blockStart,
-            blockEnd,
-            Decoration.replace({ widget })
-          );
-        }
-      },
-    });
-  }
-
-  return builder.finish();
-}
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 /**
  * Code block plugin
  * Renders code blocks with syntax highlighting and line numbers
  */
-export const codeBlockPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-
-    constructor(view: EditorView) {
-      this.decorations = buildCodeBlockDecorations(view);
-    }
-
-    update(update: any) {
-      // Rebuild on document, viewport, or selection changes
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildCodeBlockDecorations(update.view);
-      }
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-  }
-);
+export const codeBlockPlugin = codeBlockField;
 
