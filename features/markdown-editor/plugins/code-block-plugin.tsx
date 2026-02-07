@@ -1,13 +1,21 @@
 /**
  * Custom code block plugin for CodeMirror to render code blocks
  * Skips mermaid and math blocks (handled by other plugins)
- * Shows syntax highlighting and line numbers for code blocks
+ * Uses mini CodeMirror instances for syntax highlighting and line numbers
  */
 
 import { syntaxTree } from '@codemirror/language';
-import { EditorState, Range, StateField } from '@codemirror/state';
-import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
+import { EditorState as CMEditorState, Range, StateField } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldShowSource } from 'codemirror-live-markdown';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { css } from '@codemirror/lang-css';
+import { html } from '@codemirror/lang-html';
+import { json } from '@codemirror/lang-json';
+import { sql } from '@codemirror/lang-sql';
+import { markdown } from '@codemirror/lang-markdown';
+import { oneDark } from '@codemirror/theme-one-dark';
 
 /**
  * Languages to skip (handled by other plugins)
@@ -15,7 +23,49 @@ import { shouldShowSource } from 'codemirror-live-markdown';
 const SKIP_LANGUAGES = new Set(['mermaid', 'math', 'latex']);
 
 /**
- * Widget to render code block with syntax highlighting and line numbers
+ * Map language names to CodeMirror language extensions
+ */
+function getLanguageExtension(lang: string) {
+  const langLower = lang.toLowerCase();
+
+  switch (langLower) {
+    case 'javascript':
+    case 'js':
+    case 'jsx':
+      return javascript({ jsx: true });
+    case 'typescript':
+    case 'ts':
+    case 'tsx':
+      return javascript({ typescript: true, jsx: true });
+    case 'python':
+    case 'py':
+      return python();
+    case 'css':
+    case 'scss':
+    case 'sass':
+    case 'less':
+      return css();
+    case 'html':
+    case 'xml':
+    case 'svg':
+      return html();
+    case 'json':
+    case 'jsonc':
+      return json();
+    case 'sql':
+    case 'mysql':
+    case 'postgres':
+      return sql();
+    case 'markdown':
+    case 'md':
+      return markdown();
+    default:
+      return null;
+  }
+}
+
+/**
+ * Widget to render code block using a mini CodeMirror editor
  */
 class CodeBlockWidget extends WidgetType {
   constructor(private code: string, private language: string) {
@@ -40,34 +90,55 @@ class CodeBlockWidget extends WidgetType {
       container.appendChild(header);
     }
 
-    // Create code container
-    const codeWrapper = document.createElement("div");
-    codeWrapper.className = "cm-code-block-content";
+    // Create CodeMirror container
+    const editorDiv = document.createElement("div");
+    editorDiv.className = "cm-code-block-editor";
 
-    // Create line numbers
-    const lines = this.code.split('\n');
-    const lineNumbersDiv = document.createElement("div");
-    lineNumbersDiv.className = "cm-code-block-line-numbers";
-    lines.forEach((_, i) => {
-      const lineNum = document.createElement("div");
-      lineNum.className = "cm-code-block-line-number";
-      lineNum.textContent = String(i + 1);
-      lineNumbersDiv.appendChild(lineNum);
+    // Get language extension for syntax highlighting
+    const langExtension = getLanguageExtension(this.language);
+
+    // Check if dark mode is enabled
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // Create mini CodeMirror instance
+    const extensions = [
+      EditorView.editable.of(false), // Read-only
+      EditorView.lineWrapping, // Wrap long lines
+      lineNumbers(), // Show line numbers
+    ];
+
+    // Add language support if available
+    if (langExtension) {
+      extensions.push(langExtension);
+    }
+
+    // Add dark theme if needed
+    if (isDark) {
+      extensions.push(oneDark);
+    }
+
+    const view = new EditorView({
+      state: CMEditorState.create({
+        doc: this.code,
+        extensions,
+      }),
+      parent: editorDiv,
     });
 
-    // Create code content
-    const codeDiv = document.createElement("pre");
-    codeDiv.className = "cm-code-block-pre";
-    const codeElement = document.createElement("code");
-    codeElement.className = `cm-code-block-code language-${this.language || 'text'}`;
-    codeElement.textContent = this.code;
-    codeDiv.appendChild(codeElement);
+    container.appendChild(editorDiv);
 
-    codeWrapper.appendChild(lineNumbersDiv);
-    codeWrapper.appendChild(codeDiv);
-    container.appendChild(codeWrapper);
+    // Store view reference for cleanup
+    (container as any)._cmView = view;
 
     return container;
+  }
+
+  destroy(dom: HTMLElement) {
+    // Clean up CodeMirror instance
+    const view = (dom as any)._cmView;
+    if (view) {
+      view.destroy();
+    }
   }
 
   ignoreEvent() {
@@ -78,7 +149,7 @@ class CodeBlockWidget extends WidgetType {
 /**
  * Build decorations for code blocks
  */
-function buildCodeBlockDecorations(state: EditorState): DecorationSet {
+function buildCodeBlockDecorations(state: CMEditorState): DecorationSet {
   const decorations: Range<Decoration>[] = [];
 
   syntaxTree(state).iterate({

@@ -41,11 +41,17 @@ class MermaidWidget extends WidgetType {
       // Dynamically import mermaid
       const mermaid = (await import("mermaid")).default;
 
-      // Detect theme - check for dark class on html/body or use media query
+      // Detect theme - check for dark class on html element (next-themes sets it here)
       const htmlEl = document.documentElement;
-      const isDark = htmlEl.classList.contains('dark') ||
-                     (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const isDark = htmlEl.classList.contains('dark');
       const theme = isDark ? "dark" : "default";
+
+      console.log('[Mermaid] Rendering with theme:', {
+        theme,
+        isDark,
+        htmlClasses: htmlEl.className,
+        id
+      });
 
       // Initialize mermaid with configuration
       mermaid.initialize({
@@ -61,6 +67,8 @@ class MermaidWidget extends WidgetType {
       // Render the diagram
       const { svg } = await mermaid.render(id, code);
       container.innerHTML = svg;
+
+      console.log('[Mermaid] Rendered successfully:', id);
     } catch (err) {
       console.error("Mermaid rendering error:", err);
       container.innerHTML = `
