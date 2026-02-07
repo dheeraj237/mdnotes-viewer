@@ -9,6 +9,7 @@ import { Separator } from "@/shared/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 import { cn } from "@/shared/utils/cn";
+import { APP_TITLE, isFeatureEnabled } from "@/core/config/features";
 
 export function AppToolbar() {
   const { toggleLeftPanel, toggleRightPanel, leftPanelCollapsed, rightPanelCollapsed } = usePanelStore();
@@ -17,13 +18,16 @@ export function AppToolbar() {
 
   const hasActiveFile = activeTabId !== null;
   const isMarkdown = currentFile ? isMarkdownFile(currentFile.name) : false;
+  const appTitleEnabled = isFeatureEnabled("appTitle");
 
   return (
     <div className="h-12 border-b bg-background px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-2">
-        <div className="text-sm font-medium text-muted-foreground" title="MarkDown Is All You Need">
-          MDIAYN Editor
-        </div>
+        {appTitleEnabled && (
+          <div className="text-sm font-medium text-muted-foreground" title={`${APP_TITLE} - Document Everything`}>
+            {APP_TITLE}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

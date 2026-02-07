@@ -1,6 +1,6 @@
-# MDNotes Viewer
+# 📝 LogIt
 
-A modern, VSCode-inspired markdown documentation viewer built with Next.js 16, featuring a powerful **Live Markdown Editor** powered by **CodeMirror 6** with real-time preview capabilities.
+A serene, VSCode-inspired markdown documentation viewer built with Next.js 16, featuring a powerful **Live Markdown Editor** powered by **CodeMirror 6** with real-time preview capabilities. Let your thoughts flow freely.
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.1.4-black)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.2.3-blue)](https://reactjs.org/)
@@ -133,7 +133,7 @@ graph TB
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd mdnotes-viewer
+cd logit
 
 # Install dependencies
 yarn install
@@ -147,7 +147,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 ### Project Structure
 
 ```
-mdnotes-viewer/
+logit/
 ├── app/                              # Next.js app router
 │   ├── api/files/[...path]/         # File system API endpoints
 │   ├── globals.css                  # Global styles & editor themes
@@ -422,7 +422,9 @@ This project is MIT licensed. See [LICENSE](./LICENSE) for details.
 ---
 
 **Version**: 2.0.0
-**Last Updated**: February 7, 2026
+**Last Updated**: February 8, 2026
 **Maintainer**: Development Team
 
-Made with ❤️ using React and CodeMirror
+> "Document everything. Analyze everything. Understand everything." - LogIt
+
+Made with ❤️ using React and CodeMirror, deployed with Vercel

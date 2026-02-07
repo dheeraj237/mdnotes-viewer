@@ -1,8 +1,8 @@
-# Getting Started with MDNotes Viewer
+# Getting Started with LogIt
 
 **A Beginner-Friendly Guide to Understanding and Contributing**
 
-Welcome! This guide is designed for developers who are new to React and CodeMirror. We'll walk through the application step by step.
+Welcome to LogIt! This guide is designed for developers who are new to React and CodeMirror. We'll walk through the application step by step.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Before you start, make sure you have:
 ```bash
 # 1. Clone and install
 git clone <repository-url>
-cd mdnotes-viewer
+cd logit
 yarn install
 
 # 2. Start the development server
@@ -31,7 +31,7 @@ open http://localhost:3000
 
 ### What Does It Do?
 
-MDN otes Viewer is a markdown editor similar to Obsidian or Typora:
+LogIt is a powerful markdown documentation viewer similar to Obsidian or Typora:
 1. You can browse markdown files in a file explorer
 2. Edit them with live preview (see formatting as you type)
 3. View rendered markdown with table of contents
@@ -162,7 +162,7 @@ sequenceDiagram
 ## Project Structure Explained
 
 ```
-mdnotes-viewer/
+logit/
 │
 ├── app/                        # Next.js application
 │   ├── page.tsx               # Main page (START HERE)

@@ -13,7 +13,17 @@ import { Feature } from "@/shared/types";
  * 3. Override feature flags using the provider's context
  */
 
+export const APP_TITLE = "LogIt";
+export const APP_DESCRIPTION = "A modern markdown documentation viewer with VSCode-like interface, live preview, and powerful features";
+
 export const features: Record<string, Feature> = {
+  appTitle: {
+    id: "app-title",
+    name: "App Title Configuration",
+    version: "1.0.0",
+    enabled: true,
+    description: "Configurable app title for branding flexibility",
+  },
   fileExplorer: {
     id: "file-explorer",
     name: "File Explorer",
@@ -32,7 +42,7 @@ export const features: Record<string, Feature> = {
     id: "mermaid-diagrams",
     name: "Mermaid Diagram Support",
     version: "0.8.0",
-    enabled: false,
+    enabled: true,
     experimental: true,
     description: "Render Mermaid diagrams in preview and editor modes",
   },

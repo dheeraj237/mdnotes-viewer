@@ -6,10 +6,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/theme-provider";
 import { Toaster } from "@/shared/components/toaster";
+import { APP_TITLE, APP_DESCRIPTION } from "@/core/config/features";
 
 export const metadata: Metadata = {
-  title: "MDNotes Viewer | Markdown Documentation Platform",
-  description: "A modern markdown documentation viewer with VSCode-like interface, Mermaid diagrams, and dark mode support",
+  title: `${APP_TITLE} | Markdown Documentation Platform`,
+  description: APP_DESCRIPTION,
 };
 
 export default function RootLayout({
