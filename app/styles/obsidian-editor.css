@@ -173,21 +173,28 @@
   color: hsl(var(--primary) / 0.9);
 }
 
-/* Code blocks with line numbers */
-/* Code block widget container */
+/* Code blocks with line numbers and copy button */
 .obsidian-editor .cm-code-block-widget {
   display: block;
   margin: 1em 0;
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--muted) / 0.5);
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   overflow: hidden;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+  font-size: 0.9em;
+}
+
+.obsidian-editor .cm-code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--muted) / 0.8);
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .obsidian-editor .cm-code-block-lang {
-  padding: 0.5rem 1rem;
-  background: hsl(var(--muted) / 0.5);
-  border-bottom: 1px solid hsl(var(--border));
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -196,8 +203,107 @@
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.obsidian-editor .cm-code-block-editor {
-  /* CodeMirror instance will render here with its own styling */
+.obsidian-editor .cm-code-block-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.obsidian-editor .cm-code-block-copy:hover {
+  background: hsl(var(--muted-foreground) / 0.1);
+  color: hsl(var(--foreground));
+}
+
+.obsidian-editor .cm-code-block-copy-success {
+  color: hsl(142, 76%, 36%);
+}
+
+.dark .obsidian-editor .cm-code-block-copy-success {
+  color: hsl(142, 76%, 56%);
+}
+
+.obsidian-editor .cm-code-block-copy svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.obsidian-editor .cm-code-block-content {
+  display: flex;
+  overflow-x: auto;
+}
+
+.obsidian-editor .cm-code-block-line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 0;
+  background: hsl(var(--muted) / 0.3);
+  border-right: 1px solid hsl(var(--border));
+  user-select: none;
+  min-width: 3rem;
+  text-align: right;
+}
+
+.obsidian-editor .cm-code-block-line-number {
+  padding: 0 0.75rem;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.85em;
+}
+
+.obsidian-editor .cm-code-block-pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  flex: 1;
+  overflow-x: auto;
+  background: transparent;
+}
+
+.obsidian-editor .cm-code-block-code {
+  display: block;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  white-space: pre;
+  word-wrap: normal;
+  tab-size: 2;
+}
+
+/* CodeMirror syntax highlighting classes are inherited from the editor's theme */
+
+/* CodeMirror preview wrapper for markdown preview code blocks */
+.codemirror-preview-wrapper {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+  font-size: 0.875rem;
+}
+
+.codemirror-preview-wrapper .cm-editor {
+  background: transparent !important;
+  outline: none !important;
+}
+
+.codemirror-preview-wrapper .cm-scroller {
+  padding: 1rem !important;
+}
+
+.codemirror-preview-wrapper .cm-line {
+  padding: 0 !important;
+}
+
+.codemirror-preview-wrapper .cm-content {
+  padding: 0 !important;
+}
+
+.codemirror-preview-wrapper .cm-gutters {
+  display: none;
 }
 
 /* Horizontal rules */

@@ -1,13 +1,14 @@
 /**
  * Custom code block plugin for CodeMirror to render code blocks
  * Skips mermaid and math blocks (handled by other plugins)
- * Uses mini CodeMirror instances for syntax highlighting and line numbers
+ * Uses CodeMirror's built-in syntax highlighting (static HTML, no editor instances)
  */
 
 import { syntaxTree } from '@codemirror/language';
 import { EditorState as CMEditorState, Range, StateField } from '@codemirror/state';
-import { Decoration, DecorationSet, EditorView, WidgetType, lineNumbers } from '@codemirror/view';
+import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { shouldShowSource } from 'codemirror-live-markdown';
+import { highlightTree, classHighlighter } from '@lezer/highlight';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { css } from '@codemirror/lang-css';
@@ -15,7 +16,6 @@ import { html } from '@codemirror/lang-html';
 import { json } from '@codemirror/lang-json';
 import { sql } from '@codemirror/lang-sql';
 import { markdown } from '@codemirror/lang-markdown';
-import { oneDark } from '@codemirror/theme-one-dark';
 
 /**
  * Languages to skip (handled by other plugins)
@@ -23,9 +23,9 @@ import { oneDark } from '@codemirror/theme-one-dark';
 const SKIP_LANGUAGES = new Set(['mermaid', 'math', 'latex']);
 
 /**
- * Map language names to CodeMirror language extensions
+ * Get language parser for syntax highlighting
  */
-function getLanguageExtension(lang: string) {
+function getLanguageSupport(lang: string) {
   const langLower = lang.toLowerCase();
 
   switch (langLower) {
@@ -42,19 +42,14 @@ function getLanguageExtension(lang: string) {
       return python();
     case 'css':
     case 'scss':
-    case 'sass':
     case 'less':
       return css();
     case 'html':
     case 'xml':
-    case 'svg':
       return html();
     case 'json':
-    case 'jsonc':
       return json();
     case 'sql':
-    case 'mysql':
-    case 'postgres':
       return sql();
     case 'markdown':
     case 'md':
@@ -65,7 +60,55 @@ function getLanguageExtension(lang: string) {
 }
 
 /**
- * Widget to render code block using a mini CodeMirror editor
+ * Escape HTML
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Highlight code using CodeMirror's parser and return HTML
+ * Uses classHighlighter to generate .tok- prefixed classes that match the editor theme
+ */
+function highlightCode(code: string, lang: string): string {
+  const langSupport = getLanguageSupport(lang);
+
+  if (!langSupport) {
+    // No language support, return escaped plain text
+    return escapeHtml(code);
+  }
+
+  try {
+    // Parse the code
+    const tree = langSupport.language.parser.parse(code);
+    let result = '';
+    let pos = 0;
+
+    // Highlight using tree with classHighlighter (generates .tok- classes)
+    highlightTree(tree, classHighlighter, (from, to, classes) => {
+      if (from > pos) {
+        result += escapeHtml(code.substring(pos, from));
+      }
+      result += `<span class="${classes}">${escapeHtml(code.substring(from, to))}</span>`;
+      pos = to;
+    });
+
+    if (pos < code.length) {
+      result += escapeHtml(code.substring(pos));
+    }
+
+    return result || escapeHtml(code);
+  } catch (err) {
+    console.error('[CodeBlock] Highlighting failed:', err);
+    return escapeHtml(code);
+  }
+}
+
+/**
+ * Widget to render code block with static HTML and CodeMirror highlighting
  */
 class CodeBlockWidget extends WidgetType {
   constructor(private code: string, private language: string) {
@@ -82,66 +125,100 @@ class CodeBlockWidget extends WidgetType {
     const container = document.createElement("div");
     container.className = "cm-code-block-widget";
 
-    // Create header with language label if specified
+    // Create header with language label and copy button
+    const header = document.createElement("div");
+    header.className = "cm-code-block-header";
+
     if (this.language && this.language !== 'text' && this.language !== 'plain') {
-      const header = document.createElement("div");
-      header.className = "cm-code-block-lang";
-      header.textContent = this.language;
-      container.appendChild(header);
+      const langLabel = document.createElement("span");
+      langLabel.className = "cm-code-block-lang";
+      langLabel.textContent = this.language;
+      header.appendChild(langLabel);
     }
 
-    // Create CodeMirror container
-    const editorDiv = document.createElement("div");
-    editorDiv.className = "cm-code-block-editor";
+    // Copy button
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "cm-code-block-copy";
+    copyButton.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="cm-code-block-copy-text">Copy</span>
+    `;
 
-    // Get language extension for syntax highlighting
-    const langExtension = getLanguageExtension(this.language);
+    const code = this.code;
+    // Use mousedown to prevent default click behavior that switches to edit mode
+    copyButton.addEventListener("mousedown", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
 
-    // Check if dark mode is enabled
-    const isDark = document.documentElement.classList.contains('dark');
+      try {
+        await navigator.clipboard.writeText(code);
+        copyButton.classList.add("cm-code-block-copy-success");
+        const textSpan = copyButton.querySelector('.cm-code-block-copy-text');
+        if (textSpan) {
+          textSpan.textContent = "Copied!";
+        }
 
-    // Create mini CodeMirror instance
-    const extensions = [
-      EditorView.editable.of(false), // Read-only
-      EditorView.lineWrapping, // Wrap long lines
-      lineNumbers(), // Show line numbers
-    ];
-
-    // Add language support if available
-    if (langExtension) {
-      extensions.push(langExtension);
-    }
-
-    // Add dark theme if needed
-    if (isDark) {
-      extensions.push(oneDark);
-    }
-
-    const view = new EditorView({
-      state: CMEditorState.create({
-        doc: this.code,
-        extensions,
-      }),
-      parent: editorDiv,
+        setTimeout(() => {
+          copyButton.classList.remove("cm-code-block-copy-success");
+          if (textSpan) {
+            textSpan.textContent = "Copy";
+          }
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
     });
 
-    container.appendChild(editorDiv);
+    header.appendChild(copyButton);
+    container.appendChild(header);
 
-    // Store view reference for cleanup
-    (container as any)._cmView = view;
+    // Create code container
+    const codeWrapper = document.createElement("div");
+    codeWrapper.className = "cm-code-block-content";
+
+    const lines = this.code.split('\n');
+
+    // Create line numbers
+    const lineNumbersDiv = document.createElement("div");
+    lineNumbersDiv.className = "cm-code-block-line-numbers";
+    lines.forEach((_, i) => {
+      const lineNum = document.createElement("div");
+      lineNum.className = "cm-code-block-line-number";
+      lineNum.textContent = String(i + 1);
+      lineNumbersDiv.appendChild(lineNum);
+    });
+
+    // Create code content with syntax highlighting
+    const pre = document.createElement("pre");
+    pre.className = "cm-code-block-pre";
+    const codeEl = document.createElement("code");
+    codeEl.className = "cm-code-block-code";
+
+    // Highlight with CodeMirror
+    const highlighted = highlightCode(this.code, this.language);
+    codeEl.innerHTML = highlighted;
+
+    pre.appendChild(codeEl);
+    codeWrapper.appendChild(lineNumbersDiv);
+    codeWrapper.appendChild(pre);
+    container.appendChild(codeWrapper);
 
     return container;
   }
 
-  destroy(dom: HTMLElement) {
-    // Clean up CodeMirror instance
-    const view = (dom as any)._cmView;
-    if (view) {
-      view.destroy();
+  ignoreEvent(event: Event) {
+    // Ignore mousedown events on the copy button to prevent switching to edit mode
+    if (event.type === 'mousedown') {
+      const target = event.target as HTMLElement;
+      if (target.closest('.cm-code-block-copy')) {
+        return true; // Tell CodeMirror to ignore this event
+      }
     }
-  }
-
-  ignoreEvent() {
     return false;
   }
 }

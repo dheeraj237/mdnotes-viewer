@@ -148,11 +148,8 @@ ORDER BY order_count DESC;
 > Back to the first level
 
 ## Horizontal Rules
-
 ---
-
 ***
-
 ___
 
 ## Mermaid Diagrams

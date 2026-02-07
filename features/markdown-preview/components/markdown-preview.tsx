@@ -2,7 +2,6 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypePrism from "rehype-prism-plus";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import { FileText } from "lucide-react";
@@ -126,7 +125,7 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw, rehypePrism as any]}
+      rehypePlugins={[rehypeRaw]}
       components={components}
     >
       {content}
