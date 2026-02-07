@@ -1,12 +1,46 @@
 /**
  * HTML Plugin - Renders ```html code blocks as live HTML preview
  * Similar to mermaid plugin, only processes fenced code blocks with html language
+ * Uses DOMPurify for robust XSS prevention
  */
 
 import { syntaxTree } from '@codemirror/language';
 import { EditorState, Range, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
-import { shouldShowWidgetSourceState, sanitizeHTML } from './plugin-utils';
+import { shouldShowWidgetSourceState } from './plugin-utils';
+
+// Import DOMPurify dynamically for client-side sanitization
+let DOMPurify: any = null;
+if (typeof window !== 'undefined') {
+  import('dompurify').then(module => {
+    DOMPurify = module.default;
+  });
+}
+
+/**
+ * Sanitize HTML content using DOMPurify
+ */
+function sanitizeHTML(html: string): string {
+  if (!DOMPurify && typeof window === 'undefined') {
+    // Server-side fallback
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+  }
+
+  if (DOMPurify) {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'u', 'i', 'b', 'code', 'pre',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote', 'hr'],
+      ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title', 'width', 'height'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+    });
+  }
+
+  return html;
+}
 
 /**
  * Widget to render HTML content from ```html code blocks

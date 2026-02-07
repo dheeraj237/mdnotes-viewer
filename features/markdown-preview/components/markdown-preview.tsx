@@ -153,7 +153,10 @@ const MarkdownContent = memo(({ content, headings }: { content: string; headings
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw]}
+      rehypePlugins={[
+        rehypeRaw,
+        rehypeSanitize
+      ]}
       components={components}
     >
       {content}

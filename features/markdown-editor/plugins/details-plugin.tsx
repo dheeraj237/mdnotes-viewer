@@ -1,12 +1,46 @@
 /**
  * Details/Summary Plugin - Renders native <details> and <summary> HTML elements
  * Provides collapsible sections with custom styling
+ * Uses DOMPurify for XSS prevention
  */
 
 import { syntaxTree } from '@codemirror/language';
 import { EditorState, Range, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
-import { shouldShowWidgetSourceState, sanitizeHTML } from './plugin-utils';
+import { shouldShowWidgetSourceState } from './plugin-utils';
+
+// Import DOMPurify dynamically for client-side sanitization
+let DOMPurify: any = null;
+if (typeof window !== 'undefined') {
+  import('dompurify').then(module => {
+    DOMPurify = module.default;
+  });
+}
+
+/**
+ * Sanitize HTML content using DOMPurify
+ */
+function sanitizeHTML(html: string): string {
+  if (!DOMPurify && typeof window === 'undefined') {
+    // Server-side fallback
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+  }
+
+  if (DOMPurify) {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'u', 'i', 'b', 'code', 'pre',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a',
+        'blockquote', 'hr'],
+      ALLOWED_ATTR: ['class', 'href', 'title'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'img'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+    });
+  }
+
+  return html;
+}
 
 /**
  * Check if HTML content contains a details/summary block

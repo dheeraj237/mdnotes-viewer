@@ -2,12 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 
+// Security: Maximum file size (10MB for markdown files)
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
     const { path: filePath } = await params;
+
+    // Security: validate file path components
+    if (filePath.some(part => part.includes('..') || part.includes('\0'))) {
+      return NextResponse.json(
+        { error: "Invalid file path" },
+        { status: 403 }
+      );
+    }
+
     const fullPath = path.join(process.cwd(), "content", ...filePath);
 
     // Security: prevent directory traversal
@@ -20,12 +32,29 @@ export async function GET(
       );
     }
 
-    // Check if file exists
+    // Check if file exists and validate
     try {
       const stats = await fs.stat(resolvedPath);
       if (!stats.isFile()) {
         return NextResponse.json(
           { error: "Path is not a file" },
+          { status: 400 }
+        );
+      }
+
+      // Security: check file size
+      if (stats.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: "File too large" },
+          { status: 413 }
+        );
+      }
+
+      // Security: only allow markdown files
+      const ext = path.extname(resolvedPath).toLowerCase();
+      if (ext !== '.md' && ext !== '.mdx') {
+        return NextResponse.json(
+          { error: "Invalid file type" },
           { status: 400 }
         );
       }
@@ -69,6 +98,23 @@ export async function PUT(
       return NextResponse.json(
         { error: "Content must be a string" },
         { status: 400 }
+      );
+    }
+
+    // Security: check content size
+    const contentSize = Buffer.byteLength(content, 'utf-8');
+    if (contentSize > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "Content too large" },
+        { status: 413 }
+      );
+    }
+
+    // Security: validate file path components
+    if (filePath.some(part => part.includes('..') || part.includes('\0'))) {
+      return NextResponse.json(
+        { error: "Invalid file path" },
+        { status: 403 }
       );
     }
 

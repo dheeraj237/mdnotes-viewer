@@ -50,7 +50,7 @@ class MermaidWidget extends WidgetType {
       mermaid.initialize({
         startOnLoad: false,
         theme: theme,
-        securityLevel: "loose", // Allow custom styles in diagrams
+        securityLevel: "strict", // Strict security: prevents arbitrary JS execution
         fontFamily: "inherit",
         flowchart: {
           useMaxWidth: true, // Responsive diagrams

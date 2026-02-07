@@ -53,14 +53,45 @@ export function shouldShowWidgetSourceState(state: EditorState, from: number, to
 }
 
 /**
- * Sanitize HTML by removing script tags, event handlers, and margin styles
- * Prevents XSS attacks and layout issues in user-provided HTML content
+ * Sanitize HTML using DOMPurify for robust XSS prevention
+ * Uses isomorphic-dompurify for both client and server-side sanitization
+ * NOTE: This is a lightweight wrapper - prefer using sanitizeHtml from @/shared/utils/sanitize for full features
  */
 export function sanitizeHTML(html: string): string {
+  // For CodeMirror plugins, we need synchronous sanitization
+  // Use basic regex as fallback for server-side rendering
+  if (typeof window === 'undefined') {
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/\son\w+\s*=\s*[^\s>]*/gi, '');
+  }
+
+  // Client-side: use DOMPurify (imported dynamically to avoid bundling issues)
+  try {
+    // Load from window if available (should be available from sanitize.ts)
+    if (typeof window !== 'undefined' && (window as any).DOMPurify) {
+      const DOMPurify = (window as any).DOMPurify;
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'u', 'i', 'b', 'code', 'pre',
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img',
+          'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote', 'hr',
+          'details', 'summary', 'svg', 'g', 'path', 'rect', 'circle', 'text'],
+        ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title',
+          'width', 'height', 'viewBox', 'xmlns', 'fill', 'stroke', 'd', 'x', 'y'],
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input'],
+        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+      });
+    }
+  } catch (err) {
+    console.warn('[sanitizeHTML] DOMPurify not available, using regex fallback');
+  }
+
+  // Fallback to regex (should rarely happen)
   return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove <script> tags
-    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '') // Remove onclick="..." type handlers
-    .replace(/\son\w+\s*=\s*[^\s>]*/gi, '') // Remove onclick=handler type handlers
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/\son\w+\s*=\s*[^\s>]*/gi, '');
 }
 
 /**

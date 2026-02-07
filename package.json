@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "security:audit": "yarn audit",
+    "security:check": "yarn audit --level moderate"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",
