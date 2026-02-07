@@ -34,6 +34,19 @@ class HorizontalRuleWidget extends WidgetType {
 }
 
 /**
+ * Check if a range overlaps with any selection
+ */
+function hasSelectionOverlap(view: EditorView, from: number, to: number): boolean {
+  const { selection } = view.state;
+  for (const range of selection.ranges) {
+    if (range.from < to && range.to > from) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Build decorations for horizontal rules
  */
 function buildHorizontalRuleDecorations(view: EditorView): DecorationSet {
@@ -67,8 +80,9 @@ function buildHorizontalRuleDecorations(view: EditorView): DecorationSet {
             contentTo--;
           }
 
-          // Show raw source when caret is inside the horizontal rule
-          if (shouldShowSource(view.state, contentFrom, contentTo)) {
+          // Show raw source when caret is inside or selection overlaps the horizontal rule
+          if (shouldShowSource(view.state, contentFrom, contentTo) ||
+              hasSelectionOverlap(view, contentFrom, contentTo)) {
             return;
           }
 

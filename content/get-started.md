@@ -17,10 +17,6 @@ defining todo / tasks with `- [ ]` or `[ ]` is not working
 - dsfsddsf
 - dsfdsfds
 
----
-***
-___
-horizental `---` , `***`  or `___` line are not working
 
 > block quote sample
 blockquotes with `>` are not working

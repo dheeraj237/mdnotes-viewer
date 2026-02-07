@@ -144,11 +144,24 @@ class CheckboxWidget extends WidgetType {
 }
 
 /**
+ * Check if a range overlaps with any selection
+ */
+function hasSelectionOverlap(view: EditorView, from: number, to: number): boolean {
+  const { selection } = view.state;
+  for (const range of selection.ranges) {
+    if (range.from < to && range.to > from) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Build decorations for lists, blockquotes, and task lists
  */
 function buildListDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  
+
   // Track lines that have been processed to avoid duplicate decorations
   const processedLines = new Set<number>();
 
@@ -181,8 +194,9 @@ function buildListDecorations(view: EditorView): DecorationSet {
             const checkboxEnd = checkboxStart + 3; // "[x]" or "[ ]" length
             const isChecked = taskMatch[4] !== ' ';
 
-            // Show raw source when caret is inside the marker/checkbox (Obsidian-style)
-            if (shouldShowSource(view.state, markerStart, checkboxEnd)) {
+            // Show raw source when caret is inside or selection overlaps the marker/checkbox
+            if (shouldShowSource(view.state, markerStart, checkboxEnd) ||
+                hasSelectionOverlap(view, markerStart, checkboxEnd)) {
               return;
             }
 
@@ -212,7 +226,9 @@ function buildListDecorations(view: EditorView): DecorationSet {
             const markerStart = line.from + orderedMatch[1].length;
             const markerEnd = markerStart + orderedMatch[2].length + 1; // number and dot
 
-            if (shouldShowSource(view.state, markerStart, markerEnd)) {
+            // Show raw source when caret is inside or selection overlaps
+            if (shouldShowSource(view.state, markerStart, markerEnd) ||
+                hasSelectionOverlap(view, markerStart, markerEnd)) {
               return;
             }
 
@@ -234,7 +250,9 @@ function buildListDecorations(view: EditorView): DecorationSet {
             const markerStart = line.from + bulletMatch[1].length;
             const markerEnd = markerStart + 1; // Just the marker
 
-            if (shouldShowSource(view.state, markerStart, markerEnd)) {
+            // Show raw source when caret is inside or selection overlaps
+            if (shouldShowSource(view.state, markerStart, markerEnd) ||
+                hasSelectionOverlap(view, markerStart, markerEnd)) {
               return;
             }
 
@@ -268,10 +286,11 @@ function buildListDecorations(view: EditorView): DecorationSet {
               processedLines.add(lineNum);
               const quoteLevel = quoteMatch[2].length;
 
-              // If caret is inside the quote marker, show raw source
+              // If caret is inside or selection overlaps the quote marker, show raw source
               const markerStart = line.from + quoteMatch[1].length;
               const markerEnd = markerStart + quoteMatch[2].length;
-              if (shouldShowSource(view.state, markerStart, markerEnd)) {
+              if (shouldShowSource(view.state, markerStart, markerEnd) ||
+                  hasSelectionOverlap(view, markerStart, markerEnd)) {
                 continue;
               }
 
