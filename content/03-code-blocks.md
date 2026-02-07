@@ -159,7 +159,7 @@ DO UPDATE SET
 Would rendered as:
 
 ```html
-<div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+<div style="padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
   <strong>⚠️ Warning:</strong> This is a warning message with custom styling.
 </div>
 ```

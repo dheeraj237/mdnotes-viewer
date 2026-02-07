@@ -136,7 +136,8 @@
 
 .obsidian-editor .cm-image-widget,
 .obsidian-editor .cm-image-alt,
-.obsidian-editor .cm-code-block-widget {
+.obsidian-editor .cm-code-block-widget,
+.obsidian-editor .cm-mermaid-diagram {
   margin: 0 !important;
 }
 

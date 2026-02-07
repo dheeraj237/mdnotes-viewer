@@ -154,7 +154,7 @@ export function UnifiedEditor() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center bg-muted/30 border-border">
+      <div className="flex items-center bg-muted/30 border-b border-border shrink-0">
         <FileTabs />
         
         <div className="ml-auto flex items-center gap-2 px-4 py-2">
@@ -192,13 +192,13 @@ export function UnifiedEditor() {
               </div>
           ) : (
               <>
-                      {viewMode === "preview" && (
-                          <div id="markdown-content" className="flex-1 overflow-auto">
-                              <div className="max-w-[800px] mx-auto px-12 py-12">
-                                  <MarkdownPreview content={editableContent} />
-                              </div>
-                          </div>
-                      )}
+            {viewMode === "preview" && (
+              <div id="markdown-content" className="flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="max-w-4xl mx-auto px-8 py-8 pb-24">
+                  <MarkdownPreview content={editableContent} />
+                </div>
+              </div>
+            )}
 
             {viewMode === "live" && (
               <LiveMarkdownEditor
@@ -207,13 +207,13 @@ export function UnifiedEditor() {
               />
             )}
 
-                      {viewMode === "code" && (
-                          <CodeEditor
-                              file={{ ...currentFile, content: editableContent }}
-                              onContentChange={handleContentChange}
-                          />
-                      )}
-                  </>
+            {viewMode === "code" && (
+              <CodeEditor
+                file={{ ...currentFile, content: editableContent }}
+                onContentChange={handleContentChange}
+              />
+            )}
+          </>
       )}
     </div>
   );

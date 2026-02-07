@@ -53,9 +53,12 @@ function getLanguageSupport(lang: string) {
       return sql();
     case 'markdown':
     case 'md':
+    case 'mdx':
+    case 'text':
+    case 'txt':
       return markdown();
     default:
-      return null;
+      return markdown();
   }
 }
 

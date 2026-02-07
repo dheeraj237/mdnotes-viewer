@@ -14,7 +14,7 @@ export function AppToolbar() {
   const showTocToggle = activeTabId !== null && viewMode === "preview";
 
   return (
-    <div className="h-12 border-b bg-background px-4 flex items-center justify-between">
+    <div className="h-12 border-b bg-background px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" className="cursor-pointer" onClick={toggleLeftPanel}>
           <PanelLeft className="h-4 w-4" />

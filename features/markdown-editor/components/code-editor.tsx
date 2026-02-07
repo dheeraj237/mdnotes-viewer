@@ -27,16 +27,16 @@ export function CodeEditor({ file, onContentChange }: CodeEditorProps) {
   };
 
   return (
-      <div className="h-full overflow-auto">
-          <CodeMirror
+    <div className="flex-1 overflow-hidden">
+      <CodeMirror
         value={content}
-              height="100%"
-              extensions={[
-                  markdown(),
-                  EditorView.lineWrapping,
-              ]}
+        height="100%"
+        extensions={[
+          markdown(),
+          EditorView.lineWrapping,
+        ]}
         onChange={handleChange}
-              theme={currentTheme === "dark" ? "dark" : "light"}
+        theme={currentTheme === "dark" ? "dark" : "light"}
               basicSetup={{
                   lineNumbers: true,
                   highlightActiveLineGutter: true,

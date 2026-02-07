@@ -68,7 +68,7 @@ export function TableOfContents({ items, activeId }: TableOfContentsProps) {
   if (items.length === 0) {
     return (
       <div className="h-full flex flex-col">
-        <div className="px-4 py-3 border-b border-sidebar-border bg-sidebar-background">
+        <div className="px-4 py-3 border-b border-sidebar-border bg-sidebar-background shrink-0">
           <h3 className="text-xs font-semibold text-sidebar-foreground uppercase tracking-wide">
             Table of Contents
           </h3>
@@ -84,12 +84,12 @@ export function TableOfContents({ items, activeId }: TableOfContentsProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-4 py-3 border-b border-sidebar-border bg-sidebar-background">
+      <div className="px-4 py-3 border-b border-sidebar-border bg-sidebar-background shrink-0">
         <h3 className="text-xs font-semibold text-sidebar-foreground uppercase tracking-wide">
           Table of Contents
         </h3>
       </div>
-      <nav className="flex-1 overflow-auto py-4">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4">
         <ul className="space-y-0">
           {items.map((item) => {
             const isActive = activeId === item.id;

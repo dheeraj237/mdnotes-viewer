@@ -256,7 +256,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
 
   return (
     <div className="h-full w-full flex flex-col obsidian-editor">
-      <div className="flex items-center justify-end px-4 py-2 border-b border-border bg-muted/20">
+      <div className="flex items-center justify-end px-4 py-2 border-b border-border bg-muted/20 shrink-0">
         <Button
           size="sm"
           variant={isPreviewMode ? "default" : "outline"}
@@ -277,7 +277,7 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
           )}
         </Button>
       </div>
-      <div ref={editorRef} className="flex-1 overflow-auto pl-4 pr-4" />
+      <div ref={editorRef} className="flex-1 overflow-y-auto pl-2 overflow-x-hidden mb-10 pb-5" />
     </div>
   );
 }
