@@ -10,9 +10,9 @@
 - **React**: 19.2.3 with Server/Client Components
 - **Styling**: Tailwind CSS 4 with CSS Variables for theming
 - **State Management**: Zustand 5.0.10 with persistence
-- **UI Components**: Custom components + Radix UI primitives
+- **UI Components**: shadcn/ui (Radix UI + Tailwind + CVA pattern)
 - **Markdown Rendering**: react-markdown 10.1.0, remark-gfm 4.0.1
-- **Markdown Editor**: Milkdown 7.18.0 (WYSIWYG editor framework)
+- **Markdown Editor**: CodeMirror 6 with live preview
 - **Syntax Highlighting**: rehype-prism-plus 2.0.1 with custom theme
 - **Panel Layout**: react-resizable-panels 2.0.0
 - **Icons**: lucide-react 0.563.0
@@ -66,7 +66,7 @@ Each feature is self-contained with:
 ```
 shared/
 ├── components/
-│   ├── ui/              # Reusable UI primitives (Button, Separator)
+│   ├── ui/              # shadcn/ui components (Button, Separator, Dialog, Input, Label, DropdownMenu, ContextMenu)
 │   ├── app-shell.tsx    # Main layout with resizable panels
 │   ├── app-toolbar.tsx  # Top toolbar with view toggle
 │   ├── theme-provider.tsx
@@ -253,6 +253,108 @@ To integrate with GrowthBook or similar services:
 4. Wrap app with provider in `app/layout.tsx`
 
 See `feature-flag-provider.example.tsx` for complete implementation template.
+
+---
+
+## shadcn/ui Component Library
+
+### Overview
+The project uses **shadcn/ui** - a collection of reusable components built on Radix UI primitives with Tailwind CSS styling. These are copy-paste components you own and can customize.
+
+### Installed Components
+Located in `shared/components/ui/`:
+- **Button** - Actions and clickable elements (with `asChild` support)
+- **Separator** - Visual dividers
+- **Dialog** - Modal dialogs and confirmations
+- **Input** - Text input fields
+- **Label** - Form labels
+- **DropdownMenu** - Dropdown menus and actions
+- **ContextMenu** - Right-click context menus
+
+### Configuration
+The project has a `components.json` file that configures:
+- Component installation path: `shared/components/ui/`
+- Utilities path: `shared/utils/`
+- Tailwind config location
+- Design system settings (base color, CSS variables)
+
+### Adding New Components
+
+```bash
+# Using shadcn CLI (recommended)
+npx shadcn@latest add <component-name>
+
+# Examples:
+npx shadcn@latest add select
+npx shadcn@latest add checkbox
+npx shadcn@latest add tooltip
+```
+
+### Component Usage Patterns
+
+#### Button with variants
+```tsx
+import { Button } from "@/shared/components/ui/button";
+
+<Button variant="destructive">Delete</Button>
+<Button variant="ghost" size="icon"><Icon /></Button>
+<Button asChild><a href="/path">Link</a></Button>
+```
+
+#### Dialog
+```tsx
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/shared/components/ui/dialog";
+
+<Dialog open={open} onOpenChange={setOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Title</DialogTitle>
+    </DialogHeader>
+    <div>Content</div>
+    <DialogFooter>
+      <Button onClick={handleConfirm}>Confirm</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+#### Form inputs
+```tsx
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
+
+<div className="grid gap-2">
+  <Label htmlFor="name">Name</Label>
+  <Input id="name" placeholder="Enter name" />
+</div>
+```
+
+### Customization
+Since these components are in your codebase, you can:
+- Modify styling directly in component files
+- Add new variants using CVA
+- Extend functionality as needed
+- Create feature-specific compositions
+
+### Documentation
+See [SHADCN_UI_GUIDE.md](../docs/SHADCN_UI_GUIDE.md) for:
+- Complete component list
+- Usage examples
+- Migration patterns
+- Best practices
+- Troubleshooting
+
+### Best Practices
+✅ Use shadcn/ui components for all new UI needs  
+✅ Compose feature components from shadcn/ui primitives  
+✅ Keep customizations minimal and documented  
+✅ Check shadcn/ui docs before creating custom components  
 
 ---
 

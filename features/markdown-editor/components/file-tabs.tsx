@@ -15,14 +15,22 @@ export function FileTabs() {
         <div
           key={tab.id}
           className={cn(
-            "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer hover:bg-muted/50 transition-colors min-w-[120px] max-w-[200px] group",
-            activeTabId === tab.id && "bg-background border-b-2 border-b-primary"
+            "flex items-center gap-2 px-3 py-2.5 border-r border-border cursor-pointer transition-colors min-w-30 max-w-50 group relative",
+            activeTabId === tab.id
+              ? "bg-editor-background text-foreground"
+              : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
           )}
           onClick={() => setActiveTab(tab.id)}
         >
+          {activeTabId === tab.id && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+          )}
           <span className="text-sm truncate flex-1">{tab.name}</span>
           <button
-            className="opacity-0 group-hover:opacity-100 hover:bg-muted rounded p-0.5 transition-opacity *:cursor-pointer"
+            className={cn(
+              "hover:bg-accent rounded p-0.5 transition-opacity *:cursor-pointer",
+              activeTabId === tab.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
             onClick={(e) => {
               e.stopPropagation();
               closeTab(tab.id);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { File, Folder } from "lucide-react";
 import { cn } from "@/shared/utils/cn";
+import { Input } from "@/shared/components/ui/input";
 
 interface InlineInputProps {
   type: "file" | "folder";
@@ -99,7 +100,7 @@ export function InlineInput({
             <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           </>
         )}
-        <input
+        <Input
           ref={inputRef}
           type="text"
           value={value}
@@ -109,7 +110,7 @@ export function InlineInput({
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="flex-1 text-sm bg-transparent border-none outline-none"
+          className="flex-1 text-sm bg-transparent border-none outline-none h-auto px-0 py-0 shadow-none focus-visible:ring-0"
         />
       </div>
       {error && (

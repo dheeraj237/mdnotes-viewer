@@ -5,7 +5,6 @@ import { FileText, Save } from "lucide-react";
 import { useEditorStore, useCurrentFile } from "@/features/markdown-editor/store/editor-store";
 import { Button } from "@/shared/components/ui/button";
 import { FileTabs } from "./file-tabs";
-import { EditorModeToggle } from "./editor-mode-toggle";
 import { CodeEditor } from "./code-editor";
 import { MarkdownPreview } from "@/features/markdown-preview/components/markdown-preview";
 import { useTocStore } from "@/features/markdown-preview/store/toc-store";
@@ -159,34 +158,30 @@ export function UnifiedEditor() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center bg-muted/30 border-b border-border shrink-0">
+      <div className="flex items-center justify-between bg-background border-b border-border shrink-0">
         <FileTabs />
         
-        <div className="ml-auto flex items-center gap-2 px-4 py-2">
-          <EditorModeToggle mode={viewMode} onModeChange={setViewMode} />
-          
-          <div className="flex items-center gap-2 ml-2">
-            {isSaving && (
-              <span className="text-xs text-muted-foreground">Saving...</span>
-            )}
-            {!isSaving && hasChanges && (
-              <span className="text-xs text-muted-foreground">Unsaved</span>
-            )}
-            {!isSaving && !hasChanges && lastSaved && (
-              <span className="text-xs text-muted-foreground">
-                {lastSaved.toLocaleTimeString()}
-              </span>
-            )}
-            <Button
-              size="sm"
-              onClick={() => handleSave(false)}
-              disabled={!hasChanges || isSaving}
-              className="gap-2"
-            >
-              <Save className="h-3.5 w-3.5" />
-              Save
-            </Button>
-          </div>
+        <div className="flex items-center gap-2 px-4 py-2">
+          {isSaving && (
+            <span className="text-xs text-muted-foreground">Saving...</span>
+          )}
+          {!isSaving && hasChanges && (
+            <span className="text-xs text-muted-foreground">Unsaved</span>
+          )}
+          {!isSaving && !hasChanges && lastSaved && (
+            <span className="text-xs text-muted-foreground">
+              {lastSaved.toLocaleTimeString()}
+            </span>
+          )}
+          <Button
+            size="sm"
+            onClick={() => handleSave(false)}
+            disabled={!hasChanges || isSaving}
+            className="gap-2"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save
+          </Button>
         </div>
       </div>
 
