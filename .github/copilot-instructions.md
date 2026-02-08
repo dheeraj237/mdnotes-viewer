@@ -1,5 +1,16 @@
 # GitHub Copilot Instructions for MDNotes Viewer
 
+## Token Optimization & Guardrails
+
+See `.github/COPILOT_GUARDRAILS.md` for:
+- Model selection guide (cost optimization)
+- STOP-THINK-PROPOSE-ACT workflow
+- Token-saving instructions
+- Response templates
+- Emergency stop phrases
+
+**Start sessions with**: "Follow COPILOT_GUARDRAILS.md rules"
+
 ## Tech Stack
 - **Framework**: Next.js 16.1.4 (App Router) with TypeScript 5
 - **Package Manager**: Yarn
