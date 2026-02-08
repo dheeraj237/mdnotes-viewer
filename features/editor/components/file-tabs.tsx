@@ -13,7 +13,7 @@ import {
 } from "@/shared/components/ui/tooltip";
 
 export function FileTabs() {
-  const { openTabs, activeTabId, setActiveTab, closeTab, isCodeViewMode, setCodeViewMode } = useEditorStore();
+  const { openTabs, activeTabId, setActiveTab, closeTab, isSourceMode, setSourceMode } = useEditorStore();
   const currentTab = openTabs.find(tab => tab.id === activeTabId);
   const isMarkdown = currentTab ? isMarkdownFile(currentTab.name) : false;
 
@@ -96,11 +96,11 @@ export function FileTabs() {
             <TooltipTrigger asChild>
               <Button
                 size="sm"
-                variant={isCodeViewMode ? "outline" : "default"}
-                onClick={() => setCodeViewMode(!isCodeViewMode)}
+                variant={isSourceMode ? "outline" : "default"}
+                onClick={() => setSourceMode(!isSourceMode)}
                 className="h-7 w-7 p-0 cursor-pointer"
               >
-                {isCodeViewMode ? (
+                {isSourceMode ? (
                   <Eye className="h-3.5 w-3.5" />
                 ) : (
                     <Code2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -109,7 +109,7 @@ export function FileTabs() {
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">
-                {isCodeViewMode ? "Switch to Live Preview" : "Switch to Code"}
+                {isSourceMode ? "Switch to Live Preview" : "Switch to Code"}
               </p>
             </TooltipContent>
           </Tooltip>

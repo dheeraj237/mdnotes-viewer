@@ -21,6 +21,14 @@ function isMac(): boolean {
 }
 
 /**
+ * Detect if device is mobile
+ */
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+/**
  * Get modifier key name based on OS
  */
 function getModifierKeyName(): string {
@@ -114,51 +122,64 @@ class LinkWidget extends WidgetType {
       tooltip.classList.add('opacity-0');
     });
 
-    // Handle click with modifier key
-    link.addEventListener('click', async (e) => {
-      // Always prevent default to avoid navigation
-      e.preventDefault();
-
-      if (isModifierKeyPressed(e)) {
-        e.stopPropagation();
-
-        // Check for anchor-only links (#heading) - handle first!
-        if (this.linkData.url.startsWith('#')) {
-          // Same-file anchor navigation
-          scrollToHeading(this.linkData.url);
-          return; // Stop execution here
+    // Handle both click and touch events
+    const handleLinkActivation = async (e: Event) => {
+      if (e instanceof MouseEvent) {
+        // For mouse, require modifier key
+        e.preventDefault();
+        if (!isModifierKeyPressed(e)) {
+          return; // For clicks without modifier key, do nothing (let user edit)
         }
-
-        // Check if this is a markdown file link (may have anchor)
-        if (isMarkdownFile) {
-          try {
-            const [filePath, anchor] = this.linkData.url.split('#');
-
-            // Defensive check: don't open if filePath is empty
-            if (!filePath || filePath.trim() === '') {
-              console.warn('Empty file path in markdown link, treating as anchor');
-              if (anchor) {
-                scrollToHeading(anchor);
-              }
-              return;
-            }
-
-            const { useEditorStore } = await import('@/features/editor/store/editor-store');
-            const store = useEditorStore.getState();
-            await store.openFileByPath(filePath, this.currentFilePath, anchor);
-          } catch (error) {
-            console.error('Failed to open markdown file:', error);
-          }
-          return; // Stop execution after handling markdown file
+      } else if (e instanceof TouchEvent) {
+        // For touch, activate link on mobile devices
+        e.preventDefault();
+        if (!isMobileDevice()) {
+          return; // On non-mobile, still require modifier key
         }
-
-        // Only open external URLs if not anchor or markdown file
-        if (!this.linkData.url.startsWith('#') && !isMarkdownFile) {
-          window.open(this.linkData.url, '_blank', 'noopener,noreferrer');
-        }
+      } else {
+        return;
       }
-      // For clicks without modifier key, do nothing (let user edit)
-    });
+
+      e.stopPropagation();
+
+      // Check for anchor-only links (#heading) - handle first!
+      if (this.linkData.url.startsWith('#')) {
+        // Same-file anchor navigation
+        scrollToHeading(this.linkData.url);
+        return; // Stop execution here
+      }
+
+      // Check if this is a markdown file link (may have anchor)
+      if (isMarkdownFile) {
+        try {
+          const [filePath, anchor] = this.linkData.url.split('#');
+
+          // Defensive check: don't open if filePath is empty
+          if (!filePath || filePath.trim() === '') {
+            console.warn('Empty file path in markdown link, treating as anchor');
+            if (anchor) {
+              scrollToHeading(anchor);
+            }
+            return;
+          }
+
+          const { useEditorStore } = await import('@/features/editor/store/editor-store');
+          const store = useEditorStore.getState();
+          await store.openFileByPath(filePath, this.currentFilePath, anchor);
+        } catch (error) {
+          console.error('Failed to open markdown file:', error);
+        }
+        return; // Stop execution after handling markdown file
+      }
+
+      // Only open external URLs if not anchor or markdown file
+      if (!this.linkData.url.startsWith('#') && !isMarkdownFile) {
+        window.open(this.linkData.url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    link.addEventListener('click', handleLinkActivation);
+    link.addEventListener('touchend', handleLinkActivation);
 
     // Show cursor pointer when hovering with modifier key
     link.addEventListener('mousemove', (e) => {
@@ -175,6 +196,10 @@ class LinkWidget extends WidgetType {
   ignoreEvent(event: Event) {
     // Ignore all click events - we handle them ourselves
     if (event.type === 'click') {
+      return true;
+    }
+    // Ignore touch events - we handle them ourselves
+    if (event.type === 'touchstart' || event.type === 'touchend') {
       return true;
     }
     // Ignore mousedown with modifier key (for opening links)
@@ -231,51 +256,64 @@ class AutolinkWidget extends WidgetType {
       tooltip.classList.add('opacity-0');
     });
 
-    // Handle click with modifier key
-    link.addEventListener('click', async (e) => {
-      // Always prevent default to avoid navigation
-      e.preventDefault();
-
-      if (isModifierKeyPressed(e)) {
-        e.stopPropagation();
-
-        // Check for anchor-only links (#heading) - handle first!
-        if (this.url.startsWith('#')) {
-          // Same-file anchor navigation
-          scrollToHeading(this.url);
-          return; // Stop execution here
+    // Handle both click and touch events on autolinks
+    const handleAutolinkActivation = async (e: Event) => {
+      if (e instanceof MouseEvent) {
+        // For mouse, require modifier key
+        e.preventDefault();
+        if (!isModifierKeyPressed(e)) {
+          return; // For clicks without modifier key, do nothing (let user edit)
         }
-
-        // Check if this is a markdown file link (may have anchor)
-        if (isMarkdownFile) {
-          try {
-            const [filePath, anchor] = this.url.split('#');
-
-            // Defensive check: don't open if filePath is empty
-            if (!filePath || filePath.trim() === '') {
-              console.warn('Empty file path in autolink, treating as anchor');
-              if (anchor) {
-                scrollToHeading(anchor);
-              }
-              return;
-            }
-
-            const { useEditorStore } = await import('@/features/editor/store/editor-store');
-            const store = useEditorStore.getState();
-            await store.openFileByPath(filePath, this.currentFilePath, anchor);
-          } catch (error) {
-            console.error('Failed to open markdown file:', error);
-          }
-          return; // Stop execution after handling markdown file
+      } else if (e instanceof TouchEvent) {
+        // For touch, activate link on mobile devices
+        e.preventDefault();
+        if (!isMobileDevice()) {
+          return; // On non-mobile, still require modifier key
         }
-
-        // Only open external URLs if not anchor or markdown file
-        if (!this.url.startsWith('#') && !isMarkdownFile) {
-          window.open(this.url, '_blank', 'noopener,noreferrer');
-        }
+      } else {
+        return;
       }
-      // For clicks without modifier key, do nothing (let user edit)
-    });
+
+      e.stopPropagation();
+
+      // Check for anchor-only links (#heading) - handle first!
+      if (this.url.startsWith('#')) {
+        // Same-file anchor navigation
+        scrollToHeading(this.url);
+        return; // Stop execution here
+      }
+
+      // Check if this is a markdown file link (may have anchor)
+      if (isMarkdownFile) {
+        try {
+          const [filePath, anchor] = this.url.split('#');
+
+          // Defensive check: don't open if filePath is empty
+          if (!filePath || filePath.trim() === '') {
+            console.warn('Empty file path in autolink, treating as anchor');
+            if (anchor) {
+              scrollToHeading(anchor);
+            }
+            return;
+          }
+
+          const { useEditorStore } = await import('@/features/editor/store/editor-store');
+          const store = useEditorStore.getState();
+          await store.openFileByPath(filePath, this.currentFilePath, anchor);
+        } catch (error) {
+          console.error('Failed to open markdown file:', error);
+        }
+        return; // Stop execution after handling markdown file
+      }
+
+      // Only open external URLs if not anchor or markdown file
+      if (!this.url.startsWith('#') && !isMarkdownFile) {
+        window.open(this.url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    link.addEventListener('click', handleAutolinkActivation);
+    link.addEventListener('touchend', handleAutolinkActivation);
 
     // Show cursor pointer when hovering with modifier key
     link.addEventListener('mousemove', (e) => {
@@ -292,6 +330,10 @@ class AutolinkWidget extends WidgetType {
   ignoreEvent(event: Event) {
     // Ignore all click events - we handle them ourselves
     if (event.type === 'click') {
+      return true;
+    }
+    // Ignore touch events - we handle them ourselves
+    if (event.type === 'touchstart' || event.type === 'touchend') {
       return true;
     }
     // Ignore mousedown with modifier key (for opening links)

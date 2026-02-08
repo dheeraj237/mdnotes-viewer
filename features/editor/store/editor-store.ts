@@ -34,6 +34,7 @@ interface EditorStore {
   activeTabId: string | null;
   isLoading: boolean;
   isCodeViewMode: boolean;
+  isSourceMode: boolean;
   openFile: (file: MarkdownFile) => void;
   closeTab: (fileId: string) => void;
   setActiveTab: (fileId: string) => void;
@@ -42,6 +43,7 @@ interface EditorStore {
   applyEditorPatch: (fileId: string, content: string) => Promise<void>;
   setIsLoading: (loading: boolean) => void;
   setCodeViewMode: (isCode: boolean) => void;
+  setSourceMode: (isSource: boolean) => void;
   openLocalFile: () => Promise<void>;
   loadFileFromManager: (path: string, isLocal?: boolean) => Promise<void>;
   openFileByPath: (relativePath: string, currentFilePath?: string, anchor?: string) => Promise<void>;
@@ -54,6 +56,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   activeTabId: null,
   isLoading: false,
   isCodeViewMode: false,
+  isSourceMode: false,
 
   openFile: (file) => set((state) => {
     // Check if file is already open
@@ -312,6 +315,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setIsLoading: (loading) => set({ isLoading: loading }),
 
   setCodeViewMode: (isCode) => set({ isCodeViewMode: isCode }),
+
+  setSourceMode: (isSource) => set({ isSourceMode: isSource }),
 }));
 
 // Helper to get current file

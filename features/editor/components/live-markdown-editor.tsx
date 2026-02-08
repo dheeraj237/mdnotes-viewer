@@ -46,8 +46,9 @@ export function LiveMarkdownEditor({ file, onContentChange }: LiveMarkdownEditor
   const viewRef = useRef<EditorView | null>(null);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  // Always show live preview in markdown editor
-  const isPreviewMode = true;
+  const { isSourceMode } = useEditorStore();
+  // Show live preview unless source mode is enabled
+  const isPreviewMode = !isSourceMode;
   const themeCompartment = useRef(new Compartment());
   const modeCompartment = useRef(new Compartment());
   const scrollPosRef = useRef<number>(0);

@@ -60,6 +60,18 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     }
   };
 
+  const handleTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+
+    // Single tap behavior - same as click for mobile
+    if (node.type === "folder") {
+      toggleFolder(node.id);
+    } else {
+      setSelectedFile(node.id);
+      loadFile();
+    }
+  };
+
   const loadFile = async () => {
     setIsLoading(true);
 
@@ -124,7 +136,23 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     setNewItemType('file');
   };
 
+  const handleNewFileTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (!isExpanded) {
+      toggleFolder(node.id);
+    }
+    setNewItemType('file');
+  };
+
   const handleNewFolderClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isExpanded) {
+      toggleFolder(node.id);
+    }
+    setNewItemType('folder');
+  };
+
+  const handleNewFolderTouch = (e: React.TouchEvent) => {
     e.stopPropagation();
     if (!isExpanded) {
       toggleFolder(node.id);
@@ -218,6 +246,11 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     toggleFolder(node.id);
   };
 
+  const handleChevronTouch = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    toggleFolder(node.id);
+  };
+
   // Render inline input for renaming
   if (isRenaming) {
     return (
@@ -241,6 +274,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
+        onTouchEnd={handleTouch}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -253,6 +287,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
                 isExpanded && "rotate-90"
               )}
               onClick={handleChevronClick}
+              onTouchEnd={handleChevronTouch}
             />
             {isExpanded ? (
               <FolderOpen className="h-4 w-4 text-primary shrink-0" />
@@ -275,6 +310,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
               variant="ghost"
               size="icon"
               onClick={handleNewFileClick}
+              onTouchEnd={handleNewFileTouch}
               className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
               title="New File"
             >
@@ -284,6 +320,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
               variant="ghost"
               size="icon"
               onClick={handleNewFolderClick}
+              onTouchEnd={handleNewFolderTouch}
               className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
               title="New Folder"
             >
