@@ -3,6 +3,7 @@
 import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
+import { UserMenu } from "@/shared/components/user-menu";
 import { usePanelStore } from "@/core/store/panel-store";
 import { useEditorStore, useCurrentFile } from "@/features/editor/store/editor-store";
 import { Separator } from "@/shared/components/ui/separator";
@@ -78,6 +79,7 @@ export function AppToolbar() {
 
         <Separator orientation="vertical" className="h-6 hidden lg:block" />
         <ThemeToggle />
+        <UserMenu />
       </div>
     </div>
   );

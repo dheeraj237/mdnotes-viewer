@@ -6,6 +6,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/theme-provider";
 import { Toaster } from "@/shared/components/toaster";
+import { AuthProvider } from "@/shared/components/auth-provider";
+import { GrowthBookWrapper } from "@/core/config/growthbook-provider";
 import { APP_TITLE, APP_DESCRIPTION } from "@/core/config/features";
 
 export const metadata: Metadata = {
@@ -24,16 +26,20 @@ export default function RootLayout({
       {/* overflow-hidden: Prevents body scroll, panels handle their own scrolling */}
       <body className="antialiased font-sans overflow-hidden h-screen">
         {/* attribute="class": Uses CSS classes for theme switching (dark/light mode) */}
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          {/* Toast notifications for file operations and errors */}
-          <Toaster />
-        </ThemeProvider>
+        <AuthProvider>
+          <GrowthBookWrapper>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+              {/* Toast notifications for file operations and errors */}
+              <Toaster />
+            </ThemeProvider>
+          </GrowthBookWrapper>
+        </AuthProvider>
       </body>
     </html>
   );
