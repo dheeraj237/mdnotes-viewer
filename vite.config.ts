@@ -10,7 +10,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './'),
     },
   },
-  base: '/',
+  // For GitHub Pages: set to '/repo-name/' for project pages, or '/' for user/org pages
+  // Defaults to '/' for local development
+  base: process.env.VITE_BASE_PATH || '/',
   build: {
     outDir: 'dist',
     sourcemap: true,

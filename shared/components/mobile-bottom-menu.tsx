@@ -6,6 +6,7 @@
 "use client";
 
 import { Menu, List, Home } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/shared/components/ui/button";
 import { Separator } from "@/shared/components/ui/separator";
 import { usePanelStore } from "@/core/store/panel-store";
@@ -14,10 +15,11 @@ import { cn } from "@/shared/utils/cn";
 export function MobileBottomMenu() {
   const { toggleLeftPanel, toggleRightPanel, leftPanelCollapsed, rightPanelCollapsed } =
     usePanelStore();
+  const navigate = useNavigate();
 
   const handleHome = () => {
-    // Reload the app
-    window.location.href = "/";
+    // Navigate to home page
+    navigate("/");
   };
 
   return (
