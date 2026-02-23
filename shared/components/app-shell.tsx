@@ -4,6 +4,7 @@ import { usePanelStore } from "@/core/store/panel-store";
 import { AppToolbar } from "@/shared/components/app-toolbar";
 import { MobileBottomMenu } from "@/shared/components/mobile-bottom-menu";
 import { FileExplorer } from "@/features/file-explorer/components/file-explorer";
+import { LeftNavigationPanel } from "@/shared/components/left-navigation-panel";
 import { TableOfContents } from "@/features/editor/components/table-of-contents";
 import { useTocStore } from "@/features/editor/store/toc-store";
 import { useEditorStore, useCurrentFile } from "@/features/editor/store/editor-store";
@@ -92,7 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onResize={setLeftPanelSize}
             className="bg-sidebar-background border-r border-sidebar-border"
           >
-            <FileExplorer />
+            <LeftNavigationPanel />
           </Panel>
 
           <PanelResizeHandle className="w-1 bg-sidebar-border hover:bg-primary hover:w-1.5 transition-all cursor-col-resize" />

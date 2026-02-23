@@ -1,0 +1,93 @@
+import { Button } from "@/shared/components/ui/button";
+import { X, FileText, CircleDot } from "lucide-react";
+import { useEditorStore } from "@/features/editor/store/editor-store";
+import { cn } from "@/shared/utils/cn";
+import { isMarkdownFile } from "@/shared/utils/file-type-detector";
+
+export function OpenedFilesSection() {
+  const { openTabs, activeTabId, closeTab, openFile } = useEditorStore();
+
+  if (openTabs.length === 0) {
+    return (
+      <div className="px-3 py-2 border-b border-sidebar-border">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+          Opened
+        </h3>
+        <div className="text-xs text-muted-foreground py-2">
+          No files opened
+        </div>
+      </div>
+    );
+  }
+
+  const handleFileClick = (fileId: string) => {
+    const file = openTabs.find(tab => tab.id === fileId);
+    if (file) {
+      openFile(file);
+    }
+  };
+
+  const handleCloseFile = (e: React.MouseEvent, fileId: string) => {
+    e.stopPropagation();
+    closeTab(fileId);
+  };
+
+  const getFileDisplayIcon = (filename: string) => {
+    if (isMarkdownFile(filename)) {
+      return <FileText className="h-3 w-3 text-blue-400" />;
+    }
+    return <FileText className="h-3 w-3" />;
+  };
+
+  return (
+    <div className="px-3 py-2 border-b border-sidebar-border">
+      <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+        Opened
+      </h3>
+      <div className="space-y-1">
+        {openTabs.map((file) => {
+          const isActive = file.id === activeTabId;
+          const isDirty = file.isSaving || false; // You can extend this based on your needs
+          
+          return (
+            <div
+              key={file.id}
+              className={cn(
+                "group flex items-center gap-2 px-2 py-1 rounded-sm cursor-pointer hover:bg-sidebar-hover transition-colors text-xs",
+                isActive && "bg-accent text-accent-foreground"
+              )}
+              onClick={() => handleFileClick(file.id)}
+              title={file.path}
+            >
+              {/* File icon */}
+              <div className="shrink-0">
+                {getFileDisplayIcon(file.name)}
+              </div>
+
+              {/* File name */}
+              <span className="flex-1 truncate">
+                {file.name}
+              </span>
+
+              {/* Dirty indicator or close button */}
+              <div className="shrink-0">
+                {isDirty ? (
+                  <CircleDot className="h-3 w-3 text-muted-foreground" />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => handleCloseFile(e, file.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

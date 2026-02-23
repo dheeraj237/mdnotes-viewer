@@ -37,3 +37,12 @@ export interface Feature {
   experimental?: boolean;
   description?: string;
 }
+
+export interface OpenedFile {
+  id: string;
+  name: string;
+  path: string;
+  isActive: boolean;
+  isDirty: boolean; // Has unsaved changes
+  workspaceId: string;
+}

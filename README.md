@@ -11,10 +11,19 @@ A serene, VSCode-inspired markdown documentation editor built with Next.js 16, f
 
 ### 🎨 Professional UI
 - **VSCode-like interface** with three-panel layout (Explorer, Editor, TOC)
+- **Workspace Management** - Create and switch between different workspaces (Browser, Local Files, Google Drive)
+- **Enhanced Left Panel** - Redesigned navigation with workspace dropdown, search, opened files, and app actions
 - **Resizable panels** with persistent sizing
 - **Dark/Light theme** with smooth transitions
 - **File tabs** with close functionality and active indicators
 - **Status bar** with save status and file information
+- **Global Search** - Quick file and command search with ⌘K shortcut
+
+### 📁 Workspace Management
+- **Multiple workspace types** - Browser storage, Local files, Google Drive (coming soon)
+- **Opened files tracking** - Quick access to all open tabs
+- **Smart search** - Find files and commands instantly
+- **App actions panel** - Easy access to common operations
 
 ### 📝 Live Markdown Editor (CodeMirror 6)
 Our custom-built live markdown editor provides a seamless WYSIWYG-like experience:
