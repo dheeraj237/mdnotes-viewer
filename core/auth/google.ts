@@ -54,54 +54,74 @@ export async function requestAccessTokenForScopes(scopes: string, interactive = 
     throw new Error("Google Client ID is not configured. Set VITE_AUTH_APP_CLIENT_ID in your .env files.");
   }
 
-  // create a fresh token client for the requested scopes
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore
-  const client = window.google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: scopes,
-    callback: (resp: any) => {},
-    error_callback: (err: any) => {
-      console.error("Google OAuth error callback:", err);
-    },
-  });
-
-  return await new Promise((resolve, reject) => {
+  return await new Promise<string | null>((resolve, reject) => {
     let isResolved = false;
-    const timeoutId = setTimeout(() => {
+    let hasToken = false;
+
+    const clearPromise = () => {
+      isResolved = true;
+    };
+
+    const handleTimeout = () => {
       if (!isResolved) {
         isResolved = true;
         reject(new Error("Google OAuth timeout. Popup may have been blocked or closed."));
       }
-    }, 60000); // 60 second timeout
+    };
+
+    const timeoutId = setTimeout(handleTimeout, 60000); // 60 second timeout
 
     try {
-      client.callback = (resp: any) => {
-        if (isResolved) return;
-        isResolved = true;
-        clearTimeout(timeoutId);
-        if (resp && resp.access_token) {
-          console.log("Successfully got access token");
-          resolve(resp.access_token);
-        } else if (resp && resp.error) {
-          console.error("OAuth error response:", resp.error, resp.error_description);
-          if (resp.error === "popup_closed") {
-            reject(new Error("Popup window closed. Please try again."));
-          } else {
-            reject(new Error(`OAuth Error: ${resp.error} - ${resp.error_description || "Unknown error"}`));
-          }
-        } else {
-          console.warn("No token in response");
-          resolve(null);
-        }
-      };
+      // Create a token client with integrated callbacks
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: scopes,
+        callback: (response: any) => {
+          clearTimeout(timeoutId);
+          if (isResolved) return;
 
-      client.requestAccessToken({ prompt: interactive ? "consent" : "" });
+          if (response.access_token) {
+            hasToken = true;
+            clearPromise();
+            console.log("OAuth: Successfully obtained access token");
+            resolve(response.access_token);
+          } else if (response.error) {
+            clearPromise();
+            const errorMsg = response.error_description || response.error || "Unknown error";
+            console.error("OAuth: Token request error:", errorMsg);
+            reject(new Error(`OAuth Error: ${errorMsg}`));
+          }
+        },
+        error_callback: (error: any) => {
+          clearTimeout(timeoutId);
+          // Only reject if we haven't already gotten a token
+          // Popup closing after successful auth is normal and shouldn't error
+          if (!isResolved && !hasToken) {
+            clearPromise();
+            console.error("OAuth: Error callback triggered:", error);
+            const errorMsg = error?.message || JSON.stringify(error);
+            if (errorMsg.includes("popup_closed") || errorMsg.includes("cancelled")) {
+              reject(new Error("Login cancelled. Please try again."));
+            } else {
+              reject(new Error(`OAuth Error: ${errorMsg}`));
+            }
+          } else {
+            console.warn("OAuth: Ignoring error callback after successful token", error);
+          }
+        },
+      });
+
+      // Request the token
+      client.requestAccessToken({
+        prompt: interactive ? "consent" : "",
+      });
     } catch (err) {
+      clearTimeout(timeoutId);
       if (!isResolved) {
         isResolved = true;
-        clearTimeout(timeoutId);
-        console.error("Error requesting access token:", err);
+        console.error("OAuth: Exception during token request:", err);
         reject(err);
       }
     }
@@ -174,16 +194,23 @@ export interface GoogleUserProfile {
 
 /**
  * Get user profile from Google OAuth token
+ * @param token - Optional token to parse. If not provided, will request a new one
+ * @param interactive - If true and token is not provided, will show OAuth consent screen
  */
-export async function getGoogleUserProfile(interactive = true): Promise<GoogleUserProfile | null> {
+export async function getGoogleUserProfile(token?: string, interactive = true): Promise<GoogleUserProfile | null> {
   try {
-    const token = await requestAccessTokenForScopes(SCOPES, interactive);
-    if (!token) {
-      console.warn("No token available for profile fetch");
-      return null;
+    let accessToken = token;
+
+    // Only request a new token if one wasn't provided
+    if (!accessToken) {
+      accessToken = await requestAccessTokenForScopes(SCOPES, interactive);
+      if (!accessToken) {
+        console.warn("No token available for profile fetch");
+        return null;
+      }
     }
 
-    const payload = parseJwt(token);
+    const payload = parseJwt(accessToken);
     if (!payload) {
       console.warn("Failed to parse JWT payload");
       return null;

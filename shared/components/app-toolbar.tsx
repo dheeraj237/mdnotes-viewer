@@ -69,7 +69,8 @@ export function AppToolbar() {
       await ensureGisLoaded();
       const token = await requestAccessTokenForScopes("openid profile email", true);
       if (token) {
-        const userProfile = await getGoogleUserProfile();
+        // Pass the token to getGoogleUserProfile to avoid requesting a new token
+        const userProfile = await getGoogleUserProfile(token, false);
         if (userProfile) {
           setProfile(userProfile);
           window.localStorage.setItem("verve_gdrive_logged_in", "1");
@@ -88,7 +89,7 @@ export function AppToolbar() {
         toast.error("OAuth Configuration Error: Please verify your Google OAuth redirect URI settings.");
       } else if (errorMessage.includes("invalid_client")) {
         toast.error("Invalid Client ID: Please verify VITE_AUTH_APP_CLIENT_ID is correct.");
-      } else if (errorMessage.includes("access_denied") || errorMessage.includes("popup_closed")) {
+      } else if (errorMessage.includes("access_denied") || errorMessage.includes("cancelled")) {
         toast.error("Login cancelled. Please ensure popups are enabled in your browser.");
       } else if (errorMessage.includes("timeout")) {
         toast.error("Login request timed out. Please check your internet connection and try again.");
