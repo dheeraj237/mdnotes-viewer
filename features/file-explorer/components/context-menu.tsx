@@ -3,6 +3,7 @@
 import { FileText, FolderPlus, Edit2, Trash2 } from "lucide-react";
 import {
   ContextMenu as ContextMenuPrimitive,
+  ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -27,7 +28,9 @@ export function FileContextMenu({
 }: FileContextMenuProps) {
   return (
     <ContextMenuPrimitive>
-      {children}
+      <ContextMenuTrigger asChild>
+        {children}
+      </ContextMenuTrigger>
       <ContextMenuContent>
         {isFolder && (
           <>

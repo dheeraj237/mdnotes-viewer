@@ -25,18 +25,24 @@ export function UserMenu() {
     navigate("/");
   };
 
+  console.log("UserMenu - isLoggedIn:", isLoggedIn, "profile:", profile);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 overflow-hidden">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 p-0 rounded-full overflow-hidden border border-border"
+        >
           {isLoggedIn && profile?.image ? (
             <img
               src={profile.image}
               alt={profile.name || "User"}
-              className="h-full w-full object-cover rounded-full"
+              className="h-8 w-8 object-cover rounded-full"
             />
           ) : (
-            <User className="h-5 w-5" />
+              <User className="h-4 w-4" />
           )}
         </Button>
       </DropdownMenuTrigger>

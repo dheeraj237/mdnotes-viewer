@@ -72,6 +72,7 @@ export function AppToolbar() {
         // Pass the token to getGoogleUserProfile to avoid requesting a new token
         const userProfile = await getGoogleUserProfile(token, false);
         if (userProfile) {
+          console.log("User profile retrieved:", userProfile);
           setProfile(userProfile);
           window.localStorage.setItem("verve_gdrive_logged_in", "1");
           toast.success(`Welcome, ${userProfile.name || userProfile.email}!`);

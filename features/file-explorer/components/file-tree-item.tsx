@@ -171,11 +171,6 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     setNewItemType('folder');
   };
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
   const handleNewFile = () => {
     if (node.type === 'folder') {
       if (!isExpanded) {
@@ -288,7 +283,6 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           style={{ paddingLeft: `${level * 12 + 8}px` }}
           onClick={handleClick}
           onTouchEnd={handleTouch}
-          onContextMenu={handleContextMenu}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >

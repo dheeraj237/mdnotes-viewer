@@ -216,11 +216,33 @@ export async function getGoogleUserProfile(token?: string, interactive = true): 
       return null;
     }
 
+    console.log("JWT payload:", payload);
+
+    let image = payload.picture || null;
+
+    // If picture is not in token, try to fetch from Google UserInfo API
+    if (!image && accessToken) {
+      try {
+        const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (response.ok) {
+          const userInfo = await response.json();
+          image = userInfo.picture || null;
+          console.log("Profile picture from UserInfo API:", image);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch from UserInfo API:", err);
+      }
+    }
+
     return {
       id: payload.sub || payload.user_id || "",
       name: payload.name || null,
       email: payload.email || null,
-      image: payload.picture || null,
+      image,
     };
   } catch (err) {
     console.error("Failed to get user profile", err);
