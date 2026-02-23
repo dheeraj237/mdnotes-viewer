@@ -4,7 +4,7 @@ import { useFileExplorerStore } from "../store/file-explorer-store";
 import { FileTreeItem } from "./file-tree-item";
 import { Loader2, FolderOpen, FileText, FilePlus, FolderPlus, RefreshCw, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
-import { GoogleDrivePicker } from "@/shared/components/google-drive-picker";
+import { GoogleDriveSync } from "@/shared/components/google-drive-sync";
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
@@ -199,20 +199,9 @@ export function FileExplorer() {
         </div>
       )}
 
-      {/* Google Drive picker row (separate line above local folder/file controls) */}
+      {/* Google Drive sync row (separate line above local folder/file controls) */}
       <div className="px-2 pt-2 border-t border-sidebar-border">
-        <GoogleDrivePicker
-          triggerElement={
-            <Button variant="outline" size="sm" className="w-full justify-start gap-2 text-xs" title="Open Google Drive Folder">
-              <FolderOpen className="h-4 w-4" />
-              Open Google Drive
-            </Button>
-          }
-          onFolderSelected={async (id) => {
-            setGoogleFolder?.(id);
-            await refreshFileTree();
-          }}
-        />
+        <GoogleDriveSync />
       </div>
 
       {/* Open folder/file buttons at bottom */}

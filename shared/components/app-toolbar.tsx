@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles, FolderPlus } from "lucide-react";
+import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/shared/components/ui/button";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
@@ -18,28 +18,7 @@ import { ensureGisLoaded, requestAccessTokenForScopes, getGoogleUserProfile } fr
 import { useState } from "react";
 import React from "react";
 
-const LazyGoogleDrivePicker = React.lazy(async () => {
-  const m = await import("@/shared/components/google-drive-picker");
-  const Picker = (m as any).GoogleDrivePicker || (m as any).default;
 
-  const Wrapped = (props: any) => {
-    const onFolderSelected = async (id: string) => {
-      try {
-        const storeMod = await import("@/features/editor/store/editor-store");
-        if (storeMod && typeof (storeMod as any).enableGoogleDrive === "function") {
-          (storeMod as any).enableGoogleDrive(id);
-        } else {
-          window.localStorage.setItem("verve_gdrive_folder_id", id);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    return React.createElement(Picker, { onFolderSelected, ...props });
-  };
-
-  return { default: Wrapped };
-});
 
 export function AppToolbar() {
   const navigate = useNavigate();
@@ -163,18 +142,6 @@ export function AppToolbar() {
         </Button>
 
         <Separator orientation="vertical" className="h-6 hidden lg:block" />
-        {driveEnabled && isLoggedIn && (
-          <div className="hidden lg:inline-flex">
-            {/* Lazy-load the picker component to avoid increasing bundle size */}
-            <React.Suspense fallback={
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <FolderPlus className="h-4 w-4" />
-              </Button>
-            }>
-              <LazyGoogleDrivePicker />
-            </React.Suspense>
-          </div>
-        )}
         <ThemeToggle />
         {!isLoggedIn && (
           <Button
