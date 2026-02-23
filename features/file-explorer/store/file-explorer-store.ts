@@ -26,6 +26,7 @@ interface FileExplorerStore {
   expandAll: () => void;
   toggleCollapseExpand: () => void;
   setCurrentDirectory: (name: string, path: string) => void;
+  setGoogleFolder?: (folderId: string) => void;
 }
 
 export const useFileExplorerStore = create<FileExplorerStore>()(
@@ -51,6 +52,15 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       setFileTree: (tree) => set({ fileTree: tree }),
       setIsLoadingLocalFiles: (loading) => set({ isLoadingLocalFiles: loading }),
       setCurrentDirectory: (name, path) => set({ currentDirectoryName: name, currentDirectoryPath: path }),
+      setGoogleFolder: (folderId: string) => {
+        // store selected Google Drive folder id
+        try {
+          window.localStorage.setItem('verve_gdrive_folder_id', folderId);
+          set({ currentDirectoryName: `Google Drive (${folderId})`, currentDirectoryPath: folderId });
+        } catch (e) {
+          console.error('Failed to set Google Drive folder', e);
+        }
+      },
 
       openLocalDirectory: async () => {
         try {
@@ -138,7 +148,23 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         try {
           const isLocal = parentPath.startsWith('local-');
 
-          if (isLocal) {
+          if (parentPath.startsWith('gdrive-')) {
+            // Create file in Google Drive folder or subfolder
+            const folderId = parentPath.replace(/^gdrive-/, '');
+            const token = await (await import('@/core/auth/google')).requestDriveAccessToken(true);
+            if (!token) throw new Error('Not authenticated with Google Drive');
+            // create new file via Drive upload multipart
+            const metadata = { name: fileName, parents: [folderId] };
+            const boundary = '-------314159265358979323846';
+            const multipart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: text/markdown\r\n\r\n\r\n--${boundary}--`;
+            const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+              body: multipart,
+            });
+            if (!res.ok) throw new Error('Failed to create file on Google Drive');
+            // Refresh tree below
+          } else if (isLocal) {
             // Create local file
             const dirHandle = (window as any).__localDirHandle;
             if (!dirHandle) throw new Error('No directory handle');
@@ -175,7 +201,20 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         try {
           const isLocal = parentPath.startsWith('local-');
 
-          if (isLocal) {
+          if (parentPath.startsWith('gdrive-')) {
+            // Create folder in Google Drive
+            const folderId = parentPath.replace(/^gdrive-/, '');
+            const { requestDriveAccessToken } = await import('@/core/auth/google');
+            const token = await requestDriveAccessToken(true);
+            if (!token) throw new Error('Not authenticated with Google Drive');
+            const metadata = { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [folderId] };
+            const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(metadata),
+            });
+            if (!res.ok) throw new Error('Failed to create folder on Google Drive');
+          } else if (isLocal) {
             // Create local folder
             const dirHandle = (window as any).__localDirHandle;
             if (!dirHandle) throw new Error('No directory handle');
@@ -238,7 +277,54 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         try {
           const isLocal = nodePath.startsWith('local-');
 
-          if (isLocal) {
+          if (nodePath.startsWith('gdrive-')) {
+            // Delete a file or folder in Google Drive. nodePath is 'gdrive-<id>' or 'gdrive-<id>/sub...'
+            const idPart = nodePath.replace(/^gdrive-/, '');
+            const parts = idPart.split('/');
+            const targetId = parts[0];
+            const { requestDriveAccessToken } = await import('@/core/auth/google');
+            const token = await requestDriveAccessToken(true);
+            if (!token) throw new Error('Not authenticated with Google Drive');
+
+            const deleteFile = async (fileId: string) => {
+              await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+            };
+
+            if (isFolder) {
+              // Recursively list and delete children
+              const listChildren = async (parentId: string): Promise<string[]> => {
+                const out: string[] = [];
+                let pageToken: string | null = null;
+                do {
+                  const q = encodeURIComponent(`'${parentId}' in parents and trashed = false`);
+                  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,mimeType)&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`;
+                  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!resp.ok) break;
+                  const json = await resp.json();
+                  for (const f of json.files || []) {
+                    out.push(f.id);
+                    if (f.mimeType === 'application/vnd.google-apps.folder') {
+                      const child = await listChildren(f.id);
+                      out.push(...child);
+                    }
+                  }
+                  pageToken = json.nextPageToken || null;
+                } while (pageToken);
+                return out;
+              };
+
+              const all = await listChildren(targetId);
+              for (const fid of all) {
+                await deleteFile(fid);
+              }
+              await deleteFile(targetId);
+            } else {
+              await deleteFile(targetId);
+            }
+          } else if (isLocal) {
             const dirHandle = (window as any).__localDirHandle;
             if (!dirHandle) throw new Error('No directory handle');
 
@@ -330,7 +416,6 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       refreshFileTree: async () => {
         const state = useFileExplorerStore.getState();
         const dirHandle = (window as any).__localDirHandle;
-
         if (dirHandle) {
           // Refresh local directory
           const { openLocalDirectory } = state;
@@ -377,9 +462,58 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const fileTree = await buildFileTree(dirHandle);
           set({ fileTree });
         } else {
-          // Refresh demo files from localStorage
-          const fileTree = await buildDemoFileTree();
-          set({ fileTree });
+          // If user has selected a Google Drive folder, load it
+          const gdriveFolder = window.localStorage.getItem('verve_gdrive_folder_id');
+          if (gdriveFolder) {
+            try {
+              const { requestDriveAccessToken } = await import('@/core/auth/google');
+              const token = await requestDriveAccessToken(false);
+              if (!token) throw new Error('Not authenticated with Google Drive');
+
+              const allowedExtensions = [...MARKDOWN_EXTENSIONS, ...CODE_EXTENSIONS, ...TEXT_EXTENSIONS];
+
+              const listChildren = async (parentId: string): Promise<FileNode[]> => {
+                const nodes: FileNode[] = [];
+                let pageToken: string | null = null;
+                do {
+                  const q = encodeURIComponent(`'${parentId}' in parents and trashed = false`);
+                  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType)&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`;
+                  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                  if (!resp.ok) break;
+                  const json = await resp.json();
+                  for (const f of json.files || []) {
+                    if (f.mimeType === 'application/vnd.google-apps.folder') {
+                      const children = await listChildren(f.id);
+                      nodes.push({ id: `gdrive-${f.id}`, name: f.name, path: f.id, type: 'folder', children });
+                    } else {
+                      const hasAllowedExt = allowedExtensions.some(ext => f.name.toLowerCase().endsWith(ext));
+                      if (hasAllowedExt) {
+                        nodes.push({ id: `gdrive-${f.id}`, name: f.name, path: f.id, type: 'file' });
+                      }
+                    }
+                  }
+                  pageToken = json.nextPageToken || null;
+                } while (pageToken);
+                // sort: folders first
+                return nodes.sort((a, b) => {
+                  if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+                  return a.name.localeCompare(b.name);
+                });
+              };
+
+              const fileTree = await listChildren(gdriveFolder);
+              set({ fileTree });
+            } catch (e) {
+              console.error('Failed to load Google Drive folder', e);
+              // fallback to demo
+              const fileTree = await buildDemoFileTree();
+              set({ fileTree });
+            }
+          } else {
+            // Refresh demo files from localStorage
+            const fileTree = await buildDemoFileTree();
+            set({ fileTree });
+          }
         }
       },
     }),

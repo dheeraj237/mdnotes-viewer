@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@/shared/components/theme-provider';
+import { GrowthBookWrapper } from '@/core/config/growthbook-provider';
 import { Toaster } from '@/shared/components/toaster';
 import { LandingPage } from '@/shared/components/landing-page';
 import { EditorPage } from '@/src/pages/EditorPage';
@@ -32,18 +33,20 @@ function App() {
   }
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/editor" element={<EditorPage />} />
-      </Routes>
-      <Toaster />
-    </ThemeProvider>
+    <GrowthBookWrapper>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/editor" element={<EditorPage />} />
+        </Routes>
+        <Toaster />
+      </ThemeProvider>
+    </GrowthBookWrapper>
   );
 }
 

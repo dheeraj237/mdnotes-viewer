@@ -77,6 +77,14 @@ export const features: Record<string, Feature> = {
     experimental: true,
     description: "AI-powered writing and editing assistance",
   },
+  googleDriveSync: {
+    id: "google-drive-sync",
+    name: "Google Drive Sync",
+    version: "0.1.0",
+    enabled: false,
+    experimental: true,
+    description: "Load and sync a Google Drive folder into the file explorer",
+  },
 } as const;
 
 /**

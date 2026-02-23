@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles } from "lucide-react";
+import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles, FolderPlus } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
 import { UserMenu } from "@/shared/components/user-menu";
@@ -11,6 +11,30 @@ import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 import { cn } from "@/shared/utils/cn";
 import { APP_TITLE, isFeatureEnabled } from "@/core/config/features";
+import { toast } from "@/shared/utils/toast";
+import React from "react";
+const LazyGoogleDrivePicker = React.lazy(async () => {
+  const m = await import("@/shared/components/google-drive-picker");
+  const Picker = (m as any).GoogleDrivePicker || (m as any).default;
+
+  const Wrapped = (props: any) => {
+    const onFolderSelected = async (id: string) => {
+      try {
+        const storeMod = await import("@/features/editor/store/editor-store");
+        if (storeMod && typeof (storeMod as any).enableGoogleDrive === "function") {
+          (storeMod as any).enableGoogleDrive(id);
+        } else {
+          window.localStorage.setItem("verve_gdrive_folder_id", id);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    return React.createElement(Picker, { onFolderSelected, ...props });
+  };
+
+  return { default: Wrapped };
+});
 
 export function AppToolbar() {
   const { toggleLeftPanel, toggleRightPanel, leftPanelCollapsed, rightPanelCollapsed } = usePanelStore();
@@ -20,6 +44,7 @@ export function AppToolbar() {
   const hasActiveFile = activeTabId !== null;
   const isMarkdown = currentFile ? isMarkdownFile(currentFile.name) : false;
   const appTitleEnabled = isFeatureEnabled("appTitle");
+  const driveEnabled = isFeatureEnabled("googleDriveSync");
 
   return (
     <div className="h-12 border-b bg-background px-4 flex items-center justify-between shrink-0">
@@ -78,6 +103,18 @@ export function AppToolbar() {
         </Button>
 
         <Separator orientation="vertical" className="h-6 hidden lg:block" />
+        {driveEnabled && (
+          <div className="hidden lg:inline-flex">
+            {/* Lazy-load the picker component to avoid increasing bundle size */}
+            <React.Suspense fallback={
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <FolderPlus className="h-4 w-4" />
+              </Button>
+            }>
+              <LazyGoogleDrivePicker />
+            </React.Suspense>
+          </div>
+        )}
         <ThemeToggle />
         <UserMenu />
       </div>

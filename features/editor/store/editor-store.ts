@@ -32,6 +32,38 @@ function getFileManager(isLocal: boolean = false): FileManager {
   return fileManager;
 }
 
+/**
+ * Enable Google Drive as the active file manager.
+ * This will replace any existing FileManager instance.
+ */
+export async function enableGoogleDrive(folderId?: string) {
+  try {
+    if (folderId) {
+      window.localStorage.setItem("verve_gdrive_folder_id", folderId);
+    }
+
+    const mod = await import("@/core/file-manager/adapters/google-drive-adapter");
+    const GoogleDriveAdapter = (mod as any).GoogleDriveAdapter;
+    if (!GoogleDriveAdapter) throw new Error("GoogleDriveAdapter not available");
+
+    // Destroy existing manager if present
+    if (fileManager) {
+      try { fileManager.destroy(); } catch (e) { /* ignore */ }
+      fileManager = null;
+    }
+
+    const adapter = new GoogleDriveAdapter(folderId);
+    fileManager = new FileManager(adapter);
+    fileManager.onUpdate((fileId, content) => {
+      useEditorStore.getState().handleExternalUpdate(fileId, content);
+    });
+    return fileManager;
+  } catch (err) {
+    console.error("Failed to enable Google Drive:", err);
+    throw err;
+  }
+}
+
 interface EditorStore {
   openTabs: MarkdownFile[];
   activeTabId: string | null;
