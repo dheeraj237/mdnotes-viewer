@@ -61,6 +61,7 @@ export const useStore = create<State>()((set) => ({
 - Location: `shared/components/ui/`
 - Available: Button, Separator, Dialog, Input, Label, DropdownMenu, ContextMenu, Tooltip, Tabs
 - Always use shadcn components, don't create custom UI components
+ - Project helper: `yarn shadcn:add add <component> -p shared/components/ui -y -o` (runs shadcn CLI for this repo)
 
 ## File Naming
 - Components: `kebab-case.tsx`

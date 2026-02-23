@@ -84,22 +84,19 @@ export function InlineInput({
   };
 
   return (
-    <div>
-      <div
-        className={cn(
-          "flex items-center gap-1 px-2 py-1 bg-accent",
-          error && "border border-destructive"
-        )}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-      >
-        {type === "folder" ? (
-          <Folder className="h-4 w-4 text-primary shrink-0" />
-        ) : (
-          <>
-            <div className="w-4" />
-              <File className="h-4 w-4 text-muted-foreground shrink-0" />
-          </>
-        )}
+    <div
+      className="flex items-center gap-1 px-2 py-1 bg-accent rounded"
+      style={{ paddingLeft: `${level * 12 + 8}px` }}
+    >
+      {type === "folder" ? (
+        <Folder className="h-4 w-4 text-primary shrink-0" />
+      ) : (
+        <>
+          <div className="w-4" />
+          <File className="h-4 w-4 text-muted-foreground shrink-0" />
+        </>
+      )}
+      <div className="flex-1">
         <Input
           ref={inputRef}
           type="text"
@@ -110,17 +107,18 @@ export function InlineInput({
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="flex-1 text-sm bg-transparent border-none outline-none h-auto px-0 py-0 shadow-none focus-visible:ring-0"
+          placeholder={type === "file" ? "filename.md" : "folder name"}
+          className={cn(
+            "text-sm h-6 px-2 py-1",
+            error && "border-destructive ring-destructive"
+          )}
         />
+        {error && (
+          <div className="text-xs text-destructive mt-1">
+            {error}
+          </div>
+        )}
       </div>
-      {error && (
-        <div 
-          className="text-xs text-destructive px-2 py-0.5"
-          style={{ paddingLeft: `${level * 12 + 32}px` }}
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

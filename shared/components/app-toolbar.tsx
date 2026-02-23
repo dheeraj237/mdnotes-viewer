@@ -1,6 +1,7 @@
 "use client";
 
 import { PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, Code2, Sparkles, FolderPlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/shared/components/ui/button";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
 import { UserMenu } from "@/shared/components/user-menu";
@@ -37,6 +38,7 @@ const LazyGoogleDrivePicker = React.lazy(async () => {
 });
 
 export function AppToolbar() {
+  const navigate = useNavigate();
   const { toggleLeftPanel, toggleRightPanel, leftPanelCollapsed, rightPanelCollapsed } = usePanelStore();
   const { activeTabId, isCodeViewMode, setCodeViewMode } = useEditorStore();
   const currentFile = useCurrentFile();
@@ -50,9 +52,13 @@ export function AppToolbar() {
     <div className="h-12 border-b bg-background px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-2">
         {appTitleEnabled && (
-          <div className="text-sm font-medium text-muted-foreground" title={`${APP_TITLE} - Document Everything`}>
+          <button
+            onClick={() => navigate("/")}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+            title={`${APP_TITLE} - Document Everything`}
+          >
             {APP_TITLE}
-          </div>
+          </button>
         )}
       </div>
 

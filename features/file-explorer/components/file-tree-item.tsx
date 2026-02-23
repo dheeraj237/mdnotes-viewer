@@ -4,7 +4,7 @@ import { FileNode } from "@/shared/types";
 import { useFileExplorerStore } from "../store/file-explorer-store";
 import { cn } from "@/shared/utils/cn";
 import { useEditorStore } from "@/features/editor/store/editor-store";
-import { ContextMenu } from "./context-menu";
+import { FileContextMenu } from "./context-menu";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { Button } from "@/shared/components/ui/button";
@@ -21,7 +21,6 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     useFileExplorerStore();
   const { openFile, setIsLoading } = useEditorStore();
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -175,11 +174,9 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   const handleNewFile = () => {
-    setContextMenu(null);
     if (node.type === 'folder') {
       if (!isExpanded) {
         toggleFolder(node.id);
@@ -189,7 +186,6 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   };
 
   const handleNewFolder = () => {
-    setContextMenu(null);
     if (node.type === 'folder') {
       if (!isExpanded) {
         toggleFolder(node.id);
@@ -199,12 +195,10 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   };
 
   const handleRename = () => {
-    setContextMenu(null);
     setIsRenaming(true);
   };
 
   const handleDelete = async () => {
-    setContextMenu(null);
     const confirmMsg = node.type === 'folder'
       ? `Delete folder "${node.name}" and all its contents?`
       : `Delete file "${node.name}"?`;
@@ -279,81 +273,76 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
 
   return (
     <div>
-      <div
-        className={cn(
-          "group flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-sidebar-hover transition-colors relative",
-          isSelected && "bg-accent"
-        )}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-        onClick={handleClick}
-        onTouchEnd={handleTouch}
-        onContextMenu={handleContextMenu}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+      <FileContextMenu
+        onNewFile={handleNewFile}
+        onNewFolder={handleNewFolder}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        isFolder={node.type === 'folder'}
       >
-        {node.type === "folder" ? (
-          <>
-            <ChevronRight
-              className={cn(
-                "h-4 w-4 transition-transform shrink-0 cursor-pointer",
-                isExpanded && "rotate-90"
-              )}
-              onClick={handleChevronClick}
-              onTouchEnd={handleChevronTouch}
-            />
-            {isExpanded ? (
-              <FolderOpen className="h-4 w-4 text-primary shrink-0" />
-            ) : (
+        <div
+          className={cn(
+            "group flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-sidebar-hover transition-colors relative",
+            isSelected && "bg-accent"
+          )}
+          style={{ paddingLeft: `${level * 12 + 8}px` }}
+          onClick={handleClick}
+          onTouchEnd={handleTouch}
+          onContextMenu={handleContextMenu}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {node.type === "folder" ? (
+            <>
+              <ChevronRight
+                className={cn(
+                  "h-4 w-4 transition-transform shrink-0 cursor-pointer",
+                  isExpanded && "rotate-90"
+                )}
+                onClick={handleChevronClick}
+                onTouchEnd={handleChevronTouch}
+              />
+              {isExpanded ? (
+                <FolderOpen className="h-4 w-4 text-primary shrink-0" />
+              ) : (
                 <Folder className="h-4 w-4 text-primary shrink-0" />
-            )}
-          </>
-        ) : (
-          <>
-            <div className="w-4" />
+              )}
+            </>
+          ) : (
+            <>
+              <div className="w-4" />
               <File className="h-4 w-4 text-muted-foreground shrink-0" />
-          </>
-        )}
-        <span className="text-sm truncate flex-1">{node.name}</span>
+            </>
+          )}
+          <span className="text-sm truncate flex-1">{node.name}</span>
 
-        {/* Folder hover actions - VSCode style */}
-        {node.type === "folder" && isHovered && (
-          <div className="flex items-center gap-0.5 ml-auto">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleNewFileClick}
-              onTouchEnd={handleNewFileTouch}
-              className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
-              title="New File"
-            >
-              <FilePlus className="cursor-pointer h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleNewFolderClick}
-              onTouchEnd={handleNewFolderTouch}
-              className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
-              title="New Folder"
-            >
-              <FolderPlus className="cursor-pointer h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          onNewFile={handleNewFile}
-          onNewFolder={handleNewFolder}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          isFolder={node.type === 'folder'}
-        />
-      )}
+          {/* Folder hover actions - VSCode style */}
+          {node.type === "folder" && isHovered && (
+            <div className="flex items-center gap-0.5 ml-auto">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNewFileClick}
+                onTouchEnd={handleNewFileTouch}
+                className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
+                title="New File"
+              >
+                <FilePlus className="cursor-pointer h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNewFolderClick}
+                onTouchEnd={handleNewFolderTouch}
+                className="h-5 w-5 hover:bg-sidebar-hover opacity-0 group-hover:opacity-100 transition-opacity"
+                title="New Folder"
+              >
+                <FolderPlus className="cursor-pointer h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </FileContextMenu>
 
       {node.type === "folder" && isExpanded && (
         <div>

@@ -1,93 +1,56 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
 import { FileText, FolderPlus, Edit2, Trash2 } from "lucide-react";
-import { cn } from "@/shared/utils/cn";
+import {
+  ContextMenu as ContextMenuPrimitive,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/shared/components/ui/context-menu";
 
-interface ContextMenuProps {
-  x: number;
-  y: number;
-  onClose: () => void;
-  onNewFile: () => void;
-  onNewFolder: () => void;
+interface FileContextMenuProps {
+  children: React.ReactNode;
+  onNewFile?: () => void;
+  onNewFolder?: () => void;
   onRename: () => void;
   onDelete: () => void;
   isFolder: boolean;
 }
 
-export function ContextMenu({
-  x,
-  y,
-  onClose,
+export function FileContextMenu({
+  children,
   onNewFile,
   onNewFolder,
   onRename,
   onDelete,
   isFolder,
-}: ContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [onClose]);
-
+}: FileContextMenuProps) {
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 min-w-40 bg-popover border border-border rounded-md shadow-lg py-1"
-      style={{ left: x, top: y }}
-    >
-      {isFolder && (
-        <>
-          <button
-            onClick={onNewFile}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left cursor-pointer"
-          >
-            <FileText className="h-4 w-4" />
-            New File
-          </button>
-          <button
-            onClick={onNewFolder}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left cursor-pointer"
-          >
-            <FolderPlus className="h-4 w-4" />
-            New Folder
-          </button>
-          <div className="h-px bg-border my-1" />
-        </>
-      )}
-      <button
-        onClick={onRename}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left cursor-pointer"
-      >
-        <Edit2 className="h-4 w-4" />
-        Rename
-      </button>
-      <button
-        onClick={onDelete}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent text-destructive transition-colors text-left cursor-pointer"
-      >
-        <Trash2 className="h-4 w-4" />
-        Delete
-      </button>
-    </div>
+    <ContextMenuPrimitive>
+      {children}
+      <ContextMenuContent>
+        {isFolder && (
+          <>
+            <ContextMenuItem onClick={onNewFile} className="cursor-pointer">
+              <FileText className="mr-2 h-4 w-4" />
+              New File
+            </ContextMenuItem>
+            <ContextMenuItem onClick={onNewFolder} className="cursor-pointer">
+              <FolderPlus className="mr-2 h-4 w-4" />
+              New Folder
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        <ContextMenuItem onClick={onRename} className="cursor-pointer">
+          <Edit2 className="mr-2 h-4 w-4" />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onDelete} className="cursor-pointer text-destructive">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenuPrimitive>
   );
 }

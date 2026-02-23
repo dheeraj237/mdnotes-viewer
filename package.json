@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "shadcn:add": "NODE_TLS_REJECT_UNAUTHORIZED=0 npx shadcn@latest",
     "preview": "vite preview",
     "lint": "eslint",
     "security:audit": "yarn audit",

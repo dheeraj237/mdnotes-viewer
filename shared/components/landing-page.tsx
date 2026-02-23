@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/shared/components/ui/button";
+import { Card } from "@/shared/components/ui/card";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
 import { ArrowRight, FileText, Zap, Shield } from "lucide-react";
 import { toast } from "@/shared/utils/toast";
@@ -83,37 +84,49 @@ export function LandingPage() {
 
           {/* Features Grid */}
           <div className="grid md:grid-cols-3 gap-6 pt-16">
-            <div className="space-y-3 p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                <Zap className="h-6 w-6 text-primary" />
+            <Card className="space-y-3 hover:shadow-lg transition-shadow">
+              <div className="p-6 pb-0">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                  <Zap className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="font-semibold text-lg text-center">Live Preview</h3>
               </div>
-              <h3 className="font-semibold text-lg">Live Preview</h3>
-              <p className="text-sm text-muted-foreground">
-                See your markdown rendered instantly as you type with syntax highlighting and
-                Mermaid diagram support.
-              </p>
-            </div>
+              <div className="px-6 pb-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  See your markdown rendered instantly as you type with syntax highlighting and
+                  Mermaid diagram support.
+                </p>
+              </div>
+            </Card>
 
-            <div className="space-y-3 p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                <FileText className="h-6 w-6 text-primary" />
+            <Card className="space-y-3 hover:shadow-lg transition-shadow">
+              <div className="p-6 pb-0">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                  <FileText className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="font-semibold text-lg text-center">File Explorer</h3>
               </div>
-              <h3 className="font-semibold text-lg">File Explorer</h3>
-              <p className="text-sm text-muted-foreground">
-                Navigate through your documentation with an intuitive tree-based file explorer and
-                quick search.
-              </p>
-            </div>
+              <div className="px-6 pb-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  Navigate through your documentation with an intuitive tree-based file explorer and
+                  quick search.
+                </p>
+              </div>
+            </Card>
 
-            <div className="space-y-3 p-6 rounded-lg border bg-card hover:shadow-lg transition-shadow">
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                <Shield className="h-6 w-6 text-primary" />
+            <Card className="space-y-3 hover:shadow-lg transition-shadow">
+              <div className="p-6 pb-0">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                  <Shield className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="font-semibold text-lg text-center">Demo Mode</h3>
               </div>
-              <h3 className="font-semibold text-lg">Demo Mode</h3>
-              <p className="text-sm text-muted-foreground">
-                Try the editor with sample markdown files stored in your browser. All changes are saved locally and reset on page reload.
-              </p>
-            </div>
+              <div className="px-6 pb-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  Try the editor with sample markdown files stored in your browser. All changes are saved locally and reset on page reload.
+                </p>
+              </div>
+            </Card>
           </div>
         </div>
       </main>

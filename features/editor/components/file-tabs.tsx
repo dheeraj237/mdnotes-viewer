@@ -26,22 +26,7 @@ export function FileTabs() {
 
   return (
     <TooltipProvider delayDuration={500}>
-      <style>{`
-        .tab-scrollbar::-webkit-scrollbar {
-          height: 6px;
-        }
-        .tab-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .tab-scrollbar::-webkit-scrollbar-thumb {
-          background: hsl(var(--muted-foreground) / 0.2);
-          border-radius: 3px;
-        }
-        .tab-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: hsl(var(--muted-foreground) / 0.3);
-        }
-      `}</style>
-      <div className="flex items-center overflow-x-auto flex-1 flex-nowrap tab-scrollbar scale-90 origin-left overflow-y-hidden">
+      <div className="flex items-center overflow-x-auto flex-1 flex-nowrap overflow-y-hidden scale-90 origin-left tabs-scrollbar">
         {openTabs.map((tab) => (
           <Tooltip key={tab.id}>
             <TooltipTrigger asChild>
@@ -53,6 +38,7 @@ export function FileTabs() {
                     : "bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground border-t-2 border-t-transparent"
                 )}
                 onClick={() => setActiveTab(tab.id)}
+                title={`${tab.path} - Last saved: ${formatLastSaved(tab.lastSaved)}`}
               >
                 {activeTabId === tab.id && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 shadow-sm" />
@@ -81,7 +67,7 @@ export function FileTabs() {
                 )}
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={8} className="text-xs max-w-xs">
+            <TooltipContent side="bottom" sideOffset={8} className="text-xs max-w-xs" asChild={false}>
               <div className="space-y-1">
                 <div className="font-medium">{tab.path}</div>
                 <div className="text-muted-foreground">{formatLastSaved(tab.lastSaved)}</div>
@@ -99,6 +85,7 @@ export function FileTabs() {
                 variant={isSourceMode ? "outline" : "default"}
                 onClick={() => setSourceMode(!isSourceMode)}
                 className="h-7 w-7 p-0 cursor-pointer"
+                title={isSourceMode ? "Switch to Live Preview" : "Switch to Code"}
               >
                 {isSourceMode ? (
                   <Eye className="h-3.5 w-3.5" />
@@ -107,7 +94,7 @@ export function FileTabs() {
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
+            <TooltipContent side="bottom" asChild={false}>
               <p className="text-xs">
                 {isSourceMode ? "Switch to Live Preview" : "Switch to Code"}
               </p>
