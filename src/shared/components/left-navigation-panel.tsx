@@ -13,7 +13,7 @@ interface LeftNavigationPanelProps {
 }
 
 export function LeftNavigationPanel({ className }: LeftNavigationPanelProps) {
-  const { closeAllTabs } = useEditorStore();
+  const { closeAllTabs, openTabs } = useEditorStore();
 
   // Close all button for open editors header
   const closeAllButton = (
@@ -51,10 +51,10 @@ export function LeftNavigationPanel({ className }: LeftNavigationPanelProps) {
 
         {/* Open Editors Section - Default collapsed */}
         <CollapsibleSection
-          title="Open Editors"
+          title="Open Files"
           isDefaultOpen={false}
           storageKey="open-editors"
-          headerAction={closeAllButton}
+          headerAction={openTabs && openTabs.length > 0 ? closeAllButton : undefined}
         >
           <OpenedFilesSection />
         </CollapsibleSection>
