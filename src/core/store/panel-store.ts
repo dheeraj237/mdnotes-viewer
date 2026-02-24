@@ -2,12 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface PanelState {
-  leftPanelSize: number;
-  rightPanelSize: number;
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
-  setLeftPanelSize: (size: number) => void;
-  setRightPanelSize: (size: number) => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
   closeLeftPanel: () => void;
@@ -19,12 +15,8 @@ interface PanelState {
 export const usePanelStore = create<PanelState>()(
   persist(
     (set) => ({
-      leftPanelSize: 15,
-      rightPanelSize: 15,
       leftPanelCollapsed: false,
       rightPanelCollapsed: false,
-      setLeftPanelSize: (size) => set({ leftPanelSize: size }),
-      setRightPanelSize: (size) => set({ rightPanelSize: size }),
       toggleLeftPanel: () =>
         set((state) => ({ leftPanelCollapsed: !state.leftPanelCollapsed })),
       toggleRightPanel: () =>

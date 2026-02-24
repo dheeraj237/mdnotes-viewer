@@ -17,14 +17,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isMobile, setIsMobile] = useState(false);
 
   const {
-    leftPanelSize,
-    rightPanelSize,
     leftPanelCollapsed,
     rightPanelCollapsed,
-    setLeftPanelSize,
-    setRightPanelSize,
     closeLeftPanel,
     closeRightPanel,
+    openLeftPanel,
+    openRightPanel,
   } = usePanelStore();
 
   const { activeTabId, isCodeViewMode } = useEditorStore();
@@ -50,12 +48,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [activeTabId, isMobile, closeLeftPanel]);
 
+  // On mobile, if no file is opened, ensure left panel is visible at 90%
+  useEffect(() => {
+    if (isMobile && activeTabId === null && leftPanelRef.current) {
+      // set a large width for explorer and open
+      leftPanelRef.current.resize(90);
+      openLeftPanel();
+    }
+  }, [activeTabId, isMobile, openLeftPanel]);
+
   // Auto-close right panel when heading is selected on mobile
   useEffect(() => {
-    if (isMobile && activeId !== null) {
+    // Only act when there's a real selection (non-empty string)
+    if (isMobile && activeId) {
       closeRightPanel();
     }
   }, [activeId, isMobile, closeRightPanel]);
+
+  // When TOC becomes visible on mobile (live mode), open it at 90%
+  useEffect(() => {
+    if (isMobile && showToc && rightPanelRef.current) {
+      rightPanelRef.current.resize(90);
+      openRightPanel();
+    }
+    // If TOC is not shown, ensure it's closed on mobile
+    if (isMobile && !showToc) {
+      closeRightPanel();
+    }
+  }, [isMobile, showToc, openRightPanel, closeRightPanel]);
 
   useEffect(() => {
     if (leftPanelRef.current) {
@@ -86,11 +106,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Panel
             ref={leftPanelRef}
             id="left-panel"
-            defaultSize={isMobile ? 90 : leftPanelSize}
+            defaultSize={isMobile ? 90 : 20}
             minSize={isMobile ? 0 : 15}
             maxSize={isMobile ? 90 : 40}
             collapsible
-            onResize={setLeftPanelSize}
             className="bg-sidebar-background border-r border-sidebar-border"
           >
             <LeftNavigationPanel />
@@ -111,11 +130,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Panel
                 ref={rightPanelRef}
                 id="right-panel"
-                defaultSize={isMobile ? 90 : rightPanelSize}
+                defaultSize={isMobile ? 90 : 20}
                 minSize={isMobile ? 0 : 10}
                 maxSize={isMobile ? 90 : 30}
                 collapsible
-                onResize={setRightPanelSize}
                 className="bg-sidebar-background border-l border-sidebar-border"
               >
                 <TableOfContents items={tocItems} activeId={activeId} />
