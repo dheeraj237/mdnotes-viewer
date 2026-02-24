@@ -2,6 +2,8 @@ import { toast } from "@/shared/utils/toast";
 import type { FileSystemAdapter, FileData, FileMetadata } from "@/core/file-manager/types";
 import { FileSystemType } from "@/core/file-manager/types";
 import { requestDriveAccessToken } from "@/core/auth/google";
+import { driveCache, type CachedFile } from "@/core/file-manager/drive-cache";
+import { syncQueue } from "@/core/file-manager/sync-queue";
 
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 
@@ -41,7 +43,16 @@ export class GoogleDriveAdapter implements FileSystemAdapter {
   async listFiles(directory?: string): Promise<FileMetadata[]> {
     // If directory param passed, use it as the parent folder id; otherwise use configured folder
     const folderId = directory && directory.length > 0 ? directory : await this.resolveFolderId();
-    const token = await getToken();
+    let token = await getToken();
+    if (!token) {
+      // Try interactive auth as a last resort when performing a write
+      try {
+        token = await requestDriveAccessToken(true);
+      } catch (e) {
+        // ignore
+      }
+    }
+
     if (!token) throw new Error("Not authenticated with Google Drive");
     const q = `'${folderId}' in parents and trashed=false`;
     const res = await fetch(`${DRIVE_API_BASE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,modifiedTime,size)&pageSize=100`, {
@@ -99,6 +110,12 @@ export class GoogleDriveAdapter implements FileSystemAdapter {
         body: content,
       });
       if (!res.ok) throw new Error("Failed to update file on Google Drive");
+      // notify UI to refresh
+      try {
+        window.dispatchEvent(new CustomEvent('verve:gdrive:changed'));
+      } catch (e) {
+        // ignore
+      }
       return;
     }
 
@@ -106,12 +123,32 @@ export class GoogleDriveAdapter implements FileSystemAdapter {
     const metadata = { name: path, parents: [folderId] };
     const boundary = "-------314159265358979323846";
     const multipart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: text/markdown\r\n\r\n${content}\r\n--${boundary}--`;
-    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`, {
+    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
       body: multipart,
     });
     if (!res.ok) throw new Error("Failed to create file on Google Drive");
+    try {
+      const data = await res.json();
+      // If user created the primary verve file, store its id for quick access
+      if (path === 'verve.md' && data && data.id) {
+        try {
+          window.localStorage.setItem('verve_gdrive_verve_file_id', data.id);
+        } catch (e) {
+          // ignore storage errors
+        }
+      }
+
+      // Notify UI to refresh
+      try {
+        window.dispatchEvent(new CustomEvent('verve:gdrive:changed'));
+      } catch (e) {
+        // ignore
+      }
+    } catch (e) {
+      // ignore parsing errors
+    }
   }
 
   async getFileVersion(path: string): Promise<string | undefined> {
@@ -134,6 +171,103 @@ export class GoogleDriveAdapter implements FileSystemAdapter {
     });
     if (!res.ok) throw new Error("Failed to delete file on Google Drive");
   }
+
+  /**
+   * Create file locally first, then sync to Drive in background
+   */
+  async createFileLocal(parentPath: string, fileName: string, content: string = ''): Promise<CachedFile> {
+    // Generate a temporary local ID
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const cachedFile: CachedFile = {
+      id: tempId,
+      path: `${parentPath}/${fileName}`,
+      name: fileName,
+      category: 'gdrive',
+      content,
+      syncStatus: 'pending',
+      localModified: Date.now(),
+      size: content.length,
+      mimeType: 'text/markdown',
+    };
+
+    // Store in local cache
+    await driveCache.putFile(cachedFile);
+
+    // Queue for background sync
+    syncQueue.addOperation({
+      type: 'create-file',
+      parentPath,
+      name: fileName,
+      content,
+    });
+
+    return cachedFile;
+  }
+
+  /**
+   * Create folder locally first, then sync to Drive in background
+   */
+  async createFolderLocal(parentPath: string, folderName: string): Promise<CachedFile> {
+    // Generate a temporary local ID
+    const tempId = `local-folder-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const cachedFolder: CachedFile = {
+      id: tempId,
+      path: `${parentPath}/${folderName}`,
+      name: folderName,
+      category: 'gdrive',
+      syncStatus: 'pending',
+      localModified: Date.now(),
+      size: 0,
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+
+    // Store in local cache
+    await driveCache.putFile(cachedFolder);
+
+    // Queue for background sync
+    syncQueue.addOperation({
+      type: 'create-folder',
+      parentPath,
+      name: folderName,
+    });
+
+    return cachedFolder;
+  }
+
+  /**
+   * List files with local cache support
+   * Returns cached files merged with Drive files
+   */
+  async listFilesWithCache(directory?: string): Promise<FileMetadata[]> {
+    const folderId = directory && directory.length > 0 ? directory : await this.resolveFolderId();
+
+    // Get cached files
+    const cachedFiles = await driveCache.getFilesInFolder(folderId);
+
+    // Try to get Drive files (may fail if offline)
+    let driveFiles: FileMetadata[] = [];
+    try {
+      driveFiles = await this.listFiles(directory);
+
+      // Update cache with Drive files
+      const cachedFilesToStore: CachedFile[] = driveFiles.map(file => ({
+        ...file,
+        syncStatus: 'synced' as const,
+      }));
+      await driveCache.putFiles(cachedFilesToStore);
+    } catch (error) {
+      console.warn('Failed to fetch from Drive, using cached files only:', error);
+    }
+
+    // Merge: prefer Drive files, add pending local files
+    const driveFileIds = new Set(driveFiles.map(f => f.id));
+    const localOnlyFiles = cachedFiles.filter(f => !driveFileIds.has(f.id) && f.syncStatus === 'pending');
+
+    return [...driveFiles, ...localOnlyFiles];
+  }
 }
+
 
 export default GoogleDriveAdapter;

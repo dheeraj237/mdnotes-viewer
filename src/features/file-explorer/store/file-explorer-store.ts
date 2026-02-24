@@ -17,6 +17,7 @@ import {
   renameNode as renameNodeOp,
   deleteNode as deleteNodeOp,
 } from "./helpers/file-operations";
+import { syncQueue } from "@/core/file-manager/sync-queue";
 
 /**
  * File Explorer Store State
@@ -27,14 +28,18 @@ interface FileExplorerStore {
   selectedFileId: string | null;
   fileTree: FileNode[];
   isLoadingLocalFiles: boolean;
+  isSyncingDrive: boolean;
   currentDirectoryName: string | null;
   currentDirectoryPath: string | null;
+  pendingSyncCount: number;
 
   toggleFolder: (folderId: string) => void;
   setSelectedFile: (fileId: string | null) => void;
   setFileTree: (tree: FileNode[]) => void;
   setIsLoadingLocalFiles: (loading: boolean) => void;
+  setIsSyncingDrive: (loading: boolean) => void;
   setCurrentDirectory: (name: string, path: string) => void;
+  setPendingSyncCount: (count: number) => void;
 
   openLocalDirectory: (workspaceId?: string) => Promise<void>;
   restoreLocalDirectory: (workspaceId: string) => Promise<boolean>;
@@ -65,8 +70,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       selectedFileId: null,
       fileTree: [],
       isLoadingLocalFiles: false,
+      isSyncingDrive: false,
       currentDirectoryName: null,
       currentDirectoryPath: null,
+      pendingSyncCount: 0,
 
           /** Toggles a folder's expanded/collapsed state */
       toggleFolder: (folderId) =>
@@ -88,8 +95,11 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
       /** Sets the loading state for local files */
       setIsLoadingLocalFiles: (loading) => set({ isLoadingLocalFiles: loading }),
+      setIsSyncingDrive: (loading) => set({ isSyncingDrive: loading }),
 
       setCurrentDirectory: (name, path) => set({ currentDirectoryName: name, currentDirectoryPath: path }),
+
+      setPendingSyncCount: (count) => set({ pendingSyncCount: count }),
       setGoogleFolder: (folderId: string) => {
         try {
           window.localStorage.setItem('verve_gdrive_folder_id', folderId);
@@ -271,6 +281,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
         // For Google Drive workspace: show the workspace name as the root folder label
         if (activeWorkspace.type === 'drive' && activeWorkspace.driveFolder) {
+          set({ isSyncingDrive: true });
           try {
             const gdriveFolder = activeWorkspace.driveFolder;
             const verveFileId = window.localStorage.getItem('verve_gdrive_verve_file_id');
@@ -303,6 +314,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             console.error('Failed to load Google Drive folder', e);
             set({ fileTree: [] });
             return;
+          } finally {
+            set({ isSyncingDrive: false });
           }
         }
 
@@ -332,3 +345,24 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     }
   )
 );
+
+// Listen for Drive changes emitted by the Google Drive adapter and refresh the tree
+if (typeof window !== 'undefined') {
+  window.addEventListener('verve:gdrive:changed', () => {
+    try {
+      useFileExplorerStore.getState().refreshFileTree();
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  // Subscribe to sync queue changes to update pending count
+  syncQueue.subscribe((queue) => {
+    try {
+      const pendingCount = syncQueue.getPendingCount();
+      useFileExplorerStore.getState().setPendingSyncCount(pendingCount);
+    } catch (e) {
+      console.error('Error updating sync count:', e);
+    }
+  });
+}

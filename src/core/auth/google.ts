@@ -1,3 +1,5 @@
+import { storeToken, getTokenRecord, removeToken } from "@/core/auth/token-storage";
+
 let gisLoaded = false;
 let tokenClient: any = null;
 
@@ -86,6 +88,16 @@ export async function requestAccessTokenForScopes(scopes: string, interactive = 
             hasToken = true;
             clearPromise();
             console.log("OAuth: Successfully obtained access token");
+            // Persist token in IndexedDB with expiry if provided
+            try {
+              const expiresIn = Number(response.expires_in) || 3600;
+              const exp = Date.now() + expiresIn * 1000 - 5000; // small buffer
+              storeToken('gdrive', response.access_token, exp).catch(() => {
+                // ignore store failures
+              });
+            } catch (e) {
+              // ignore
+            }
             resolve(response.access_token);
           } else if (response.error) {
             clearPromise();
@@ -129,7 +141,22 @@ export async function requestAccessTokenForScopes(scopes: string, interactive = 
 }
 
 export async function requestDriveAccessToken(interactive = true): Promise<string | null> {
-  return requestAccessTokenForScopes(SCOPES, interactive);
+  // Check for a cached token in IndexedDB first
+  try {
+    const rec = await getTokenRecord('gdrive');
+    if (rec && rec.token && rec.expiresAt && Date.now() < rec.expiresAt) {
+      return rec.token;
+    }
+    if (rec && rec.expiresAt && Date.now() >= rec.expiresAt) {
+      // expired, remove
+      removeToken('gdrive').catch(() => { });
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  const token = await requestAccessTokenForScopes(SCOPES, interactive);
+  return token;
 }
 
 let gapiLoaded = false;
@@ -252,7 +279,12 @@ export async function getGoogleUserProfile(token?: string, interactive = true): 
 }
 
 export function clearTokens() {
-  // nothing persisted long-term; tokens are short lived
+  // remove persisted gdrive token
+  try {
+    removeToken('gdrive').catch(() => { });
+  } catch (e) {
+    // ignore
+  }
 }
 
 /**

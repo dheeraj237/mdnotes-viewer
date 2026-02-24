@@ -100,56 +100,41 @@ export async function renameNode(nodePath: string, newName: string): Promise<voi
 }
 
 /**
- * Creates a file in Google Drive
+ * Creates a file in Google Drive (local-first with background sync)
  */
 async function createGoogleDriveFile(parentPath: string, fileName: string): Promise<void> {
+  const { GoogleDriveAdapter } = await import('@/core/file-manager/adapters/google-drive-adapter');
   const folderId = parentPath.replace(/^gdrive-/, '');
-  const token = await (await import('@/core/auth/google')).requestDriveAccessToken(true);
+  const adapter = new GoogleDriveAdapter(folderId);
   
-  if (!token) throw new Error('Not authenticated with Google Drive');
+  // Create locally first, then sync in background
+  await adapter.createFileLocal(parentPath, fileName, '');
   
-  const metadata = { name: fileName, parents: [folderId] };
-  const boundary = '-------314159265358979323846';
-  const multipart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: text/markdown\r\n\r\n\r\n--${boundary}--`;
-  
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
-    method: 'POST',
-    headers: { 
-      Authorization: `Bearer ${token}`, 
-      'Content-Type': `multipart/related; boundary=${boundary}` 
-    },
-    body: multipart,
-  });
-  
-  if (!res.ok) throw new Error('Failed to create file on Google Drive');
+  // Notify UI to refresh immediately
+  try {
+    window.dispatchEvent(new CustomEvent('verve:gdrive:changed'));
+  } catch (e) {
+    // ignore
+  }
 }
 
 /**
- * Creates a folder in Google Drive
+ * Creates a folder in Google Drive (local-first with background sync)
  */
 async function createGoogleDriveFolder(parentPath: string, folderName: string): Promise<void> {
+  const { GoogleDriveAdapter } = await import('@/core/file-manager/adapters/google-drive-adapter');
   const folderId = parentPath.replace(/^gdrive-/, '');
-  const { requestDriveAccessToken } = await import('@/core/auth/google');
-  const token = await requestDriveAccessToken(true);
+  const adapter = new GoogleDriveAdapter(folderId);
   
-  if (!token) throw new Error('Not authenticated with Google Drive');
+  // Create locally first, then sync in background
+  await adapter.createFolderLocal(parentPath, folderName);
   
-  const metadata = { 
-    name: folderName, 
-    mimeType: 'application/vnd.google-apps.folder', 
-    parents: [folderId] 
-  };
-  
-  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { 
-      Authorization: `Bearer ${token}`, 
-      'Content-Type': 'application/json' 
-    },
-    body: JSON.stringify(metadata),
-  });
-  
-  if (!res.ok) throw new Error('Failed to create folder on Google Drive');
+  // Notify UI to refresh immediately
+  try {
+    window.dispatchEvent(new CustomEvent('verve:gdrive:changed'));
+  } catch (e) {
+    // ignore
+  }
 }
 
 /**

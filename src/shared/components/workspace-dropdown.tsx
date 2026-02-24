@@ -58,7 +58,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
     deleteWorkspace
   } = useWorkspaceStore();
 
-  const { openLocalDirectory, restoreLocalDirectory, setGoogleFolder, setSelectedFile, refreshFileTree, clearLocalDirectory } = useFileExplorerStore();
+  const { openLocalDirectory, restoreLocalDirectory, setGoogleFolder, setSelectedFile, refreshFileTree, clearLocalDirectory, isSyncingDrive, pendingSyncCount } = useFileExplorerStore();
 
   const currentWorkspace = activeWorkspace();
 
@@ -197,6 +197,12 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
           // Set the folder in file explorer
           if (setGoogleFolder) {
             setGoogleFolder(folder.id);
+          }
+          // Refresh file tree so the newly created (empty) Drive workspace is shown
+          try {
+            await refreshFileTree();
+          } catch (e) {
+            console.warn('Failed to refresh file tree after creating Drive workspace', e);
           }
 
           toast.success("Google Drive workspace created successfully!");
@@ -346,8 +352,21 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {currentWorkspace && getWorkspaceIcon(currentWorkspace.type)}
-              <span className="truncate">
+              <span className="truncate flex items-center gap-2">
                 {currentWorkspace?.name || "No workspace selected"}
+                {currentWorkspace?.type === 'drive' && (isSyncingDrive || pendingSyncCount > 0) && (
+                  <span className="flex items-center gap-1">
+                    <svg className="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    {pendingSyncCount > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {pendingSyncCount}
+                      </span>
+                    )}
+                  </span>
+                )}
               </span>
             </div>
             <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
