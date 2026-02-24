@@ -123,8 +123,8 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           content: fileData.content,
           category: fileData.category,
         });
-      } else if (node.id.startsWith('demo-') && activeWorkspace?.id === 'verve-samples') {
-        // Load from verve-samples workspace using FileManager
+      } else if (node.id.startsWith('samples-') && activeWorkspace?.id === 'verve-samples') {
+        // Load from verve-samples workspace using FileManager (samples)
         const fileManager = getFileManager(activeWorkspace);
         const fileData = await fileManager.loadFile(node.path);
 
@@ -160,7 +160,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           path: node.path,
           name: node.name,
           content,
-          category: node.path.split("/")[1] || 'demo',
+          category: node.path.split("/")[1] || 'samples',
         });
       }
     } catch (error) {

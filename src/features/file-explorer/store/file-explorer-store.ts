@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { FileNode } from "@/shared/types";
-import { buildDemoFileTree } from "@/utils/demo-file-tree";
+import { buildSamplesFileTree } from "@/utils/demo-file-tree";
 import { getAllFolderIds, buildFileTreeFromAdapter } from "./helpers/file-tree-builder";
 import {
   openLocalDirectory as openLocalDir,
@@ -301,18 +301,18 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         // For browser workspaces, use adapter to load files
         if (activeWorkspace.type === 'browser') {
           if (activeWorkspace.id === 'verve-samples') {
-            // Special case: Load demo files for samples workspace using FileManager
+            // Special case: Load sample files for samples workspace using FileManager
             try {
               const fileManager = getFileManager(activeWorkspace);
               const fileTree = await buildFileTreeFromAdapter(
                 fileManager,
                 '',
-                'demo-'
+                'samples-'
               );
-              set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/demo' });
+              set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
             } catch (e) {
               console.error('Failed to load verve-samples workspace files', e);
-              set({ fileTree: [], currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/demo' });
+              set({ fileTree: [], currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
             }
           } else {
             // Other browser workspaces: Load from BrowserAdapterV2

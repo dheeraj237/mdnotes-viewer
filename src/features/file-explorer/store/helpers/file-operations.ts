@@ -16,7 +16,7 @@ function getActiveManager() {
  * Creates a new file in the specified location
  * Uses File Manager V2 for all workspace types
  * 
- * @param parentPath - Path of the parent folder (with prefix: 'gdrive-', 'local-', or empty for demo)
+ * @param parentPath - Path of the parent folder (with prefix: 'gdrive-', 'local-', or empty for browser/samples)
  * @param fileName - Name of the file to create
  * @throws Error if file creation fails
  */

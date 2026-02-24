@@ -1,6 +1,6 @@
 /**
- * Browser File Tree Initializer
- * Loads browser/demo files into the file explorer
+ * Samples File Tree Initializer
+ * Loads sample files into the file explorer
  */
 
 import { FileNode } from '@/shared/types';
@@ -9,7 +9,7 @@ import { getBrowserAdapter } from '@/hooks/use-browser-mode';
 /**
  * Build browser file tree from browser adapter
  */
-export async function buildDemoFileTree(): Promise<FileNode[]> {
+export async function buildSamplesFileTree(): Promise<FileNode[]> {
   const adapter = getBrowserAdapter();
 
   // Get all files from browser adapter
@@ -45,11 +45,11 @@ export async function buildDemoFileTree(): Promise<FileNode[]> {
     
     for (const [key, value] of Object.entries(obj)) {
       const path = basePath ? `${basePath}/${key}` : key;
-      
+
       // Check if it's a file
       if (value && typeof value === 'object' && 'isFile' in value && (value as any).isFile) {
         nodes.push({
-          id: `demo-${path}`,
+          id: `samples-${path}`,
           name: key,
           path: `/${path}`,
           type: 'file',
@@ -59,7 +59,7 @@ export async function buildDemoFileTree(): Promise<FileNode[]> {
         const children = buildNodes(value, path);
         if (children.length > 0) {
           nodes.push({
-            id: `demo-folder-${path}`,
+            id: `samples-folder-${path}`,
             name: key,
             path: `/${path}`,
             type: 'folder',
@@ -88,12 +88,12 @@ export async function buildDemoFileTree(): Promise<FileNode[]> {
 /**
  * Initialize demo file tree in the store
  */
-export async function initializeDemoFileTree(): Promise<FileNode[]> {
+export async function initializeSamplesFileTree(): Promise<FileNode[]> {
   try {
-    const fileTree = await buildDemoFileTree();
+    const fileTree = await buildSamplesFileTree();
     return fileTree;
   } catch (error) {
-    console.error('Failed to initialize demo file tree:', error);
+    console.error('Failed to initialize samples file tree:', error);
     return [];
   }
 }

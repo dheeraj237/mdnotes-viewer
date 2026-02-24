@@ -7,7 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { cn } from "@/shared/utils/cn";
-import { initializeDemoFileTree } from "@/utils/demo-file-tree";
+import { initializeSamplesFileTree } from "@/utils/demo-file-tree";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 import { FileTreeFilter } from "./file-tree-filter";
 
@@ -39,16 +39,16 @@ export function FileExplorer() {
       try {
         const currentWorkspace = activeWorkspace();
 
-        // Only load demo files for Verve Samples workspace
+        // Only load Verve Samples files for the samples workspace
         if (currentWorkspace?.type === 'browser' && currentWorkspace.id === 'verve-samples') {
-          // Load demo files from localStorage
-          const demoFileTree = await initializeDemoFileTree();
+          // Load sample files from browser adapter/localStorage
+          const demoFileTree = await initializeSamplesFileTree();
 
           if (demoFileTree && demoFileTree.length > 0) {
             setFileTree(demoFileTree);
-            // Set default directory name for demo files
+            // Set default directory name for samples
             if (!currentDirectoryName) {
-              setCurrentDirectory('Verve Samples', '/demo');
+              setCurrentDirectory('Verve Samples', '/samples');
             }
           }
         }

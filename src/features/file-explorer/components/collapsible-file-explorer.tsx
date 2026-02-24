@@ -5,7 +5,7 @@ import { FileTreeItem } from "./file-tree-item";
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
-import { initializeDemoFileTree } from "@/utils/demo-file-tree";
+import { initializeSamplesFileTree } from "@/utils/demo-file-tree";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 
 export function CollapsibleFileExplorer() {
@@ -29,14 +29,14 @@ export function CollapsibleFileExplorer() {
         const currentWorkspace = useWorkspaceStore.getState().activeWorkspace();
 
         if (currentWorkspace?.type === 'browser' && currentWorkspace.id === 'verve-samples') {
-          // Load demo files from localStorage
-          const demoFileTree = await initializeDemoFileTree();
+          // Load sample files from browser adapter/localStorage
+          const demoFileTree = await initializeSamplesFileTree();
 
           if (demoFileTree && demoFileTree.length > 0) {
             setFileTree(demoFileTree);
-            // Set default directory name for demo files
+            // Set default directory name for samples
             if (!currentDirectoryName) {
-              setCurrentDirectory('Verve Samples', '/demo');
+              setCurrentDirectory('Verve Samples', '/samples');
             }
           }
         }
