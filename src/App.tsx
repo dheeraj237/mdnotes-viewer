@@ -6,11 +6,11 @@ import { WorkspaceLoader } from '@/shared/components/workspace-loader';
 import { LandingPage } from '@/shared/components/landing-page';
 import { EditorPage } from '@/pages/EditorPage';
 import { SettingsPage } from '@/pages/SettingsPage';
-import { useDemoMode } from '@/hooks/use-demo-mode';
+import { useBrowserMode } from '@/hooks/use-browser-mode';
 
 function App() {
-  // Initialize demo mode
-  const { isInitialized, error } = useDemoMode();
+  // Initialize browser/demo mode
+  const { isInitialized, error } = useBrowserMode();
 
   if (error) {
     return (
@@ -28,7 +28,7 @@ function App() {
       <div className="h-screen flex items-center justify-center">
         <div className="text-center space-y-2">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
-          <p className="text-muted-foreground">Loading demo files...</p>
+          <p className="text-muted-foreground">Loading files...</p>
         </div>
       </div>
     );

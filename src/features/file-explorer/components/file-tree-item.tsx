@@ -136,7 +136,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           category: fileData.category,
         });
       } else if (activeWorkspace?.type === 'browser' && activeWorkspace.id !== 'verve-samples') {
-        // Browser workspace (non-samples) - use FileManager with DemoAdapterV2
+        // Browser workspace (non-samples) - use FileManager with BrowserAdapterV2
         const fileManager = getFileManager(activeWorkspace);
         const fileData = await fileManager.loadFile(node.path);
 

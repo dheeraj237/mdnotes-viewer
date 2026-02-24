@@ -66,9 +66,9 @@ export function Editor() {
           await writable.write(sanitizedContent);
           await writable.close();
         } else {
-          // For demo files, use demo adapter directly
-          const { getDemoAdapter } = await import('@/hooks/use-demo-mode');
-          const adapter = getDemoAdapter();
+          // For browser/demo workspace files, use browser adapter directly
+          const { getBrowserAdapter } = await import('@/hooks/use-browser-mode');
+          const adapter = getBrowserAdapter();
           await adapter.writeFile(currentFile.path, sanitizedContent);
         }
       }

@@ -315,7 +315,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
               set({ fileTree: [], currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/demo' });
             }
           } else {
-            // Other browser workspaces: Load from DemoAdapterV2
+            // Other browser workspaces: Load from BrowserAdapterV2
             try {
               const fileManager = getFileManager(activeWorkspace);
               const fileTree = await buildFileTreeFromAdapter(

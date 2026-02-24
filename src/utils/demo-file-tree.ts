@@ -1,18 +1,18 @@
 /**
- * Demo File Tree Initializer
- * Loads demo files into the file explorer
+ * Browser File Tree Initializer
+ * Loads browser/demo files into the file explorer
  */
 
 import { FileNode } from '@/shared/types';
-import { getDemoAdapter } from '@/hooks/use-demo-mode';
+import { getBrowserAdapter } from '@/hooks/use-browser-mode';
 
 /**
- * Build demo file tree from demo adapter
+ * Build browser file tree from browser adapter
  */
 export async function buildDemoFileTree(): Promise<FileNode[]> {
-  const adapter = getDemoAdapter();
-  
-  // Get all files from demo adapter
+  const adapter = getBrowserAdapter();
+
+  // Get all files from browser adapter
   const files = await adapter.listFiles('');
   
   // Build a tree structure from flat file list

@@ -4,7 +4,7 @@
 
 export enum WorkspaceType {
   LOCAL = 'local',
-  DEMO = 'demo',
+  BROWSER = 'browser',
   GOOGLE_DRIVE = 'google-drive',
 }
 

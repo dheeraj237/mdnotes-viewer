@@ -9,7 +9,7 @@ FileManager (Orchestrator)
 ├── FileCache (In-memory with LRU)
 ├── SyncQueue (Background sync with retry)
 └── WorkspaceAdapter (Pluggable backends)
-    ├── DemoAdapterV2
+    ├── BrowserAdapterV2
     ├── LocalAdapterV2
     └── GoogleDriveAdapterV2
 ```
@@ -28,10 +28,10 @@ FileManager (Orchestrator)
 ### Basic Setup
 
 ```typescript
-import { FileManager, DemoAdapterV2 } from '@/core/file-manager-v2';
+import { FileManager, BrowserAdapterV2 } from '@/core/file-manager-v2';
 
 // Create adapter
-const adapter = new DemoAdapterV2();
+const adapter = new BrowserAdapterV2();
 await adapter.initialize();
 
 // Create file manager
@@ -116,14 +116,14 @@ await fileManager.forceSync('/path/to/file.md');
 
 ## Adapters
 
-### Demo Adapter
+### Browser Adapter
 
 Browser-based storage using localStorage:
 
 ```typescript
-import { DemoAdapterV2 } from '@/core/file-manager-v2';
+import { BrowserAdapterV2 } from '@/core/file-manager-v2';
 
-const adapter = new DemoAdapterV2();
+const adapter = new BrowserAdapterV2();
 await adapter.initialize(); // Loads sample files
 ```
 
@@ -254,7 +254,7 @@ Target metrics:
 ```typescript
 // Mock adapter for testing
 class MockAdapter implements WorkspaceAdapter {
-  type = WorkspaceType.DEMO;
+  type = WorkspaceType.BROWSER;
   capabilities = { ... };
   
   async readFile(path: string) { return mockFile; }

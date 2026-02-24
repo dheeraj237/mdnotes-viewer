@@ -2,7 +2,7 @@
  * File Manager V2 integration with Workspace Store
  */
 
-import { FileManager, DemoAdapterV2, LocalAdapterV2, GoogleDriveAdapterV2, WorkspaceAdapter } from '@/core/file-manager-v2';
+import { FileManager, BrowserAdapterV2, LocalAdapterV2, GoogleDriveAdapterV2, WorkspaceAdapter } from '@/core/file-manager-v2';
 import { requestDriveAccessToken } from '@/core/auth/google';
 import type { Workspace } from './workspace-store';
 
@@ -12,10 +12,10 @@ import type { Workspace } from './workspace-store';
 export function createAdapterForWorkspace(workspace: Workspace): WorkspaceAdapter {
   switch (workspace.type) {
     case 'browser': {
-      const adapter = new DemoAdapterV2(workspace.id);
+      const adapter = new BrowserAdapterV2(workspace.id);
       // Initialize asynchronously
       adapter.initialize().catch(err => 
-        console.error('Failed to initialize DemoAdapter:', err)
+        console.error('Failed to initialize BrowserAdapterV2:', err)
       );
       return adapter;
     }

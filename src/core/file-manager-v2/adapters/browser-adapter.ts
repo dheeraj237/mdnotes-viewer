@@ -1,5 +1,6 @@
 /**
- * Demo Adapter V2 - Uses localStorage to store demo files
+ * Browser Adapter V2 (previously DemoAdapterV2)
+ * Uses localStorage to store browser workspace files
  */
 
 import { WorkspaceAdapter, WorkspaceType, FileData, FileMetadata, AdapterCapabilities } from '../types';
@@ -15,20 +16,21 @@ interface StoredFile {
   lastModified: string;
   version: string;
   category: string;
+  mimeType?: string;
 }
 
 /**
- * Demo adapter that stores files in browser localStorage
+ * Browser adapter that stores files in browser localStorage
  * Each workspace gets its own storage key to prevent mixing
  */
-export class DemoAdapterV2 implements WorkspaceAdapter {
-  type = WorkspaceType.DEMO;
+export class BrowserAdapterV2 implements WorkspaceAdapter {
+  type = WorkspaceType.BROWSER;
   capabilities: AdapterCapabilities = {
     supportsWatch: false,
     supportsBatch: false,
     supportsVersioning: true,
     supportsRename: true,
-    supportsDirectories: false,
+    supportsDirectories: true,
     maxFileSize: 5 * 1024 * 1024, // 5MB
   };
 
@@ -124,6 +126,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
       lastModified: now,
       version: now,
       category: existing?.category || this.getCategoryFromPath(path),
+      mimeType: existing?.mimeType || 'text/markdown',
     };
 
     this.files.set(path, file);
@@ -169,6 +172,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
         category: file.category,
         size: file.size,
         lastModified: new Date(file.lastModified),
+        mimeType: file.mimeType,
       }));
   }
 
@@ -206,6 +210,35 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
   }
 
   /**
+   * Create a folder entry (browser-only)
+   */
+  async createFolder(path: string): Promise<void> {
+    await this.initialize();
+
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+
+    if (this.files.has(normalized)) {
+      throw new FileSystemError(FileErrorType.ALREADY_EXISTS, normalized, `Path already exists: ${normalized}`);
+    }
+
+    const now = new Date().toISOString();
+    const folderEntry: StoredFile = {
+      id: normalized,
+      path: normalized,
+      name: this.getFileName(normalized),
+      content: '',
+      size: 0,
+      lastModified: now,
+      version: now,
+      category: 'folder',
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+
+    this.files.set(normalized, folderEntry);
+    this.saveToStorage();
+  }
+
+  /**
    * Load sample files from public/content directory
    */
   private async loadSampleFiles(): Promise<void> {
@@ -214,7 +247,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
       return;
     }
 
-    console.log('[DemoAdapterV2] Loading sample files for verve-samples workspace');
+    console.log('[BrowserAdapterV2] Loading sample files for verve-samples workspace');
     let loadedCount = 0;
 
     // Use base URL to support GitHub Pages and other deployments
@@ -237,6 +270,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
             lastModified: now,
             version: now,
             category: sample.category,
+            mimeType: 'text/markdown',
           });
           loadedCount++;
         }
@@ -245,7 +279,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
       }
     }
 
-    console.log(`[DemoAdapterV2] Loaded ${loadedCount} sample files`);
+    console.log(`[BrowserAdapterV2] Loaded ${loadedCount} sample files`);
   }
 
   /**
@@ -259,7 +293,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
         files.forEach(file => this.files.set(file.path, file));
       }
     } catch (error) {
-      console.error('Failed to load demo files from storage:', error);
+      console.error('Failed to load browser files from storage:', error);
     }
   }
 
@@ -271,7 +305,7 @@ export class DemoAdapterV2 implements WorkspaceAdapter {
       const files = Array.from(this.files.values());
       localStorage.setItem(this.storageKey, JSON.stringify(files));
     } catch (error) {
-      console.error('Failed to save demo files to storage:', error);
+      console.error('Failed to save browser files to storage:', error);
     }
   }
 
