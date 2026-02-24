@@ -4,6 +4,8 @@
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { MarkdownFile } from "@/shared/types";
+import { useEditorStore } from "@/features/editor/store/editor-store";
 
 /**
  * Workspace Interface
@@ -50,6 +52,12 @@ interface WorkspaceStore {
   getLocalWorkspaces: () => Workspace[];
   /** Gets all Google Drive workspaces */
   getDriveWorkspaces: () => Workspace[];
+  /** Mapping of workspaceId -> opened tabs and active tab for that workspace */
+  tabsByWorkspace: Record<string, { openTabs: MarkdownFile[]; activeTabId: string | null }>;
+  /** Save current editor tabs into the store for a workspace */
+  saveTabsForWorkspace: (workspaceId?: string) => void;
+  /** Restore editor tabs from the store for a workspace */
+  restoreTabsForWorkspace: (workspaceId?: string) => void;
 }
 
 /**
@@ -62,6 +70,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       workspaces: [],
       activeWorkspaceId: null,
       isWorkspacePickerOpen: false,
+      tabsByWorkspace: {},
 
       /**
        * Creates a new workspace with the specified type and options
@@ -107,6 +116,16 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
        * Updates the lastAccessed timestamp for the workspace
        */
       switchWorkspace: (id) => {
+        // Save current editor tabs for the previous workspace
+        try {
+          const prevId = get().activeWorkspaceId;
+          if (prevId) {
+            get().saveTabsForWorkspace(prevId);
+          }
+        } catch (err) {
+          console.warn('Failed to save tabs for previous workspace:', err);
+        }
+
         set((state) => {
           const workspace = state.workspaces.find(w => w.id === id);
           if (!workspace) return state;
@@ -120,6 +139,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             activeWorkspaceId: id,
           };
         });
+
+        // Restore tabs for the newly active workspace
+        try {
+          get().restoreTabsForWorkspace(id);
+        } catch (err) {
+          console.warn('Failed to restore tabs for workspace:', err);
+        }
       },
 
       /**
@@ -168,13 +194,71 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       getDriveWorkspaces: () => {
         return get().workspaces.filter(w => w.type === 'drive');
       },
+
+      /**
+       * Save current editor tabs for the provided workspaceId (or active workspace if omitted)
+       */
+      saveTabsForWorkspace: (workspaceId) => {
+        const idToSave = workspaceId ?? get().activeWorkspaceId;
+        if (!idToSave) return;
+
+        try {
+          const editorState = useEditorStore.getState();
+          set((state) => ({
+            tabsByWorkspace: {
+              ...state.tabsByWorkspace,
+              [idToSave]: {
+                openTabs: editorState.openTabs || [],
+                activeTabId: editorState.activeTabId || null,
+              },
+            },
+          }));
+        } catch (err) {
+          console.warn('Failed to save tabs for workspace:', err);
+        }
+      },
+
+      /**
+       * Restore editor tabs for the provided workspaceId (or active workspace if omitted)
+       */
+      restoreTabsForWorkspace: (workspaceId) => {
+        const idToRestore = workspaceId ?? get().activeWorkspaceId;
+        if (!idToRestore) return;
+
+        try {
+          const saved = get().tabsByWorkspace[idToRestore];
+          if (saved && saved.openTabs) {
+            useEditorStore.setState({ openTabs: saved.openTabs, activeTabId: saved.activeTabId });
+          } else {
+            // No saved tabs for this workspace -> clear editor
+            useEditorStore.getState().closeAllTabs();
+          }
+        } catch (err) {
+          console.warn('Failed to restore tabs for workspace:', err);
+        }
+      },
     }),
     {
       name: 'verve-workspace-store',
       partialize: (state) => ({
         workspaces: state.workspaces,
         activeWorkspaceId: state.activeWorkspaceId,
+        tabsByWorkspace: state.tabsByWorkspace,
       }),
+      // After rehydration, restore tabs for the active workspace if any
+      onRehydrateStorage: () => (err) => {
+        if (err) return;
+        try {
+          // useWorkspaceStore is assigned by this module export; call after hydration
+          const ws = (useWorkspaceStore as any).getState ? (useWorkspaceStore as any).getState() : null;
+          if (ws && ws.activeWorkspaceId) {
+            // Call restore via the store API
+            ws.restoreTabsForWorkspace?.(ws.activeWorkspaceId);
+          }
+        } catch (e) {
+          // ignore
+        }
+      },
     }
   )
 );
