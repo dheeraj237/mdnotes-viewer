@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Redirecting...</title>
+    <script>
+      // GitHub Pages SPA fallback.
+      // This fetches the site's index.html from the repo root (if deployed under a repo path)
+      // injects a <base> so assets resolve correctly, writes the index HTML into the document,
+      // then restores the original URL so the client-side router can handle it.
+      (function () {
+        var path = location.pathname || '/';
+        var parts = path.split('/');
+        // parts[0] === "". parts[1] is repo name when deployed to username.github.io/repo
+        var repo = parts[1] || '';
+        var indexPath = repo ? '/' + repo + '/index.html' : '/index.html';
+        var baseHref = repo ? '/' + repo + '/' : '/';
+
+        fetch(indexPath)
+          .then(function (resp) { return resp.text(); })
+          .then(function (html) {
+            // Inject a base tag to make relative assets load correctly
+            var injected = html.replace(/<head(.*?)>/i, function (m) {
+              return m + '\n    <base href="' + baseHref + '">';
+            });
+            document.open();
+            document.write(injected);
+            document.close();
+            // restore the original path for the SPA router
+            history.replaceState({}, '', path + location.search + location.hash);
+          })
+          .catch(function () {
+            // If fetching fails, fall back to a simple redirect to root
+            location.replace(baseHref);
+          });
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting…</p>
+  </body>
+</html>
