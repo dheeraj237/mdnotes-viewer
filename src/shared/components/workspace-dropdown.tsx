@@ -46,6 +46,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
   const [workspaceToDelete, setWorkspaceToDelete] = useState<Workspace | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [selectedWorkspaceType, setSelectedWorkspaceType] = useState<Workspace['type']>('browser');
+  const [isSwitching, setIsSwitching] = useState(false);
   
   const { 
     workspaces, 
@@ -57,7 +58,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
     deleteWorkspace
   } = useWorkspaceStore();
 
-  const { openLocalDirectory, restoreLocalDirectory, setGoogleFolder } = useFileExplorerStore();
+  const { openLocalDirectory, restoreLocalDirectory, setGoogleFolder, setSelectedFile, refreshFileTree, clearLocalDirectory } = useFileExplorerStore();
 
   const currentWorkspace = activeWorkspace();
 
@@ -68,15 +69,41 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
     }
   }, [workspaces.length, createWorkspace]);
 
-  // Restore local directory on load if current workspace is local
+  // Restore workspace on mount
   React.useEffect(() => {
     const restoreOnLoad = async () => {
-      if (currentWorkspace?.type === 'local') {
-        await restoreLocalDirectory(currentWorkspace.id);
-      } else if (currentWorkspace?.type === 'drive' && currentWorkspace.driveFolder) {
-        // Set the Google Drive folder for this workspace
-        if (setGoogleFolder) {
-          setGoogleFolder(currentWorkspace.driveFolder);
+      // If no workspace exists, the other useEffect will create a default one
+      if (!currentWorkspace) return;
+
+      try {
+        // Clear any previously selected file so selection doesn't point to another workspace's file
+        setSelectedFile(null);
+
+        // Clear any stale local directory handle first
+        clearLocalDirectory();
+
+        if (currentWorkspace.type === 'local') {
+          const restored = await restoreLocalDirectory(currentWorkspace.id);
+          if (!restored) {
+            console.warn('Failed to restore local directory on mount');
+            // Don't show error toast on mount, user will see empty tree
+          }
+        } else if (currentWorkspace.type === 'drive' && currentWorkspace.driveFolder) {
+          // Set the Google Drive folder for this workspace
+          if (setGoogleFolder) {
+            setGoogleFolder(currentWorkspace.driveFolder);
+          }
+        }
+
+        // Always refresh file tree to ensure it reflects the current workspace
+        await refreshFileTree();
+      } catch (error) {
+        console.error('Error restoring workspace on mount:', error);
+        // Try to refresh anyway to show something
+        try {
+          await refreshFileTree();
+        } catch (refreshError) {
+          console.error('Failed to refresh file tree on mount:', refreshError);
         }
       }
     };
@@ -181,21 +208,52 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
   };
 
   const handleSwitchWorkspace = async (workspace: Workspace) => {
-    // If switching to a local workspace, try to restore the directory handle
-    if (workspace.type === 'local') {
-      const restored = await restoreLocalDirectory(workspace.id);
-      if (!restored) {
-        toast.error("Failed to restore local directory. Please select the directory again.");
-        // Still switch to the workspace, user can re-select directory
-      }
-    } else if (workspace.type === 'drive' && workspace.driveFolder) {
-      // Set the Google Drive folder for this workspace
-      if (setGoogleFolder) {
-        setGoogleFolder(workspace.driveFolder);
-      }
+    // Prevent switching if already in progress
+    if (isSwitching) {
+      return;
     }
 
-    switchWorkspace(workspace.id);
+    // Don't switch if already active
+    if (workspace.id === currentWorkspace?.id) {
+      return;
+    }
+
+    setIsSwitching(true);
+
+    try {
+      // Clear selection immediately so it doesn't point to a file from the previous workspace
+      setSelectedFile(null);
+
+      // Always clear local directory handle before switching workspaces
+      // This ensures we start fresh with the new workspace
+      clearLocalDirectory();
+
+      // Switch the active workspace in the store first
+      switchWorkspace(workspace.id);
+
+      // If switching to a local workspace, try to restore the directory handle
+      if (workspace.type === 'local') {
+        const restored = await restoreLocalDirectory(workspace.id);
+        if (!restored) {
+          toast.error("Failed to restore local directory. Please select the directory again.");
+          // Still continue with workspace switch, refresh will show empty tree
+        }
+      } else if (workspace.type === 'drive' && workspace.driveFolder) {
+        // Set the Google Drive folder for this workspace
+        if (setGoogleFolder) {
+          setGoogleFolder(workspace.driveFolder);
+        }
+      }
+
+      // Refresh file tree for the newly active workspace
+      await refreshFileTree();
+      toast.success(`Switched to "${workspace.name}"`);
+    } catch (e) {
+      console.error('Failed to switch workspace:', e);
+      toast.error("Failed to switch workspace");
+    } finally {
+      setIsSwitching(false);
+    }
   };
 
   const handleDeleteClick = (workspace: Workspace) => {
@@ -280,9 +338,11 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
             <div key={workspace.id} className="flex items-center group">
               <DropdownMenuItem
                 onClick={() => handleSwitchWorkspace(workspace)}
+                disabled={isSwitching}
                 className={cn(
                   "cursor-pointer flex-1 flex items-center gap-2",
-                  workspace.id === currentWorkspace?.id && "bg-accent"
+                  workspace.id === currentWorkspace?.id && "bg-accent",
+                  isSwitching && "opacity-50 cursor-not-allowed"
                 )}
               >
                 {getWorkspaceIcon(workspace.type)}
@@ -320,6 +380,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
           {workspaces.length > 0 && <DropdownMenuSeparator />}
           <DropdownMenuItem 
             onClick={() => setIsTypePickerOpen(true)} 
+            disabled={isSwitching}
             className="cursor-pointer"
           >
             <Plus className="h-4 w-4 mr-2" />

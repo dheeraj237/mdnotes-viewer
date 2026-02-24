@@ -8,7 +8,9 @@ import {
   restoreLocalDirectory as restoreLocalDir,
   refreshLocalDirectory,
   hasLocalDirectory,
+  clearLocalDirectory,
 } from "./helpers/directory-handler";
+import { useWorkspaceStore } from "@/core/store/workspace-store";
 import {
   createFile as createFileOp,
   createFolder as createFolderOp,
@@ -46,6 +48,7 @@ interface FileExplorerStore {
   collapseAll: () => void;
   expandAll: () => void;
   toggleCollapseExpand: () => void;
+  clearLocalDirectory: () => void;
 
   setGoogleFolder?: (folderId: string) => void;
 }
@@ -235,19 +238,34 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       refreshFileTree: async () => {
         const state = get();
 
-        
-        if (hasLocalDirectory()) {
-          const fileTree = await refreshLocalDirectory();
-          if (fileTree) {
-            set({ fileTree });
-          }
+        // Get the active workspace to determine which file tree to load
+        const activeWorkspace = useWorkspaceStore.getState().activeWorkspace();
+
+        // If no workspace is active or it's a browser workspace, load demo files
+        if (!activeWorkspace || activeWorkspace.type === 'browser') {
+          const fileTree = await buildDemoFileTree();
+          set({ fileTree });
           return;
         }
 
-        
-        const gdriveFolder = window.localStorage.getItem('verve_gdrive_folder_id');
-        if (gdriveFolder) {
-            try {
+        // For local workspace, check if directory handle exists and refresh
+        if (activeWorkspace.type === 'local') {
+          if (hasLocalDirectory()) {
+            const fileTree = await refreshLocalDirectory();
+            if (fileTree) {
+              set({ fileTree });
+              return;
+            }
+          }
+          // If local workspace but no directory handle, show empty or prompt to restore
+          set({ fileTree: [] });
+          return;
+        }
+
+        // For Google Drive workspace
+        if (activeWorkspace.type === 'drive' && activeWorkspace.driveFolder) {
+          try {
+            const gdriveFolder = activeWorkspace.driveFolder;
             const verveFileId = window.localStorage.getItem('verve_gdrive_verve_file_id');
             const children: FileNode[] = [];
 
@@ -271,16 +289,22 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             ];
 
             set({ fileTree: nodes });
+            return;
           } catch (e) {
             console.error('Failed to load Google Drive folder', e);
-            const fileTree = await buildDemoFileTree();
-            set({ fileTree });
+            set({ fileTree: [] });
+            return;
           }
-          return;
         }
 
+        // Fallback to demo files if no workspace type matches
         const fileTree = await buildDemoFileTree();
         set({ fileTree });
+      },
+
+      /** Clears the currently open local directory */
+      clearLocalDirectory: () => {
+        clearLocalDirectory();
       },
     }),
     {

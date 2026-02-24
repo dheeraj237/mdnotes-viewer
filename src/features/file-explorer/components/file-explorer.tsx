@@ -10,6 +10,7 @@ import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { cn } from "@/shared/utils/cn";
 import { initializeDemoFileTree } from "@/utils/demo-file-tree";
+import { useWorkspaceStore } from "@/core/store/workspace-store";
 
 export function FileExplorer() {
   const {
@@ -28,29 +29,45 @@ export function FileExplorer() {
     setGoogleFolder,
   } = useFileExplorerStore();
   const { openLocalFile } = useEditorStore();
+  const { activeWorkspace } = useWorkspaceStore();
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
     async function loadFiles() {
+      // Prevent loading demo files if workspace restoration is in progress
+      if (hasInitialized) return;
+      setHasInitialized(true);
+
       try {
-        // Load demo files from localStorage
-        const demoFileTree = await initializeDemoFileTree();
-        
-        if (demoFileTree && demoFileTree.length > 0) {
-          setFileTree(demoFileTree);
-        // Set default directory name for demo files
-          if (!currentDirectoryName) {
-            setCurrentDirectory('Demo Files', '/demo');
+        const currentWorkspace = activeWorkspace();
+
+        // Only load demo files if:
+        // 1. No workspace exists yet (first time user)
+        // 2. OR active workspace is 'browser' type (demo workspace)
+        // For 'local' or 'drive' workspaces, let WorkspaceDropdown restoration handle it
+        if (!currentWorkspace || currentWorkspace.type === 'browser') {
+          // Load demo files from localStorage
+          const demoFileTree = await initializeDemoFileTree();
+
+          if (demoFileTree && demoFileTree.length > 0) {
+            setFileTree(demoFileTree);
+            // Set default directory name for demo files
+            if (!currentDirectoryName) {
+              setCurrentDirectory('Demo Files', '/demo');
+            }
           }
         }
+        // For non-browser workspaces, the WorkspaceDropdown component
+        // will handle restoration via its useEffect
       } catch (error) {
         console.error("Error loading demo files:", error);
       }
     }
 
     loadFiles();
-  }, [setFileTree, currentDirectoryName, setCurrentDirectory]);
+  }, [setFileTree, currentDirectoryName, setCurrentDirectory, activeWorkspace, hasInitialized]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -209,7 +226,7 @@ export function FileExplorer() {
         <Button
           variant="outline"
           size="sm"
-          onClick={openLocalDirectory}
+          onClick={() => openLocalDirectory()}
           disabled={isLoadingLocalFiles}
           className="flex-1 gap-2 text-xs cursor-pointer"
           title="Open folder"
