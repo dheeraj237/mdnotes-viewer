@@ -22,9 +22,9 @@ A modern, VSCode|Milkdown-inspired markdown documentation viewer built with Next
   - Custom scrollbar styling
 
 - [x] **Feature-Based Architecture** (v1.0.0)
-  - `features/` folder structure
-  - `shared/` components and utilities
-  - `core/` config and store
+  - `src/features/` folder structure
+  - `src/shared/` components and utilities
+  - `src/core/` config and store
   - TypeScript types system
   - Feature flags configuration
 

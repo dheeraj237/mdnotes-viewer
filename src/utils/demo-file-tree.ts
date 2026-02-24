@@ -4,7 +4,7 @@
  */
 
 import { FileNode } from '@/shared/types';
-import { getDemoAdapter } from '@/src/hooks/use-demo-mode';
+import { getDemoAdapter } from '@/hooks/use-demo-mode';
 
 /**
  * Build demo file tree from demo adapter

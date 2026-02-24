@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './'),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   // For GitHub Pages: set to '/repo-name/' for project pages, or '/' for user/org pages

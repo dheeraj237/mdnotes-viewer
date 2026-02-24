@@ -5,7 +5,7 @@ import { FileTreeItem } from "./file-tree-item";
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
-import { initializeDemoFileTree } from "@/src/utils/demo-file-tree";
+import { initializeDemoFileTree } from "@/utils/demo-file-tree";
 
 export function CollapsibleFileExplorer() {
   const {

@@ -157,47 +157,50 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 
 ```
 verve/
-├── app/                              # Next.js app router
-│   ├── api/files/[...path]/         # File system API endpoints
-│   ├── globals.css                  # Global styles & editor themes
-│   ├── layout.tsx                   # Root layout with providers
-│   └── page.tsx                     # Main application page
-│
-├── features/                         # Feature-based modules
-│   ├── file-explorer/               # File tree navigation
-│   │   ├── components/              # FileExplorer component
-│   │   └── store/                   # File tree state
+├── src/                              # Source code (all application code)
+│   ├── App.tsx                      # Main application entry
+│   ├── main.tsx                     # Vite entry point
 │   │
-│   ├── editor/                      # Live markdown editor with preview
-│   │   ├── components/              # LiveMarkdownEditor, MarkdownPreview, TOC
-│   │   ├── plugins/                 # CodeMirror plugins
-│   │   │   ├── plugin-utils.ts     # Shared plugin utilities
-│   │   │   ├── custom-link-plugin.tsx
-│   │   │   ├── code-block-plugin.tsx
-│   │   │   ├── mermaid-plugin.tsx
-│   │   │   ├── html-plugin.tsx
-│   │   │   └── ...                 # More plugins
-│   │   ├── hooks/                   # useTableOfContents, useActiveHeading
-│   │   └── store/                   # Editor & TOC state
-│
-├── shared/                           # Shared resources
-│   ├── components/                  # Reusable UI components
-│   │   ├── app-shell.tsx           # Main layout
-│   │   ├── app-toolbar.tsx         # Top toolbar
-│   │   └── ui/                     # UI primitives
-│   ├── types/                       # TypeScript types
+│   ├── features/                    # Feature-based modules
+│   │   ├── file-explorer/          # File tree navigation
+│   │   │   ├── components/         # FileExplorer component
+│   │   │   └── store/              # File tree state
+│   │   │
+│   │   ├── editor/                 # Live markdown editor with preview
+│   │   │   ├── components/         # LiveMarkdownEditor, MarkdownPreview, TOC
+│   │   │   ├── plugins/            # CodeMirror plugins
+│   │   │   │   ├── plugin-utils.ts # Shared plugin utilities
+│   │   │   │   ├── custom-link-plugin.tsx
+│   │   │   │   ├── code-block-plugin.tsx
+│   │   │   │   ├── mermaid-plugin.tsx
+│   │   │   │   ├── html-plugin.tsx
+│   │   │   │   └── ...             # More plugins
+│   │   │   ├── hooks/              # useTableOfContents, useActiveHeading
+│   │   │   └── store/              # Editor & TOC state
+│   │
+│   ├── shared/                      # Shared resources
+│   │   ├── components/             # Reusable UI components
+│   │   │   ├── app-shell.tsx      # Main layout
+│   │   │   ├── app-toolbar.tsx    # Top toolbar
+│   │   │   └── ui/                # shadcn/ui components
+│   │   ├── types/                  # TypeScript types
+│   │   └── utils/                  # Utility functions
+│   │
+│   ├── core/                        # Core systems
+│   │   ├── config/                 # Configuration
+│   │   │   └── features.ts        # Feature flags
+│   │   ├── file-manager/          # File management system
+│   │   │   ├── file-manager.ts    # Core file manager
+│   │   │   ├── adapters/          # Storage adapters
+│   │   │   └── README.md          # Architecture docs
+│   │   └── store/                  # Global state
+│   │
+│   ├── hooks/                       # Custom React hooks
+│   ├── pages/                       # Page components
+│   ├── styles/                      # Global styles
 │   └── utils/                       # Utility functions
 │
-├── core/                             # Core systems
-│   ├── config/                      # Configuration
-│   │   └── features.ts             # Feature flags
-│   ├── file-manager/               # File management system
-│   │   ├── file-manager.ts         # Core file manager
-│   │   ├── adapters/               # Storage adapters
-│   │   └── README.md               # Architecture docs
-│   └── store/                       # Global state
-│
-└── content/                          # Markdown content
+└── public/content/                   # Markdown content
     ├── get-started.md
     ├── mermaid-examples.md
     └── ...
@@ -363,7 +366,7 @@ flowchart TD
 
 - [Architecture Guide](./docs/ARCHITECTURE.md) - System architecture and design patterns
 - [Plugin Development](./docs/PLUGIN_DEVELOPMENT.md) - Creating CodeMirror plugins
-- [File Manager](./core/file-manager/README.md) - File management system
+- [File Manager](./src/core/file-manager/README.md) - File management system
 - [Copilot Instructions](./.github/copilot-instructions.md) - Development guidelines
 
 ## 🎯 Roadmap

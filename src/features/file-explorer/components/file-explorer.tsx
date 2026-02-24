@@ -9,7 +9,7 @@ import { useEditorStore } from "@/features/editor/store/editor-store";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { cn } from "@/shared/utils/cn";
-import { initializeDemoFileTree } from "@/src/utils/demo-file-tree";
+import { initializeDemoFileTree } from "@/utils/demo-file-tree";
 
 export function FileExplorer() {
   const {

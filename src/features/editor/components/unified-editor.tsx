@@ -67,7 +67,7 @@ export function Editor() {
           await writable.close();
         } else {
           // For demo files, use demo adapter directly
-          const { getDemoAdapter } = await import('@/src/hooks/use-demo-mode');
+          const { getDemoAdapter } = await import('@/hooks/use-demo-mode');
           const adapter = getDemoAdapter();
           await adapter.writeFile(currentFile.path, sanitizedContent);
         }

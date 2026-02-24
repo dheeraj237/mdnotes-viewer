@@ -8,7 +8,7 @@ import { FileContextMenu } from "./context-menu";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { Button } from "@/shared/components/ui/button";
-import { getDemoAdapter } from "@/src/hooks/use-demo-mode";
+import { getDemoAdapter } from "@/hooks/use-demo-mode";
 
 interface FileTreeItemProps {
   node: FileNode;

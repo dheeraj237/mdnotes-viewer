@@ -24,11 +24,14 @@ See `.github/COPILOT_GUARDRAILS.md` for:
 
 ## Architecture
 ```
-features/          # Feature-based modules (file-explorer, editor)
-shared/            # Shared UI components, utils, types
-  components/ui/   # shadcn/ui components
-core/              # Config, stores, file-manager
-app/               # Next.js app router
+src/               # All application source code
+  features/        # Feature-based modules (file-explorer, editor)
+  shared/          # Shared UI components, utils, types
+    components/ui/ # shadcn/ui components
+  core/            # Config, stores, file-manager
+  pages/           # Page components  
+  hooks/           # Custom React hooks
+  styles/          # Global styles
 ```
 
 ## Code Style
@@ -58,10 +61,10 @@ export const useStore = create<State>()((set) => ({
 
 ## shadcn/ui Usage
 - Install: `npx shadcn@latest add <component>`
-- Location: `shared/components/ui/`
+- Location: `src/shared/components/ui/`
 - Available: Button, Separator, Dialog, Input, Label, DropdownMenu, ContextMenu, Tooltip, Tabs
 - Always use shadcn components, don't create custom UI components
- - Project helper: `yarn shadcn:add add <component> -p shared/components/ui -y -o` (runs shadcn CLI for this repo)
+ - Project helper: `yarn shadcn:add add <component> -p src/shared/components/ui -y -o` (runs shadcn CLI for this repo)
 
 ## File Naming
 - Components: `kebab-case.tsx`

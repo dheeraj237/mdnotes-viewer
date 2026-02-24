@@ -65,15 +65,19 @@
 ### Architecture Layers (This Project)
 
 ```
-app/           → Entry points, routes (Layer 1: UI)
-features/      → Feature modules (Layer 2: Business Logic)
-  editor/      → Markdown editor feature
-  file-explorer/ → File navigation feature
-shared/        → Reusable components, utils
-  components/ui/ → shadcn/ui components
-core/          → Config, stores, adapters (Layer 3: Infrastructure)
-  file-manager/ → File system abstraction
-  store/       → Global state (Zustand)
+src/                → All application source code
+  App.tsx           → Main application entry (Layer 1: UI)
+  features/         → Feature modules (Layer 2: Business Logic)
+    editor/         → Markdown editor feature
+    file-explorer/  → File navigation feature
+  shared/           → Reusable components, utils
+    components/ui/  → shadcn/ui components
+  core/             → Config, stores, adapters (Layer 3: Infrastructure)
+    file-manager/   → File system abstraction
+    store/          → Global state (Zustand)
+  pages/            → Page components
+  hooks/            → Custom React hooks
+  styles/           → Global styles
 ```
 
 ### Before Modifying Code, Identify:
@@ -91,9 +95,9 @@ core/          → Config, stores, adapters (Layer 3: Infrastructure)
 - Avoid premature abstraction
 
 ### DRY (Don't Repeat Yourself)
-- Check for existing utilities in `shared/utils/`
+- Check for existing utilities in `src/shared/utils/`
 - Check for existing hooks in feature `hooks/` folders
-- Reuse shadcn/ui components from `shared/components/ui/`
+- Reuse shadcn/ui components from `src/shared/components/ui/`
 
 ### YAGNI (You Aren't Gonna Need It)
 - Don't add features "just in case"

@@ -2,8 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { FileNode } from "@/shared/types";
 import { MARKDOWN_EXTENSIONS, CODE_EXTENSIONS, TEXT_EXTENSIONS } from "@/shared/utils/file-type-detector";
-import { getDemoAdapter } from "@/src/hooks/use-demo-mode";
-import { buildDemoFileTree } from "@/src/utils/demo-file-tree";
+import { getDemoAdapter } from "@/hooks/use-demo-mode";
+import { buildDemoFileTree } from "@/utils/demo-file-tree";
 
 interface FileExplorerStore {
   expandedFolders: Set<string>;

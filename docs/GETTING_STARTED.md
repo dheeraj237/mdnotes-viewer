@@ -164,52 +164,57 @@ sequenceDiagram
 ```
 verve/
 │
-├── app/                        # Next.js application
-│   ├── page.tsx               # Main page (START HERE)
-│   ├── layout.tsx             # Wraps entire app
-│   └── api/files/             # File operations API
-│
-├── features/                   # Feature modules
+├── src/                        # All application source code
+│   ├── App.tsx                 # Main application (START HERE)
+│   ├── main.tsx                # Vite entry point
 │   │
-│   ├── file-explorer/         # Left sidebar
-│   │   ├── components/
-│   │   │   └── FileExplorer.tsx    # Tree view
-│   │   └── store/
-│   │       └── file-explorer-store.ts
+│   ├── features/               # Feature modules
+│   │   │
+│   │   ├── file-explorer/     # Left sidebar
+│   │   │   ├── components/
+│   │   │   │   └── FileExplorer.tsx    # Tree view
+│   │   │   └── store/
+│   │   │       └── file-explorer-store.ts
+│   │   │
+│   │   └── editor/            # Main editor & preview (CORE FEATURE)
+│   │       ├── components/
+│   │       │   ├── LiveMarkdownEditor.tsx  # Editor component
+│   │       │   ├── MarkdownPreview.tsx     # Preview component
+│   │       │   └── TableOfContents.tsx     # TOC sidebar
+│   │       │
+│   │       ├── plugins/       # CodeMirror plugins
+│   │       │   ├── plugin-utils.ts        # Shared code
+│   │       │   ├── list-plugin.tsx        # Bullet points
+│   │       │   ├── code-block-plugin.tsx  # Code highlighting
+│   │       │   ├── mermaid-plugin.tsx     # Diagrams
+│   │       │   └── ...
+│   │       │
+│   │       ├── hooks/         # Composition hooks
+│   │       │   ├── use-table-of-contents.ts
+│   │       │   └── use-active-heading.ts
+│   │       │
+│   │       └── store/
+│   │           ├── editor-store.ts
+│   │           └── toc-store.ts
 │   │
-│   ├── editor/            # Main editor & preview (CORE FEATURE)
+│   ├── shared/                 # Shared code
 │   │   ├── components/
-│   │   │   ├── LiveMarkdownEditor.tsx  # Editor component
-│   │   │   ├── MarkdownPreview.tsx     # Preview component
-│   │   │   └── TableOfContents.tsx     # TOC sidebar
-│   │   │
-│   │   ├── plugins/       # CodeMirror plugins
-│   │   │   ├── plugin-utils.ts        # Shared code
-│   │   │   ├── list-plugin.tsx        # Bullet points
-│   │   │   ├── code-block-plugin.tsx  # Code highlighting
-│   │   │   ├── mermaid-plugin.tsx     # Diagrams
-│   │   │   └── ...
-│   │   │
-│   │   ├── hooks/         # Composition hooks
-│   │   │   ├── use-table-of-contents.ts
-│   │   │   └── use-active-heading.ts
-│   │   │
-│   │   └── store/
-│   │       ├── editor-store.ts
-│   │       └── toc-store.ts
+│   │   │   ├── app-shell.tsx      # Layout container
+│   │   │   ├── app-toolbar.tsx    # Top toolbar
+│   │   │   └── ui/                # Reusable UI components
+│   │   ├── types/                 # TypeScript types
+│   │   └── utils/                 # Helper functions
+│   │
+│   ├── core/                   # Core systems
+│   │   ├── config/            # Configuration
+│   │   ├── file-manager/      # File operations
+│   │   └── store/             # Global state
+│   │
+│   ├── hooks/                  # Custom React hooks
+│   ├── pages/                  # Page components
+│   └── styles/                 # Global styles
 │
-├── shared/                     # Shared code
-│   ├── components/
-│   │   ├── app-shell.tsx      # Layout container
-│   │   ├── app-toolbar.tsx    # Top toolbar
-│   │   └── ui/                # Reusable UI components
-│   ├── types/                 # TypeScript types
-│   └── utils/                 # Helper functions
-│
-└── core/                       # Core systems
-    ├── config/                # Configuration
-    ├── file-manager/          # File operations
-    └── store/                 # Global state
+└── public/content/             # Markdown content
 ```
 
 ## Your First Contribution
@@ -222,7 +227,7 @@ We'll modify how bullet points look in the editor.
 
 **Step 1: Find the plugin**
 
-Open `features/editor/plugins/list-plugin.tsx`
+Open `src/features/editor/plugins/list-plugin.tsx`
 
 **Step 2: Find the bullet rendering code**
 
@@ -258,7 +263,7 @@ Let's create a plugin that makes `==highlighted text==` stand out.
 
 **Step 1: Create the plugin file**
 
-Create `features/editor/plugins/highlight-plugin.tsx`
+Create `src/features/editor/plugins/highlight-plugin.tsx`
 
 **Step 2: Write the plugin**
 
@@ -322,7 +327,7 @@ In `app/globals.css`, add:
 
 **Step 4: Register the plugin**
 
-In `features/editor/components/LiveMarkdownEditor.tsx`:
+In `src/features/editor/components/LiveMarkdownEditor.tsx`:
 
 ```typescript
 import { highlightPlugin } from '../plugins/highlight-plugin';

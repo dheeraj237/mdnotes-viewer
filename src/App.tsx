@@ -3,8 +3,8 @@ import { ThemeProvider } from '@/shared/components/theme-provider';
 import { GrowthBookWrapper } from '@/core/config/growthbook-provider';
 import { Toaster } from '@/shared/components/toaster';
 import { LandingPage } from '@/shared/components/landing-page';
-import { EditorPage } from '@/src/pages/EditorPage';
-import { useDemoMode } from '@/src/hooks/use-demo-mode';
+import { EditorPage } from '@/pages/EditorPage';
+import { useDemoMode } from '@/hooks/use-demo-mode';
 
 function App() {
   // Initialize demo mode

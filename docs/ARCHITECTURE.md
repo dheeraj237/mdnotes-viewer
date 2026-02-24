@@ -51,14 +51,14 @@ graph LR
 
 ## Application Layers
 
-### Layer 1: UI Components (`app/` and `shared/components/`)
+### Layer 1: UI Components (`src/App.tsx` and `src/shared/components/`)
 
 The outermost layer handles user interaction and presentation.
 
 **Key Files:**
-- `app/page.tsx` - Main application entry point
-- `shared/components/app-shell.tsx` - Layout container with resizable panels
-- `shared/components/app-toolbar.tsx` - Top toolbar with controls
+- `src/App.tsx` - Main application entry point
+- `src/shared/components/app-shell.tsx` - Layout container with resizable panels
+- `src/shared/components/app-toolbar.tsx` - Top toolbar with controls
 
 **Responsibilities:**
 - Render UI elements
@@ -66,11 +66,11 @@ The outermost layer handles user interaction and presentation.
 - Display data from stores
 - Trigger actions via store methods
 
-### Layer 2: Features (`features/`)
+### Layer 2: Features (`src/features/`)
 
 Feature modules encapsulate specific functionality.
 
-#### File Explorer (`features/file-explorer/`)
+#### File Explorer (`src/features/file-explorer/`)
 
 ```mermaid
 graph TD
@@ -92,7 +92,7 @@ graph TD
 - Context menu for file operations
 - Inline editing for renames
 
-#### Markdown Editor (`features/editor/`)
+#### Markdown Editor (`src/features/editor/`)
 
 ```mermaid
 graph TD
@@ -111,7 +111,7 @@ graph TD
 - `MarkdownPreview.tsx` - Live markdown preview
 - `TableOfContents.tsx` - TOC sidebar
 
-**Plugins:** (`features/editor/plugins/`)
+**Plugins:** (`src/features/editor/plugins/`)
 - `custom-link-plugin.tsx` - Interactive links
 - `code-block-plugin.tsx` - Syntax-highlighted code
 - `mermaid-plugin.tsx` - Diagram rendering

@@ -94,7 +94,7 @@ yarn preview
 
 ### Style Changes
 - All styles in Tailwind (no custom CSS needed)
-- Theme system: `shared/components/theme-provider.tsx`
+- Theme system: `src/shared/components/theme-provider.tsx`
 - Colors: `app/globals.css` CSS variables
 
 ## 🐛 Troubleshooting
