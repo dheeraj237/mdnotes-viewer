@@ -1,36 +1,61 @@
+/**
+ * Workspace Store - Manages multiple workspaces (browser, local, Google Drive)
+ * Allows users to switch between different content sources
+ */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+/**
+ * Workspace Interface
+ * Represents a content source (browser storage, local folder, or Google Drive)
+ */
 export interface Workspace {
   id: string;
   name: string;
   type: 'browser' | 'local' | 'drive';
-  path?: string; // For local workspaces
-  driveFolder?: string; // For Google Drive workspaces
+  path?: string;
+  driveFolder?: string;
   createdAt: string;
   lastAccessed: string;
   isDefault?: boolean;
 }
 
+/**
+ * Workspace Store State Interface
+ */
 interface WorkspaceStore {
+  /** Array of all workspaces */
   workspaces: Workspace[];
+  /** ID of the currently active workspace */
   activeWorkspaceId: string | null;
+  /** Whether the workspace picker dialog is open */
   isWorkspacePickerOpen: boolean;
   
-  // Actions
+  /** Creates a new workspace */
   createWorkspace: (name: string, type: Workspace['type'], options?: { path?: string; driveFolder?: string }) => void;
+  /** Deletes a workspace by ID */
   deleteWorkspace: (id: string) => void;
+  /** Switches to a different workspace */
   switchWorkspace: (id: string) => void;
+  /** Updates workspace properties */
   updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
+  /** Opens or closes the workspace picker dialog */
   setWorkspacePickerOpen: (open: boolean) => void;
   
-  // Computed
+  /** Gets the currently active workspace */
   activeWorkspace: () => Workspace | null;
+  /** Gets all browser-based workspaces */
   getBrowserWorkspaces: () => Workspace[];
+  /** Gets all local file system workspaces */
   getLocalWorkspaces: () => Workspace[];
+  /** Gets all Google Drive workspaces */
   getDriveWorkspaces: () => Workspace[];
 }
 
+/**
+ * Workspace Store Implementation
+ * Persists workspace list and active workspace to localStorage
+ */
 export const useWorkspaceStore = create<WorkspaceStore>()(
   persist(
     (set, get) => ({
@@ -38,6 +63,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       activeWorkspaceId: null,
       isWorkspacePickerOpen: false,
 
+      /**
+       * Creates a new workspace with the specified type and options
+       * Automatically sets it as the active workspace
+       */
       createWorkspace: (name, type, options = {}) => {
         const workspace: Workspace = {
           id: `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -55,6 +84,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         }));
       },
 
+      /**
+       * Deletes a workspace by ID
+       * If deleting the active workspace, switches to the first available workspace
+       */
       deleteWorkspace: (id) => {
         set((state) => {
           const newWorkspaces = state.workspaces.filter(w => w.id !== id);
@@ -68,12 +101,15 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         });
       },
 
+      /**
+       * Switches to a different workspace by ID
+       * Updates the lastAccessed timestamp for the workspace
+       */
       switchWorkspace: (id) => {
         set((state) => {
           const workspace = state.workspaces.find(w => w.id === id);
           if (!workspace) return state;
 
-          // Update last accessed time
           const updatedWorkspaces = state.workspaces.map(w =>
             w.id === id ? { ...w, lastAccessed: new Date().toISOString() } : w
           );
@@ -85,6 +121,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         });
       },
 
+      /**
+       * Updates properties of a workspace
+       */
       updateWorkspace: (id, updates) => {
         set((state) => ({
           workspaces: state.workspaces.map(w =>
@@ -93,24 +132,38 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         }));
       },
 
+      /**
+       * Opens or closes the workspace picker dialog
+       */
       setWorkspacePickerOpen: (open) => {
         set({ isWorkspacePickerOpen: open });
       },
 
-      // Computed getters
+      /**
+       * Gets the currently active workspace
+       */
       activeWorkspace: () => {
         const { workspaces, activeWorkspaceId } = get();
         return workspaces.find(w => w.id === activeWorkspaceId) || null;
       },
 
+      /**
+       * Filters and returns all browser-based workspaces
+       */
       getBrowserWorkspaces: () => {
         return get().workspaces.filter(w => w.type === 'browser');
       },
 
+      /**
+       * Filters and returns all local file system workspaces
+       */
       getLocalWorkspaces: () => {
         return get().workspaces.filter(w => w.type === 'local');
       },
 
+      /**
+       * Filters and returns all Google Drive workspaces
+       */
       getDriveWorkspaces: () => {
         return get().workspaces.filter(w => w.type === 'drive');
       },

@@ -1,12 +1,24 @@
+/**
+ * User Store - Manages user profile and preferences
+ * Handles authentication state and user settings
+ */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+/**
+ * User Preferences Interface
+ * Stores customizable settings that persist across sessions
+ */
 interface UserPreferences {
   theme: "light" | "dark" | "system";
   editorFontSize: number;
   editorLineHeight: number;
 }
 
+/**
+ * User Profile Interface
+ * Contains basic user information from authentication provider
+ */
 interface UserProfile {
   id: string;
   name: string | null;
@@ -14,10 +26,14 @@ interface UserProfile {
   image: string | null;
 }
 
+/**
+ * User Store State Interface
+ */
 interface UserState {
   profile: UserProfile | null;
   preferences: UserPreferences;
   isLoggedIn: boolean;
+
   setProfile: (profile: UserProfile | null) => void;
   setTheme: (theme: "light" | "dark" | "system") => void;
   setEditorFontSize: (size: number) => void;
@@ -26,6 +42,10 @@ interface UserState {
   logout: () => void;
 }
 
+/**
+ * User Store Implementation
+ * Persists user data and preferences to localStorage
+ */
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({

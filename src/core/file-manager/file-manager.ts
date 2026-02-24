@@ -34,7 +34,7 @@ export class FileManager {
   async loadFile(path: string): Promise<FileData> {
     const fileData = await this.adapter.readFile(path);
     
-    // Cache the file
+
     this.cache[fileData.id] = {
       metadata: {
         id: fileData.id,
@@ -51,7 +51,6 @@ export class FileManager {
       isDirty: false,
     };
 
-    // Start watching for external changes
     this.startWatching(fileData.id, path);
 
     return fileData;
@@ -66,12 +65,11 @@ export class FileManager {
       throw new Error(`File not found in cache: ${patch.fileId}`);
     }
 
-    // Update cache immediately
+
     cached.content = patch.content;
     cached.isDirty = true;
     cached.lastSync = Date.now();
 
-    // Queue the write operation
     this.queueWrite(patch);
   }
 
@@ -102,23 +100,22 @@ export class FileManager {
     pending.status = "in-progress";
 
     try {
-      // Pull latest version first
+
       const latestVersion = await this.adapter.getFileVersion(pending.path);
       const cached = this.cache[pending.fileId];
 
-      // Check for conflicts
+
       if (latestVersion && cached.version && latestVersion !== cached.version) {
-        // File was modified externally - pull and notify
+
         await this.handleConflict(pending.fileId, pending.path);
         pending.status = "failed";
         pending.error = "File was modified externally";
         return;
       }
 
-      // No conflict - push changes
       await this.adapter.writeFile(pending.path, pending.content!);
       
-      // Update cache
+
       cached.version = await this.adapter.getFileVersion(pending.path);
       cached.isDirty = false;
       cached.lastSync = Date.now();
@@ -130,7 +127,7 @@ export class FileManager {
       console.error("Failed to process operation:", error);
     }
 
-    // Process next operation
+
     this.processNextOperation();
   }
 
@@ -141,7 +138,7 @@ export class FileManager {
     const cached = this.cache[fileId];
     const latest = await this.adapter.readFile(path);
 
-    // Update cache with latest content
+
     cached.content = latest.content;
     cached.version = latest.version;
     cached.lastSync = Date.now();
@@ -154,7 +151,6 @@ export class FileManager {
       baseVersion: cached.version,
     };
 
-    // Emit event for UI to handle
     this.emitConflict(conflict);
 
     return conflict;
@@ -164,13 +160,11 @@ export class FileManager {
    * Watch for external file changes
    */
   private startWatching(fileId: string, path: string): void {
-    // Clear existing timer if any
     const existingTimer = this.syncTimers.get(fileId);
     if (existingTimer) {
       clearInterval(existingTimer);
     }
 
-    // Start new timer
     const timer = setInterval(async () => {
       const cached = this.cache[fileId];
       if (!cached) {
@@ -178,13 +172,10 @@ export class FileManager {
         return;
       }
 
-      // Skip if there are pending writes
       if (cached.isDirty) return;
 
       try {
         const latestVersion = await this.adapter.getFileVersion(path);
-        
-        // Check if file was modified externally
         if (latestVersion && cached.version && latestVersion !== cached.version) {
           await this.pullLatest(fileId, path);
         }

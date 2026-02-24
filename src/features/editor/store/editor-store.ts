@@ -1,6 +1,13 @@
 /**
  * Editor Store - Manages open files, tabs, and view mode
  * Uses Zustand for state management with file manager integration
+ * 
+ * Features:
+ * - Multi-tab editing
+ * - File content synchronization
+ * - External update handling (file watchers)
+ * - Multiple view modes (markdown/code/source)
+ * - Local and cloud file support
  */
 import { create } from "zustand";
 import { MarkdownFile } from "@/shared/types";
@@ -8,23 +15,21 @@ import { FileManager } from "@/core/file-manager";
 import { DemoFileSystemAdapter } from "@/core/file-manager/adapters/demo-adapter";
 import { LocalFileSystemAdapter } from "@/core/file-manager/adapters/local-adapter";
 
-// Singleton file manager instance - shared across all store instances
+ 
 const demoAdapter = new DemoFileSystemAdapter();
 const localAdapter = new LocalFileSystemAdapter();
 let fileManager: FileManager | null = null;
 
 /**
- * Get or create file manager instance (lazy initialization)
+ * Gets or creates the file manager instance (lazy initialization)
  * Sets up external update listener on first creation
  * 
- * For demo mode, always use the demo adapter
+ * @param isLocal - Whether to use local file system adapter
+ * @returns FileManager instance
  */
 function getFileManager(isLocal: boolean = false): FileManager {
   if (!fileManager) {
-    // Use demo adapter for demo mode
     fileManager = new FileManager(isLocal ? localAdapter : demoAdapter);
-
-    // Listen for external file changes (e.g., from disk, git pull, etc.)
     fileManager.onUpdate((fileId, content) => {
       useEditorStore.getState().handleExternalUpdate(fileId, content);
     });
@@ -33,8 +38,12 @@ function getFileManager(isLocal: boolean = false): FileManager {
 }
 
 /**
- * Enable Google Drive as the active file manager.
- * This will replace any existing FileManager instance.
+ * Enables Google Drive as the active file manager
+ * Replaces any existing FileManager instance
+ * 
+ * @param folderId - Optional Google Drive folder ID
+ * @returns FileManager instance configured for Google Drive
+ * @throws Error if GoogleDriveAdapter is not available
  */
 export async function enableGoogleDrive(folderId?: string) {
   try {
@@ -46,9 +55,8 @@ export async function enableGoogleDrive(folderId?: string) {
     const GoogleDriveAdapter = (mod as any).GoogleDriveAdapter;
     if (!GoogleDriveAdapter) throw new Error("GoogleDriveAdapter not available");
 
-    // Destroy existing manager if present
     if (fileManager) {
-      try { fileManager.destroy(); } catch (e) { /* ignore */ }
+      try { fileManager.destroy(); } catch (e) { }
       fileManager = null;
     }
 
@@ -64,37 +72,51 @@ export async function enableGoogleDrive(folderId?: string) {
   }
 }
 
+/** Editor Store State Interface */
 interface EditorStore {
   openTabs: MarkdownFile[];
   activeTabId: string | null;
   isLoading: boolean;
   isCodeViewMode: boolean;
   isSourceMode: boolean;
+
   openFile: (file: MarkdownFile) => void;
   closeTab: (fileId: string) => void;
   setActiveTab: (fileId: string) => void;
+
   updateFileContent: (fileId: string, content: string) => void;
   handleExternalUpdate: (fileId: string, content: string) => void;
   applyEditorPatch: (fileId: string, content: string) => Promise<void>;
-  setIsLoading: (loading: boolean) => void;
-  setCodeViewMode: (isCode: boolean) => void;
-  setSourceMode: (isSource: boolean) => void;
+
   openLocalFile: () => Promise<void>;
   loadFileFromManager: (path: string, isLocal?: boolean) => Promise<void>;
   openFileByPath: (relativePath: string, currentFilePath?: string, anchor?: string) => Promise<void>;
+
+  setIsLoading: (loading: boolean) => void;
+  setCodeViewMode: (isCode: boolean) => void;
+  setSourceMode: (isSource: boolean) => void;
   setFileSaving: (fileId: string, isSaving: boolean) => void;
   setFileLastSaved: (fileId: string, lastSaved: Date) => void;
 }
 
+ 
+
+ 
+
 export const useEditorStore = create<EditorStore>((set, get) => ({
+  
   openTabs: [],
   activeTabId: null,
   isLoading: false,
   isCodeViewMode: false,
   isSourceMode: false,
 
+  /**
+   * Opens a file in a new tab or switches to it if already open
+   * Prevents duplicate tabs for the same file
+   */
   openFile: (file) => set((state) => {
-    // Check if file is already open
+    
     const existingTab = state.openTabs.find(tab => tab.id === file.id);
     if (existingTab) {
       return { activeTabId: file.id };
@@ -105,15 +127,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     };
   }),
 
+  /**
+   * Closes a tab by file ID
+   * When closing active tab, switches to adjacent tab (next or previous)
+   */
   closeTab: (fileId) => set((state) => {
     const newTabs = state.openTabs.filter(tab => tab.id !== fileId);
     let newActiveId = state.activeTabId;
 
-    // When closing active tab, switch to adjacent tab (next or previous)
+    
     if (state.activeTabId === fileId) {
       const currentIndex = state.openTabs.findIndex(tab => tab.id === fileId);
       if (newTabs.length > 0) {
-        // Prefer next tab, fall back to previous if closing last tab
+        
         const nextIndex = currentIndex < newTabs.length ? currentIndex : currentIndex - 1;
         newActiveId = newTabs[nextIndex]?.id || null;
       } else {
@@ -127,20 +153,32 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     };
   }),
 
+  /**
+   * Sets the currently active tab
+   */
   setActiveTab: (fileId) => set({ activeTabId: fileId }),
 
+  /**
+   * Updates the content of an open file
+   */
   updateFileContent: (fileId, content) => set((state) => ({
     openTabs: state.openTabs.map(tab =>
       tab.id === fileId ? { ...tab, content } : tab
     ),
   })),
 
+  /**
+   * Sets the saving state for a file
+   */
   setFileSaving: (fileId, isSaving) => set((state) => ({
     openTabs: state.openTabs.map(tab =>
       tab.id === fileId ? { ...tab, isSaving } : tab
     ),
   })),
 
+  /**
+   * Sets the last saved timestamp for a file
+   */
   setFileLastSaved: (fileId, lastSaved) => set((state) => ({
     openTabs: state.openTabs.map(tab =>
       tab.id === fileId ? { ...tab, lastSaved } : tab
@@ -148,8 +186,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   })),
 
   /**
-   * Handle external file updates (from file system watcher)
-   * This is called when file manager detects external changes
+   * Handles external file updates (from file system watcher)
+   * Marks the update as external to differentiate from user edits
    */
   handleExternalUpdate: (fileId, content) => set((state) => {
     const tab = state.openTabs.find(t => t.id === fileId);
@@ -163,8 +201,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   /**
-   * Apply editor patch asynchronously to file manager
-   * This is called when editor content changes
+   * Applies editor patch asynchronously to file manager
+   * Non-blocking - updates UI immediately, syncs to storage in background
    */
   applyEditorPatch: async (fileId, content) => {
     const tab = get().openTabs.find(t => t.id === fileId);
@@ -172,19 +210,20 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     const manager = getFileManager(tab.isLocal);
 
-    // Apply patch to file manager (async, non-blocking)
+    
     await manager.applyPatch({
       fileId,
       content,
       timestamp: Date.now(),
     });
 
-    // Update local store immediately for UI responsiveness
+    
     get().updateFileContent(fileId, content);
   },
 
   /**
-   * Load file through file manager
+   * Loads a file through the file manager
+   * Creates a MarkdownFile object and opens it in a new tab
    */
   loadFileFromManager: async (path, isLocal = false) => {
     try {
@@ -211,9 +250,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
   },
 
+  /**
+   * Opens a local file using the File System Access API
+   * Prompts user to select a markdown or text file
+   */
   openLocalFile: async () => {
     try {
-      // Check if File System Access API is supported
+      
       if (!('showOpenFilePicker' in window)) {
         alert('File System Access API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.');
         return;
@@ -254,6 +297,15 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
   },
 
+  /**
+   * Opens a file by relative path (used for markdown link navigation)
+   * Resolves relative paths, finds the file in the tree, and opens it
+   * Optionally scrolls to a specific heading anchor
+   * 
+   * @param relativePath - Relative path to the file (e.g., "./file.md" or "../folder/file.md")
+   * @param currentFilePath - Path of the current file (for resolving relative paths)
+   * @param anchor - Optional heading anchor to scroll to (e.g., "heading-slug")
+   */
   openFileByPath: async (relativePath: string, currentFilePath?: string, anchor?: string) => {
     const { resolveRelativePath, findFileInTree } = await import("@/shared/utils/file-path-resolver");
     const { useFileExplorerStore } = await import("@/features/file-explorer/store/file-explorer-store");
@@ -261,7 +313,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // Resolve the path relative to current file
+      
       let targetPath = relativePath;
       if (currentFilePath) {
         const resolved = resolveRelativePath(currentFilePath, relativePath);
@@ -271,19 +323,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         targetPath = resolved;
       }
 
-      // Get file tree from explorer store
+      
       const fileTree = useFileExplorerStore.getState().fileTree;
 
-      // Search for the file in the tree
+      
       const fileNode = findFileInTree(fileTree, targetPath);
 
       if (!fileNode) {
         throw new Error(`File not found: ${targetPath}`);
       }
 
-      // Check if this is a local file
+      
       if (fileNode.id.startsWith('local-file-')) {
-        // Read file from local file system
+        
         const dirHandle = (window as any).__localDirHandle;
         if (!dirHandle) {
           throw new Error('No directory handle available');
@@ -292,7 +344,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const pathParts = fileNode.path.split('/');
         let currentHandle = dirHandle;
 
-        // Navigate to the file through directory structure
+        
         for (let i = 0; i < pathParts.length - 1; i++) {
           currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
         }
@@ -311,7 +363,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
           isLocal: true,
         });
       } else {
-        // Load from demo adapter (localStorage)
+        
         const manager = getFileManager(false);
         const fileData = await manager.loadFile(fileNode.path);
 
@@ -324,7 +376,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         });
       }
 
-      // Scroll to anchor after file is loaded (with delay for rendering)
       if (anchor) {
         setTimeout(async () => {
           const { scrollToHeading } = await import('@/shared/utils/scroll-to-heading');
@@ -343,14 +394,21 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }
   },
 
+  /** Sets the loading state */
   setIsLoading: (loading) => set({ isLoading: loading }),
 
+  /** Toggles code view mode (shows syntax highlighting for languages) */
   setCodeViewMode: (isCode) => set({ isCodeViewMode: isCode }),
 
+  /** Toggles source mode (shows raw markdown) */
   setSourceMode: (isSource) => set({ isSourceMode: isSource }),
 }));
 
-// Helper to get current file
+/**
+ * Helper hook to get the currently active file
+ * 
+ * @returns The active MarkdownFile or null if no file is open
+ */
 export const useCurrentFile = () => {
   const { openTabs, activeTabId } = useEditorStore();
   return openTabs.find(tab => tab.id === activeTabId) || null;
