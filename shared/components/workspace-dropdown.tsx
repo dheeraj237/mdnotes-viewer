@@ -31,6 +31,7 @@ import { useWorkspaceStore, Workspace } from "@/core/store/workspace-store";
 import { useFileExplorerStore } from "@/features/file-explorer/store/file-explorer-store";
 import { cn } from "@/shared/utils/cn";
 import { toast } from "@/shared/utils/toast";
+import { WorkspaceTypePicker } from "@/shared/components/workspace-type-picker";
 
 interface WorkspaceDropdownProps {
   className?: string;
@@ -38,6 +39,7 @@ interface WorkspaceDropdownProps {
 
 export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isTypePickerOpen, setIsTypePickerOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [selectedWorkspaceType, setSelectedWorkspaceType] = useState<Workspace['type']>('browser');
   
@@ -65,12 +67,17 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
   // Listen for new workspace modal trigger
   React.useEffect(() => {
     const handleOpenModal = () => {
-      setIsCreateDialogOpen(true);
+      setIsTypePickerOpen(true);
     };
 
     document.addEventListener('openNewWorkspaceModal', handleOpenModal);
     return () => document.removeEventListener('openNewWorkspaceModal', handleOpenModal);
   }, []);
+
+  const handleTypeSelected = (type: 'browser' | 'local') => {
+    setSelectedWorkspaceType(type);
+    setIsCreateDialogOpen(true);
+  };
 
   const handleCreateWorkspace = async () => {
     if (!newWorkspaceName.trim()) {
@@ -85,10 +92,6 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         // Create workspace with the selected directory
         createWorkspace(newWorkspaceName, 'local');
         toast.success("Local workspace created successfully!");
-      } else if (selectedWorkspaceType === 'drive') {
-        // For Google Drive workspace - create and sync
-        createWorkspace(newWorkspaceName, 'drive');
-        toast.success("Google Drive workspace created! Sync will be available soon.");
       } else {
         // Browser workspace
         createWorkspace(newWorkspaceName, 'browser');
@@ -196,7 +199,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
           ))}
           {workspaces.length > 0 && <DropdownMenuSeparator />}
           <DropdownMenuItem 
-            onClick={() => setIsCreateDialogOpen(true)} 
+            onClick={() => setIsTypePickerOpen(true)} 
             className="cursor-pointer"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -209,9 +212,11 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Create New Workspace</DialogTitle>
+            <DialogTitle>
+              Create {selectedWorkspaceType === 'browser' ? 'Browser' : 'Local'} Workspace
+            </DialogTitle>
             <DialogDescription>
-              Choose a workspace type and give it a name.
+              Give your {selectedWorkspaceType === 'browser' ? 'browser' : 'local'} workspace a name.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -221,7 +226,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
                 id="workspace-name"
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
-                placeholder="My Workspace"
+                placeholder={`My ${selectedWorkspaceType === 'browser' ? 'Browser' : 'Local'} Workspace`}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleCreateWorkspace();
@@ -229,63 +234,22 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
                 }}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Workspace Type</Label>
-              <div className="grid grid-cols-1 gap-2">
-                <Button
-                  variant={selectedWorkspaceType === 'browser' ? 'default' : 'outline'}
-                  className="justify-start h-20 p-4"
-                  onClick={() => setSelectedWorkspaceType('browser')}
-                >
-                  <div className="flex flex-col items-start w-full">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Globe className="h-4 w-4" />
-                      <span className="font-medium">Browser Storage</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground text-left">
-                      Quick notes stored in browser
-                    </span>
-                  </div>
-                </Button>
-                <Button
-                  variant={selectedWorkspaceType === 'local' ? 'default' : 'outline'}
-                  className="justify-start h-20 p-4"
-                  onClick={() => setSelectedWorkspaceType('local')}
-                >
-                  <div className="flex flex-col items-start w-full">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FolderOpen className="h-4 w-4" />
-                      <span className="font-medium">Local Files</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground text-left">
-                      Connect to a folder on your computer
-                    </span>
-                  </div>
-                </Button>
-                <Button
-                  variant={selectedWorkspaceType === 'drive' ? 'default' : 'outline'}
-                  className="justify-start h-20 p-4"
-                  onClick={() => setSelectedWorkspaceType('drive')}
-                >
-                  <div className="flex flex-col items-start w-full">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Cloud className="h-4 w-4" />
-                      <span className="font-medium">Google Drive</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground text-left">
-                      Sync with Google Drive (Coming Soon)
-                    </span>
-                  </div>
-                </Button>
-              </div>
+            <div className="text-sm text-muted-foreground">
+              {selectedWorkspaceType === 'browser'
+                ? 'Your workspace will be saved in browser storage and available on this device.'
+                : 'Your workspace will connect to a folder on your computer for file access.'
+              }
             </div>
           </div>
           <DialogFooter>
             <Button 
               variant="outline" 
-              onClick={() => setIsCreateDialogOpen(false)}
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                setIsTypePickerOpen(true);
+              }}
             >
-              Cancel
+              Back
             </Button>
             <Button onClick={handleCreateWorkspace}>
               Create Workspace
@@ -293,6 +257,13 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Workspace Type Picker */}
+      <WorkspaceTypePicker
+        open={isTypePickerOpen}
+        onOpenChange={setIsTypePickerOpen}
+        onSelectType={handleTypeSelected}
+      />
     </div>
   );
 }

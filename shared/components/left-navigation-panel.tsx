@@ -12,10 +12,12 @@ import { useWorkspaceStore } from "@/core/store/workspace-store";
 import { useFileExplorerStore } from "@/features/file-explorer/store/file-explorer-store";
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { ThemeToggle } from "@/shared/components/theme-toggle";
-import { EmbeddedFileExplorer } from "@/features/file-explorer/components/embedded-file-explorer";
+import { CollapsibleFileExplorer } from "@/features/file-explorer/components/collapsible-file-explorer";
 import { WorkspaceDropdown } from "@/shared/components/workspace-dropdown";
 import { OpenedFilesSection } from "@/shared/components/opened-files-section";
 import { SearchBar } from "@/shared/components/search-bar";
+import { CollapsibleSection } from "@/shared/components/collapsible-section";
+import { CreateActions } from "@/shared/components/create-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,9 +74,6 @@ export function LeftNavigationPanel({ className }: LeftNavigationPanelProps) {
         <SearchBar />
       </div>
 
-      {/* Opened Files Section */}
-      <OpenedFilesSection />
-
       {/* Open folder/file buttons */}
       <div className="px-3 py-2 border-b border-sidebar-border">
         <div className="flex gap-2">
@@ -101,42 +100,34 @@ export function LeftNavigationPanel({ className }: LeftNavigationPanelProps) {
         </div>
       </div>
 
-      {/* Files Section - Contains the file explorer */}
-      <div className="flex-1 overflow-hidden">
-        <EmbeddedFileExplorer />
-      </div>
+      {/* Collapsible Files Section */}
+      <CollapsibleSection
+        title="Files"
+        className="flex-1 overflow-hidden border-b border-sidebar-border"
+        storageKey="files"
+      >
+        <div className="h-full overflow-hidden">
+          <CollapsibleFileExplorer />
+        </div>
+      </CollapsibleSection>
 
-      {/* Bottom Actions Dropdown */}
-      <div className="px-3 py-2 border-t border-sidebar-border">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start h-8 text-xs"
-            >
-              <Plus className="h-3 w-3 mr-2" />
-              Create
-              <ChevronDown className="h-3 w-3 ml-auto" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onClick={handleNewNote} className="cursor-pointer">
-              <Plus className="h-4 w-4 mr-2" />
-              New Note
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleNewWorkspace} className="cursor-pointer">
-              <FolderPlus className="h-4 w-4 mr-2" />
-              New Workspace
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer">
-              <div className="flex items-center justify-between w-full">
-                <span>Change Theme</span>
-                <ThemeToggle />
-              </div>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Bottom sections */}
+      <div className="border-t border-sidebar-border">
+        {/* Collapsible Opened Files Section */}
+        <CollapsibleSection
+          title="Opened"
+          isDefaultOpen={false}
+          className="border-b border-sidebar-border"
+          storageKey="opened"
+        >
+          <OpenedFilesSection />
+        </CollapsibleSection>
+
+        {/* Create Actions */}
+        <CreateActions
+          onNewNote={handleNewNote}
+          onNewWorkspace={handleNewWorkspace}
+        />
       </div>
     </div>
   );

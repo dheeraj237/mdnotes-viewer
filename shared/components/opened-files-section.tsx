@@ -7,19 +7,6 @@ import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 export function OpenedFilesSection() {
   const { openTabs, activeTabId, closeTab, openFile } = useEditorStore();
 
-  if (openTabs.length === 0) {
-    return (
-      <div className="px-3 py-2 border-b border-sidebar-border">
-        <h3 className="text-xs font-semibold text-muted-foreground mb-2">
-          Opened
-        </h3>
-        <div className="text-xs text-muted-foreground py-2">
-          No files opened
-        </div>
-      </div>
-    );
-  }
-
   const handleFileClick = (fileId: string) => {
     const file = openTabs.find(tab => tab.id === fileId);
     if (file) {
@@ -39,15 +26,22 @@ export function OpenedFilesSection() {
     return <FileText className="h-3 w-3" />;
   };
 
+  if (openTabs.length === 0) {
+    return (
+      <div className="px-3 py-2">
+        <div className="text-xs text-muted-foreground py-2">
+          No files opened
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-3 py-2 border-b border-sidebar-border">
-      <h3 className="text-xs font-semibold text-muted-foreground mb-2">
-        Opened
-      </h3>
+    <div className="px-3 py-2">
       <div className="space-y-1">
         {openTabs.map((file) => {
           const isActive = file.id === activeTabId;
-          const isDirty = file.isSaving || false; // You can extend this based on your needs
+          const isDirty = file.isSaving || false;
           
           return (
             <div

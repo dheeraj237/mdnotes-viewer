@@ -68,3 +68,6 @@ export const useStore = create<State>()((set) => ({
 - Hooks: `use-feature-name.ts`
 - Stores: `feature-store.ts`
 - Types: `index.ts`
+
+## Dev
+do not run any dev server if already running. please check before running any server.

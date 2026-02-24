@@ -11,7 +11,7 @@
     --card: 0 0% 100%;
     --card-foreground: 222.2 47.4% 11.2%;
     
-    --popover: 0 0% 100%;
+    --popover: 0 0% 98%;
     --popover-foreground: 222.2 47.4% 11.2%;
     
     --primary: 221.2 83.2% 53.3%;
@@ -55,7 +55,7 @@
     --card: 210 9% 11%;
     --card-foreground: 220 14% 91%;
     
-    --popover: 210 7% 7%;
+    --popover: 210 10% 15%;
     --popover-foreground: 220 14% 91%;
     
     --primary: 211 100% 80%;
@@ -102,6 +102,84 @@
   }
 }
 
+@layer utilities {
+  .bg-popover {
+    background-color: hsl(var(--popover));
+  }
+  
+  .text-popover-foreground {
+    color: hsl(var(--popover-foreground));
+  }
+  
+  .bg-background {
+    background-color: hsl(var(--background));
+  }
+  
+  .text-foreground {
+    color: hsl(var(--foreground));
+  }
+  
+  .bg-card {
+    background-color: hsl(var(--card));
+  }
+  
+  .text-card-foreground {
+    color: hsl(var(--card-foreground));
+  }
+  
+  .bg-primary {
+    background-color: hsl(var(--primary));
+  }
+  
+  .text-primary-foreground {
+    color: hsl(var(--primary-foreground));
+  }
+  
+  .bg-secondary {
+    background-color: hsl(var(--secondary));
+  }
+  
+  .text-secondary-foreground {
+    color: hsl(var(--secondary-foreground));
+  }
+  
+  .bg-muted  {
+    background-color: hsl(var(--muted));
+  }
+  
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .bg-accent {
+    background-color: hsl(var(--accent));
+  }
+  
+  .text-accent-foreground {
+    color: hsl(var(--accent-foreground));
+  }
+  
+  .bg-destructive {
+    background-color: hsl(var(--destructive));
+  }
+  
+  .text-destructive-foreground {
+    color: hsl(var(--destructive-foreground));
+  }
+  
+  .border-border {
+    border-color: hsl(var(--border));
+  }
+  
+  .bg-input {
+    background-color: hsl(var(--input));
+  }
+  
+  .ring-ring {
+    --tw-ring-color: hsl(var(--ring));
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
@@ -137,208 +215,5 @@
 
 .tabs-scrollbar::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.3);
-}
-
-/* ============================================ */
-/* CREPE EDITOR CUSTOMIZATION (Milkdown Style) */
-/* ============================================ */
-
-/* Crepe container styling (from Milkdown website) */
-.crepe {
-  display: flow-root;
-  height: 100%;
-  flex: 1;
-}
-
-.crepe .milkdown {
-  display: flow-root;
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.crepe .milkdown > .ProseMirror {
-  height: auto;
-  min-height: 100%;
-  padding: 2rem 3rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-/* Milkdown * reset (from Milkdown website) */
-.milkdown * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Crepe CSS Variables - Light Theme */
-.crepe .milkdown {
-  --crepe-color-background: #fdfcff;
-  --crepe-color-on-background: #1b1c1d;
-  --crepe-color-surface: #f8f9ff;
-  --crepe-color-surface-low: #f2f3fa;
-  --crepe-color-on-surface: #191c20;
-  --crepe-color-on-surface-variant: #43474e;
-  --crepe-color-outline: #73777f;
-  --crepe-color-primary: #37618e;
-  --crepe-color-secondary: #d7e3f8;
-  --crepe-color-on-secondary: #101c2b;
-  --crepe-color-inverse: #2e3135;
-  --crepe-color-on-inverse: #eff0f7;
-  --crepe-color-inline-code: #ba1a1a;
-  --crepe-color-error: #ba1a1a;
-  --crepe-color-hover: #eceef4;
-  --crepe-color-selected: #e1e2e8;
-  --crepe-color-inline-area: #d8dae0;
-
-  --crepe-font-title: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  --crepe-font-default: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --crepe-font-code: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
-
-  --crepe-shadow-1:
-    0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
-  --crepe-shadow-2:
-    0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
-}
-
-/* Crepe CSS Variables - Dark Theme */
-.dark .crepe .milkdown {
-  --crepe-color-background: #1b1c1d;
-  --crepe-color-on-background: #f8f9ff;
-  --crepe-color-surface: #111418;
-  --crepe-color-surface-low: #191c20;
-  --crepe-color-on-surface: #e1e2e8;
-  --crepe-color-on-surface-variant: #c3c6cf;
-  --crepe-color-outline: #8d9199;
-  --crepe-color-primary: #a1c9fd;
-  --crepe-color-secondary: #3c4858;
-  --crepe-color-on-secondary: #d7e3f8;
-  --crepe-color-inverse: #e1e2e8;
-  --crepe-color-on-inverse: #2e3135;
-  --crepe-color-inline-code: #ffb4ab;
-  --crepe-color-error: #ffb4ab;
-  --crepe-color-hover: #1d2024;
-  --crepe-color-selected: #32353a;
-  --crepe-color-inline-area: #111418;
-
-  --crepe-shadow-1:
-    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
-    0px 1px 3px 1px rgba(255, 255, 255, 0.15);
-  --crepe-shadow-2:
-    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
-    0px 2px 6px 2px rgba(255, 255, 255, 0.15);
-}
-
-/* Cursor styling (from Milkdown website) */
-.crepe .cm-cursor,
-.crepe .cm-dropCursor {
-  border-left-color: #000 !important;
-}
-
-.dark .crepe .cm-cursor,
-.dark .crepe .cm-dropCursor {
-  border-left-color: #fff !important;
-}
-
-/* Table overflow handling */
-.crepe table td {
-  overflow: auto;
-}
-
-/* CodeMirror editor basic styling */
-.crepe .cm-editor {
-  height: 100%;
-  font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
-  font-size: 0.875rem;
-  background-color: #f6f8fa !important;
-}
-
-.dark .crepe .cm-editor {
-  background-color: #0d1117 !important;
-}
-
-.crepe .cm-scroller {
-  overflow: auto;
-}
-
-/* CodeMirror line numbers */
-.crepe .cm-gutters {
-  background-color: #f6f8fa;
-  border-right: 1px solid #d0d7de;
-  color: #57606a;
-  padding-right: 0.5rem;
-}
-
-.dark .crepe .cm-gutters {
-  background-color: #0d1117;
-  border-right: 1px solid #21262d;
-  color: #8b949e;
-}
-
-.crepe .cm-lineNumbers .cm-gutterElement {
-  padding: 0 0.5rem;
-  min-width: 2rem;
-  text-align: right;
-  font-size: 0.75rem;
-}
-
-.crepe .cm-activeLineGutter {
-  background-color: rgba(0, 0, 0, 0.03);
-}
-
-.dark .crepe .cm-activeLineGutter {
-  background-color: rgba(255, 255, 255, 0.04);
-}
-
-/* Control paragraph/heading spacing in Crepe (minimal adjustments) */
-.crepe .milkdown .ProseMirror p {
-  margin: 0.5rem 0;
-}
-
-.crepe .milkdown .ProseMirror h1,
-.crepe .milkdown .ProseMirror h2,
-.crepe .milkdown .ProseMirror h3,
-.crepe .milkdown .ProseMirror h4,
-.crepe .milkdown .ProseMirror h5,
-.crepe .milkdown .ProseMirror h6 {
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.crepe .milkdown .ProseMirror h1:first-child,
-.crepe .milkdown .ProseMirror h2:first-child,
-.crepe .milkdown .ProseMirror h3:first-child {
-  margin-top: 0;
-}
-
-.crepe .milkdown .ProseMirror ul,
-.crepe .milkdown .ProseMirror ol {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.crepe .milkdown .ProseMirror li {
-  margin: 0.25rem 0;
-}
-
-.crepe .milkdown .ProseMirror li > p {
-  margin: 0;
-}
-
-/* ProseMirror focus styling */
-.ProseMirror:focus-visible {
-  outline: none;
-}
-
-.ProseMirror-selectednode {
-  outline: none;
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 2px;
-}
-
-/* Milkdown slash menu (from website) */
-.milkdown .milkdown-slash-menu .tab-group {
-  padding-bottom: 0.75rem;
 }
 
