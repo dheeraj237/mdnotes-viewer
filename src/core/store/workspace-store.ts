@@ -32,6 +32,8 @@ interface WorkspaceStore {
   activeWorkspaceId: string | null;
   /** Whether the workspace picker dialog is open */
   isWorkspacePickerOpen: boolean;
+  /** Whether a workspace switch is in progress */
+  isWorkspaceSwitching: boolean;
   
   /** Creates a new workspace */
   createWorkspace: (name: string, type: Workspace['type'], options?: { id?: string; path?: string; driveFolder?: string }) => void;
@@ -70,11 +72,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       workspaces: [],
       activeWorkspaceId: null,
       isWorkspacePickerOpen: false,
+      isWorkspaceSwitching: false,
       tabsByWorkspace: {},
 
       /**
        * Creates a new workspace with the specified type and options
        * Automatically sets it as the active workspace
+       * Clears all opened tabs since new workspace has no opened files
        */
       createWorkspace: (name, type, options = {}) => {
         const workspaceId = options.id ?? `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -87,6 +91,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           createdAt: new Date().toISOString(),
           lastAccessed: new Date().toISOString(),
         };
+
+        // Clear all opened tabs as new workspace has no opened files
+        useEditorStore.getState().closeAllTabs();
 
         set((state) => ({
           workspaces: [...state.workspaces, workspace],
@@ -114,8 +121,15 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       /**
        * Switches to a different workspace by ID
        * Updates the lastAccessed timestamp for the workspace
+       * Sets loading state and clears content during switch
        */
       switchWorkspace: async (id) => {
+        // Set loading state
+        set({ isWorkspaceSwitching: true });
+
+        // Clear editor content immediately to prevent showing stale content
+        useEditorStore.getState().closeAllTabs();
+
         // Save current editor tabs for the previous workspace
         try {
           const prevId = get().activeWorkspaceId;
@@ -145,6 +159,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           await get().restoreTabsForWorkspace(id);
         } catch (err) {
           console.warn('Failed to restore tabs for workspace:', err);
+        } finally {
+          // Clear loading state
+          set({ isWorkspaceSwitching: false });
         }
       },
 

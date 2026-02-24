@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
 import { usePanelStore } from "@/core/store/panel-store";
+import { useWorkspaceStore } from "@/core/store/workspace-store";
 import { AppToolbar } from "@/shared/components/app-toolbar";
 import { MobileBottomMenu } from "@/shared/components/mobile-bottom-menu";
 import { FileExplorer } from "@/features/file-explorer/components/file-explorer";
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     openRightPanel,
   } = usePanelStore();
 
+  const { isWorkspaceSwitching } = useWorkspaceStore();
   const { activeTabId, isCodeViewMode } = useEditorStore();
   const currentFile = useCurrentFile();
   const { items: tocItems, activeId } = useTocStore();
@@ -98,10 +100,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [rightPanelCollapsed]);
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col relative">
       <AppToolbar />
       
-      <div className="flex-1 overflow-hidden pb-14 lg:pb-0">
+      <div className="flex-1 overflow-hidden pb-14 lg:pb-0 relative">
+        {/* Workspace switching overlay - disables pointer events */}
+        {isWorkspaceSwitching && (
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-50 pointer-events-auto">
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+                <p className="text-sm text-muted-foreground">Switching workspace...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <PanelGroup direction="horizontal" autoSaveId="main-layout">
           <Panel
             ref={leftPanelRef}
