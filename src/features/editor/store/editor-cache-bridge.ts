@@ -1,15 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import * as Y from 'yjs';
 import {
   initializeRxDB,
-  getCacheDB,
   getCachedFile,
   upsertCachedFile,
   observeCachedFiles,
-  observeYjsText,
-  createOrLoadYjsDoc,
-  getYjsText,
-  setYjsText
+  getCrdtDoc,
+  upsertCrdtDoc,
+  saveFile,
+  loadFile,
 } from '../../../core/cache';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import type { CachedFile } from '../../../core/cache/types';
@@ -17,7 +15,7 @@ import type { CachedFile } from '../../../core/cache/types';
 export interface EditorCacheContextType {
   initialized: boolean;
   currentFileId: string | null;
-  ydoc: Y.Doc | null;
+  content: string;
   fileMetadata: CachedFile | null;
   isDirty: boolean;
   error: Error | null;
@@ -57,14 +55,14 @@ export function useOpenFileForEditing(
   filePath?: string,
   workspaceType: 'browser' | 'local' | 'gdrive' | 's3' = 'browser'
 ) {
-  const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
+  const [content, setContent] = useState<string>('');
   const [fileMetadata, setFileMetadata] = useState<CachedFile | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!fileId) {
-      setYdoc(null);
+      setContent('');
       setFileMetadata(null);
       return;
     }
@@ -89,21 +87,31 @@ export function useOpenFileForEditing(
           };
           await upsertCachedFile(cachedFile);
         }
-
-        // Create or load Yjs document with unique CRDT ID
+        // Ensure CRDT doc exists (stores raw content as base64)
         const crdtId = cachedFile.crdtId || `crdt_${fileId}`;
-        const doc = await createOrLoadYjsDoc({
-          crdtId,
-          fileId,
-          initialContent: ''
-        });
+        let crdt = await getCrdtDoc(crdtId);
+        if (!crdt) {
+          await upsertCrdtDoc({ id: crdtId, fileId, yjsState: '', lastUpdated: Date.now() });
+          crdt = await getCrdtDoc(crdtId);
+        }
+
+        // Decode content from crdt doc
+        let fileContent = '';
+        try {
+          if (crdt && crdt.yjsState) {
+            const state = typeof crdt.yjsState === 'string' ? Buffer.from(crdt.yjsState, 'base64') : crdt.yjsState;
+            fileContent = state ? Buffer.from(state).toString('utf-8') : '';
+          }
+        } catch (e) {
+          console.warn('Failed to decode CRDT content:', e);
+        }
 
         // Update cached file with CRDT link if new
         if (!cachedFile.crdtId) {
           await upsertCachedFile({ ...cachedFile, crdtId, workspaceId: cachedFile.workspaceId });
         }
 
-        setYdoc(doc);
+        setContent(fileContent);
         setFileMetadata(cachedFile);
         setIsDirty(Boolean(cachedFile.dirty));
         setError(null);
@@ -117,47 +125,50 @@ export function useOpenFileForEditing(
     loadFile();
   }, [fileId, filePath, workspaceType]);
 
-  return { ydoc, fileMetadata, isDirty, error };
+  return { content, fileMetadata, isDirty, error };
 }
 
 /**
  * Hook to sync editor content with Yjs document and mark as dirty
  */
-export function useEditorSync(fileId: string | null, ydoc: Y.Doc | null) {
-  const [content, setContent] = useState('');
-  const [unsubscribe, setUnsubscribe] = useState<(() => void) | null>(null);
+export function useEditorSync(fileId: string | null, initialContent: string) {
+  const [content, setContent] = useState(initialContent || '');
 
   useEffect(() => {
-    if (!ydoc || !fileId) return;
-
-    // Get initial content from Yjs doc
-    setContent(getYjsText(ydoc));
-
-    // Subscribe to Yjs changes
-    const unsub = observeYjsText(ydoc, (newContent) => {
-      setContent(newContent);
-      // Mark file as dirty in RxDB
-      markFileAsDirty(fileId);
-    });
-
-    setUnsubscribe(() => unsub);
-
-    return () => {
-      unsub();
-    };
-  }, [ydoc, fileId]);
+    setContent(initialContent || '');
+  }, [initialContent]);
 
   /**
-   * Update editor content and sync to Yjs
+   * Update editor content and persist to RxDB (background save via saveFile)
    */
   const updateContent = useCallback(
-    (newContent: string) => {
-      if (ydoc) {
-        setYjsText(ydoc, newContent);
-        setContent(newContent);
+    async (newContent: string) => {
+      setContent(newContent);
+
+      if (!fileId) return;
+      try {
+        const workspace = useWorkspaceStore.getState().activeWorkspace?.();
+        const workspaceType = workspace?.type || 'browser';
+        const workspaceId = workspace?.id;
+
+        // Determine path to save: prefer an explicit path; if fileId looks like an id, resolve cached file
+        let savePath = fileId as string;
+        if (savePath && !savePath.includes('/')) {
+          try {
+            const cached = await getCachedFile(fileId || '');
+            if (cached && cached.path) savePath = cached.path;
+          } catch (e) {
+            // ignore and fall back to using fileId as path
+          }
+        }
+
+        // Use saveFile to persist content to cache (RxDB) — marks as dirty for non-browser workspaces
+        await saveFile(savePath || fileId || '', newContent, workspaceType, undefined, workspaceId);
+      } catch (err) {
+        console.error('Failed to persist editor content:', err);
       }
     },
-    [ydoc]
+    [fileId]
   );
 
   return { content, updateContent };

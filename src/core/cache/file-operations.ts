@@ -12,16 +12,14 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import * as Y from 'yjs';
 import {
   initializeRxDB,
   getCacheDB,
   getCachedFile,
   upsertCachedFile,
   observeCachedFiles,
-  createOrLoadYjsDoc,
-  getYjsText,
-  setYjsText,
+  upsertCrdtDoc,
+  getCrdtDoc,
 } from './index';
 import type { CachedFile, WorkspaceType, CrdtDoc } from './types';
 
@@ -39,6 +37,31 @@ function uint8ArrayToBase64(u8: Uint8Array): string {
     binary += String.fromCharCode.apply(null, Array.prototype.slice.call(chunk));
   }
   return typeof btoa === 'function' ? btoa(binary) : '';
+}
+
+function uint8ArrayToUtf8String(u8: Uint8Array): string {
+  try {
+    if (typeof TextDecoder !== 'undefined') {
+      const td = new TextDecoder('utf-8');
+      return td.decode(u8);
+    }
+    return Buffer.from(u8).toString('utf-8');
+  } catch (e) {
+    return '';
+  }
+}
+
+function stringToBase64Utf8(str: string): string {
+  try {
+    if (typeof TextEncoder !== 'undefined') {
+      const te = new TextEncoder();
+      const u8 = te.encode(str);
+      return uint8ArrayToBase64(u8);
+    }
+    return Buffer.from(str, 'utf-8').toString('base64');
+  } catch (e) {
+    return '';
+  }
 }
 
 /**
@@ -127,14 +150,20 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = 'browse
   if (cached) {
     // File exists, load its content from CRDT doc if available
     let content = '';
-    
+
     if (cached.crdtId) {
-      const ydoc = await createOrLoadYjsDoc({
-        crdtId: cached.crdtId,
-        fileId: cached.id,
-        initialContent: ''
-      });
-      content = getYjsText(ydoc, 'content');
+      try {
+        const crdt = await getCrdtDoc(cached.crdtId);
+        if (crdt && crdt.yjsState) {
+          if (typeof crdt.yjsState === 'string') {
+            content = Buffer.from(crdt.yjsState, 'base64').toString('utf-8');
+          } else {
+            content = Buffer.from(crdt.yjsState as Uint8Array).toString('utf-8');
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load CRDT doc content:', e);
+      }
     }
     
     // Fallback: if CRDT content is empty (e.g., DB missing crdt_docs),
@@ -209,23 +238,10 @@ async function saveSyncFile(
     fileId = uuidv4();
   }
   
-  // Create or load CRDT doc for content — reuse existing crdtId when present
+  // Create or reuse CRDT doc id and store raw content (base64 utf-8)
   const crdtId = existing && (existing as any).crdtId ? (existing as any).crdtId : uuidv4();
-  const ydoc = await createOrLoadYjsDoc({
-    crdtId,
-    fileId,
-    initialContent: content
-  });
-  
-  // Set content in CRDT doc
-  setYjsText(ydoc, 'content', content);
-  
-  // Get encoded state
-  const yjsState = Y.encodeStateAsUpdate(ydoc);
-  const yjsStateBase64 = uint8ArrayToBase64(yjsState);
-  
-  // Upsert CRDT doc
-  await db.crdt_docs.upsert({
+  const yjsStateBase64 = stringToBase64Utf8(content);
+  await upsertCrdtDoc({
     id: crdtId,
     fileId,
     yjsState: yjsStateBase64,
@@ -247,7 +263,40 @@ async function saveSyncFile(
   };
   
   await upsertCachedFile(cachedFile);
-  
+  // If this is a local workspace in the browser, also attempt to write
+  // the file to the user's filesystem using the File System Access API
+  // if a directory handle was previously stored for this workspace.
+  // This keeps the RxDB cache as the source-of-truth while providing
+  // an immediate local write for 'local' workspaces.
+  if (typeof window !== 'undefined' && workspaceType === 'local') {
+    (async () => {
+      try {
+        const { getDirectoryHandle } = await import('@/shared/utils/idb-storage');
+        const root = await getDirectoryHandle(workspaceId || '');
+        if (root) {
+          // Traverse/create directories to parent
+          const parts = path.split('/').filter(Boolean);
+          const name = parts.pop();
+          if (name) {
+            let dir: FileSystemDirectoryHandle = root as any;
+            for (const part of parts) {
+              dir = await dir.getDirectoryHandle(part, { create: true });
+            }
+
+            const fileHandle = await dir.getFileHandle(name, { create: true });
+            const writable = await (fileHandle as any).createWritable();
+            await writable.write(content);
+            await writable.close();
+
+            console.log('[FileOperations] Wrote file to local filesystem:', path);
+          }
+        }
+      } catch (err) {
+        console.warn('[FileOperations] Failed to write to local filesystem:', err);
+      }
+    })();
+  }
+
   return {
     id: fileId,
     name: cachedFile.name,
@@ -273,6 +322,29 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
     
     // Delete cached file by id
     await db.cached_files.findByIds([cached.id]).remove();
+    // Attempt to delete from local filesystem if this is a local workspace
+    try {
+      if (typeof window !== 'undefined' && cached.workspaceType === 'local') {
+        const { getDirectoryHandle } = await import('@/shared/utils/idb-storage');
+        const root = await getDirectoryHandle(cached.workspaceId || '');
+        if (root) {
+          const parts = path.split('/').filter(Boolean);
+          const name = parts.pop();
+          if (name) {
+            let dir: FileSystemDirectoryHandle = root as any;
+            for (const part of parts) {
+              dir = await dir.getDirectoryHandle(part, { create: false });
+            }
+            if (typeof (dir as any).removeEntry === 'function') {
+              await (dir as any).removeEntry(name, { recursive: false });
+              console.log('[FileOperations] Deleted local file:', path);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[FileOperations] Local delete failed (non-fatal):', err);
+    }
   }
 }
 
@@ -295,6 +367,54 @@ export async function renameFile(oldPath: string, newPath: string, workspaceId?:
     name: newName,
     dirty: cached.dirty || cached.workspaceType !== 'browser',
   });
+
+  // Attempt to rename on local filesystem for local workspaces
+  try {
+    if (typeof window !== 'undefined' && cached.workspaceType === 'local') {
+      const { getDirectoryHandle } = await import('@/shared/utils/idb-storage');
+      const root = await getDirectoryHandle(cached.workspaceId || '');
+      if (root) {
+        const oldParts = oldPath.split('/').filter(Boolean);
+        const oldName = oldParts.pop();
+        const newParts = newPath.split('/').filter(Boolean);
+        const newNameLocal = newParts.pop();
+
+        if (oldName && newNameLocal) {
+          let oldDir: FileSystemDirectoryHandle = root as any;
+          for (const part of oldParts) {
+            oldDir = await oldDir.getDirectoryHandle(part, { create: false });
+          }
+
+          let newDir: FileSystemDirectoryHandle = root as any;
+          for (const part of newParts) {
+            newDir = await newDir.getDirectoryHandle(part, { create: true });
+          }
+
+          // Copy file contents
+          try {
+            const oldHandle = await oldDir.getFileHandle(oldName);
+            const file = await oldHandle.getFile();
+            const arrayBuffer = await file.arrayBuffer();
+
+            const newHandle = await newDir.getFileHandle(newNameLocal, { create: true });
+            const writable = await (newHandle as any).createWritable();
+            await writable.write(new Uint8Array(arrayBuffer));
+            await writable.close();
+
+            // Remove old entry if supported
+            if (typeof (oldDir as any).removeEntry === 'function') {
+              await (oldDir as any).removeEntry(oldName);
+            }
+            console.log('[FileOperations] Renamed local file:', oldPath, '->', newPath);
+          } catch (e) {
+            console.warn('[FileOperations] Local rename failed (non-fatal):', e);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FileOperations] Local rename failed (non-fatal):', err);
+  }
 }
 
 /**
@@ -325,7 +445,26 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
   };
   
   await upsertCachedFile(dir);
-  
+  // Attempt to create directory on local filesystem for local workspaces
+  if (typeof window !== 'undefined' && workspaceType === 'local') {
+    (async () => {
+      try {
+        const { getDirectoryHandle } = await import('@/shared/utils/idb-storage');
+        const root = await getDirectoryHandle(workspaceId || '');
+        if (root) {
+          const parts = path.split('/').filter(Boolean);
+          let dirHandle: FileSystemDirectoryHandle = root as any;
+          for (const part of parts) {
+            dirHandle = await dirHandle.getDirectoryHandle(part, { create: true });
+          }
+          console.log('[FileOperations] Created local directory:', path);
+        }
+      } catch (err) {
+        console.warn('[FileOperations] Failed to create local directory:', err);
+      }
+    })();
+  }
+
   return {
     id: dirId,
     name: dirName,
@@ -547,11 +686,12 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
           dirty: false,
         });
 
-        // Create CRDT doc for the file with initial content
-        const ydoc = await createOrLoadYjsDoc({
-          crdtId: fileId,
+        // Create CRDT doc entry that stores raw content (base64 utf-8)
+        await upsertCrdtDoc({
+          id: fileId,
           fileId: fileId,
-          initialContent: content,
+          yjsState: stringToBase64Utf8(content),
+          lastUpdated: Date.now(),
         });
 
         console.log(`[FileOperations] Loaded sample file: ${sample.path}`);

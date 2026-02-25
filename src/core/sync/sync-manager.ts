@@ -1,6 +1,6 @@
 import { BehaviorSubject, Observable, interval } from 'rxjs';
 import { throttleTime, distinctUntilChanged } from 'rxjs/operators';
-import * as Y from 'yjs';
+// Yjs disabled: CRDT merging turned off for now
 import {
   getCacheDB,
   getCachedFile,
@@ -361,38 +361,26 @@ export class SyncManager {
       const crdtDoc = await getCrdtDoc(crdtId);
       if (!crdtDoc) return;
 
-      // Create a temporary Y.Doc to apply remote state
-      const tempDoc = new Y.Doc();
-      Y.applyUpdate(tempDoc, remoteState);
-
-      // Apply remote state to the stored state
-      let currentState: Uint8Array;
-      if (typeof crdtDoc.yjsState === 'string') {
-        currentState = new Uint8Array(Buffer.from(crdtDoc.yjsState, 'base64'));
-      } else {
-        currentState = crdtDoc.yjsState || new Uint8Array();
+      // For now, disable CRDT merging and simply overwrite local CRDT doc
+      let remoteBase64 = '';
+      try {
+        if (remoteState instanceof Uint8Array) {
+          remoteBase64 = Buffer.from(remoteState).toString('base64');
+        } else if (typeof remoteState === 'string') {
+          remoteBase64 = remoteState;
+        }
+      } catch (e) {
+        console.warn('Failed to encode remoteState to base64:', e);
       }
 
-      // Create a doc with current state
-      const localDoc = new Y.Doc();
-      Y.applyUpdate(localDoc, currentState);
-
-      // Apply remote updates to local doc (CRDT merge)
-      Y.applyUpdate(localDoc, remoteState);
-
-      // Save merged state
-      const mergedState = Y.encodeStateAsUpdate(localDoc);
-      const mergedStateBase64 = Buffer.from(mergedState).toString('base64');
-
-      // Persist merged CRDT state (force-overwrite on conflict handled in DB layer)
       await upsertCrdtDoc({
         id: crdtId,
         fileId: crdtDoc.fileId,
-        yjsState: mergedStateBase64,
-        lastUpdated: Date.now()
+        yjsState: remoteBase64,
+        lastUpdated: Date.now(),
       });
 
-      console.log(`Merged remote changes for CRDT ${crdtId}`);
+      console.log(`Overwrote CRDT ${crdtId} with remote state`);
     } catch (error) {
       console.error(`mergeRemoteChanges error for ${crdtId}:`, error);
     }
