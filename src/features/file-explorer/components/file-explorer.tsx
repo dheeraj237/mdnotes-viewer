@@ -107,7 +107,7 @@ export function FileExplorer() {
 
       if (fileTree.length > 0) {
         // If there are files, use the first node's parent path
-        rootPath = fileTree[0]?.id || '';
+        rootPath = fileTree[0]?.path || '';
       } else if (currentWorkspace?.type === 'drive' && currentWorkspace.driveFolder) {
         // For empty Drive workspace, use the drive folder ID
         rootPath = currentWorkspace.driveFolder;

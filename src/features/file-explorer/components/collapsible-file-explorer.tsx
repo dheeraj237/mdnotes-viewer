@@ -55,7 +55,7 @@ export function CollapsibleFileExplorer() {
 
     try {
       // Create at root level (use empty string or first node's parent path)
-      const rootPath = fileTree[0]?.id || '';
+      const rootPath = fileTree[0]?.path || '';
       if (newItemType === 'file') {
         await createFile(rootPath, name);
       } else if (newItemType === 'folder') {

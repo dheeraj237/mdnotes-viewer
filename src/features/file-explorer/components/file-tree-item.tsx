@@ -263,9 +263,9 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
 
     try {
       if (newItemType === 'file') {
-        await createFile(node.id, name);
+        await createFile(node.path, name);
       } else if (newItemType === 'folder') {
-        await createFolder(node.id, name);
+        await createFolder(node.path, name);
       }
       toast.dismiss(toastId);
     } catch (error) {
