@@ -1,6 +1,7 @@
 import { FileNode } from "@/shared/types";
 import { buildFileTreeFromDirectory } from "./file-tree-builder";
 import { storeDirectoryHandle, getDirectoryHandle } from "@/shared/utils/idb-storage";
+import { requestPermissionForWorkspace } from "@/shared/utils/idb-storage";
 
 /**
  * Opens a local directory using File System Access API
@@ -64,6 +65,29 @@ export async function restoreLocalDirectory(workspaceId: string): Promise<{
     return { name: dirHandle.name, path: dirHandle.name, fileTree };
   } catch (error) {
     console.error('Error restoring directory:', error);
+    return null;
+  }
+}
+
+/**
+ * Prompt the user (via a click/gesture) to re-request permission for a stored workspace.
+ * Returns the directory data if permission is granted and the tree can be built.
+ */
+export async function promptPermissionAndRestore(workspaceId: string): Promise<{
+  name: string;
+  path: string;
+  fileTree: FileNode[];
+} | null> {
+  try {
+    const handle = await requestPermissionForWorkspace(workspaceId);
+    if (!handle) return null;
+
+    // If granted, build the file tree
+    const fileTree = await buildFileTreeFromDirectory(handle);
+    (window as any).__localDirHandle = handle;
+    return { name: handle.name, path: handle.name, fileTree };
+  } catch (error) {
+    console.error('Error prompting permission and restoring directory:', error);
     return null;
   }
 }

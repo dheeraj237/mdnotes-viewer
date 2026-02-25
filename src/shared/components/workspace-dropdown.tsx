@@ -59,7 +59,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
     deleteWorkspace
   } = useWorkspaceStore();
 
-  const { openLocalDirectory, restoreLocalDirectory, setGoogleFolder, setSelectedFile, refreshFileTree, clearLocalDirectory, isSyncingDrive, pendingSyncCount } = useFileExplorerStore();
+  const { openLocalDirectory, restoreLocalDirectory, requestPermissionForWorkspace, setGoogleFolder, setSelectedFile, refreshFileTree, clearLocalDirectory, isSyncingDrive, pendingSyncCount } = useFileExplorerStore();
 
   const currentWorkspace = activeWorkspace();
 
@@ -288,8 +288,17 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         if (workspace.type === 'local') {
           const restored = await restoreLocalDirectory(workspace.id);
           if (!restored) {
-            toast.error("Failed to restore local directory. Please select the directory again.");
-            // Still continue with workspace switch, refresh will show empty tree
+            // Try prompting the user (this is a user-initiated click) to re-grant permission
+            try {
+              const granted = await requestPermissionForWorkspace(workspace.id);
+              if (!granted) {
+                toast.error("Failed to restore local directory. Please select the directory again.");
+              }
+            } catch (err) {
+              console.error('Permission prompt failed:', err);
+              toast.error("Failed to restore local directory. Please select the directory again.");
+            }
+            // Still continue with workspace switch, refresh will show empty tree if not granted
           }
         } else if (workspace.type === 'drive' && workspace.driveFolder) {
           // Try to obtain a non-interactive Drive token so switching doesn't require re-auth

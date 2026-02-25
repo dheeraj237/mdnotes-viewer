@@ -43,6 +43,7 @@ interface FileExplorerStore {
 
   openLocalDirectory: (workspaceId?: string) => Promise<void>;
   restoreLocalDirectory: (workspaceId: string) => Promise<boolean>;
+  requestPermissionForWorkspace: (workspaceId: string) => Promise<boolean>;
 
   createFile: (parentPath: string, fileName: string) => Promise<void>;
   createFolder: (parentPath: string, folderName: string) => Promise<void>;
@@ -167,6 +168,35 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return true;
         } catch (error) {
           console.error('Error restoring directory:', error);
+          return false;
+        } finally {
+          set({ isLoadingLocalFiles: false });
+        }
+      },
+
+      /**
+       * Prompt the user to re-grant permission for a stored local workspace.
+       * This must be invoked from a user gesture to avoid SecurityError.
+       */
+      requestPermissionForWorkspace: async (workspaceId: string): Promise<boolean> => {
+        try {
+          set({ isLoadingLocalFiles: true });
+
+          const { promptPermissionAndRestore } = await import('./helpers/directory-handler');
+
+          const result = await promptPermissionAndRestore(workspaceId);
+          if (!result) return false;
+
+          set({
+            fileTree: result.fileTree,
+            expandedFolders: new Set(),
+            currentDirectoryName: result.name,
+            currentDirectoryPath: result.path,
+          });
+
+          return true;
+        } catch (error) {
+          console.error('Error requesting permission for workspace:', error);
           return false;
         } finally {
           set({ isLoadingLocalFiles: false });
@@ -306,8 +336,11 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return;
         }
 
-        // For local workspace, check if directory handle exists and refresh
+        // For local workspace, try to use an active directory handle, else attempt
+        // a non-prompt restore from IndexedDB. We must NOT call requestPermission
+        // during app reload (no user gesture) to avoid SecurityError.
         if (activeWorkspace.type === 'local') {
+          // If an in-memory handle exists, refresh it
           if (hasLocalDirectory()) {
             const fileTree = await refreshLocalDirectory();
             if (fileTree) {
@@ -315,7 +348,17 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
               return;
             }
           }
-          // If local workspace but no directory handle, show empty or prompt to restore
+
+          // Attempt to restore a previously stored handle without prompting the user.
+          // This will only succeed if the permission was already granted in a prior session.
+          try {
+            const restored = await get().restoreLocalDirectory(activeWorkspace.id);
+            if (restored) return;
+          } catch (e) {
+            console.error('Error attempting non-prompt restore for local workspace', e);
+          }
+
+          // No available handle or permission - show empty tree and allow UI to prompt user
           set({ fileTree: [], currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
           return;
         }

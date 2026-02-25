@@ -305,7 +305,27 @@ export async function upsertCachedFile(file: CachedFile): Promise<void> {
   try {
     const existing = await db.cached_files.findOne({ selector: { id: file.id } }).exec();
     if (existing) {
-      await existing.patch(file);
+      try {
+        await existing.patch(file);
+      } catch (err: any) {
+        const errStr = String(err || '');
+        if (errStr.includes('CONFLICT') || err?.status === 409) {
+          console.warn('[RxDB] cached_files patch conflict detected, forcing overwrite for', file.id);
+          try {
+            await existing.remove();
+          } catch (removeErr) {
+            console.warn('[RxDB] Failed to remove conflicting cached_file, attempting insert anyway', removeErr);
+          }
+          try {
+            await db.cached_files.insert(file);
+          } catch (insertErr) {
+            console.error('[RxDB] Forced insert of cached_file failed:', file.id, insertErr);
+            throw insertErr;
+          }
+        } else {
+          throw err;
+        }
+      }
     } else {
       await db.cached_files.insert(file);
     }
@@ -392,7 +412,28 @@ export async function upsertCrdtDoc(doc: CrdtDoc): Promise<void> {
   try {
     const existing = await db.crdt_docs.findOne({ selector: { id: doc.id } }).exec();
     if (existing) {
-      await existing.patch(doc);
+      try {
+        await existing.patch(doc);
+      } catch (err: any) {
+        // Handle revision conflicts by forcing an overwrite
+        const errStr = String(err || '');
+        if (errStr.includes('CONFLICT') || err?.status === 409) {
+          console.warn('[RxDB] CRDT patch conflict detected, attempting forced overwrite for', doc.id);
+          try {
+            await existing.remove();
+          } catch (removeErr) {
+            console.warn('[RxDB] Failed to remove conflicting crdt_doc, attempting insert anyway', removeErr);
+          }
+          try {
+            await db.crdt_docs.insert(doc);
+          } catch (insertErr) {
+            console.error('[RxDB] Forced insert of crdt_doc failed:', doc.id, insertErr);
+            throw insertErr;
+          }
+        } else {
+          throw err;
+        }
+      }
     } else {
       await db.crdt_docs.insert(doc);
     }

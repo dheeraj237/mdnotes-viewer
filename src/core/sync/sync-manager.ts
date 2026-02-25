@@ -8,7 +8,8 @@ import {
   getDirtyCachedFiles,
   markCachedFileAsSynced,
   observeCachedFiles,
-  upsertCachedFile
+  upsertCachedFile,
+  upsertCrdtDoc
 } from '../cache';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import type { CachedFile, CrdtDoc } from '../cache/types';
@@ -86,6 +87,7 @@ export class SyncManager {
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private maxRetries = 3;
   private retryDelays = [1000, 3000, 5000]; // exponential backoff
+  private cachedFilesSub: any = null;
 
   constructor(private batchSize = 5) {}
 
@@ -120,6 +122,26 @@ export class SyncManager {
     this.startPolling();
     this.setupRemoteWatchers();
 
+    // Subscribe to RxDB cached_files changes so we can react to edits immediately.
+    try {
+      this.cachedFilesSub = observeCachedFiles((files) => {
+        for (const f of files) {
+          try {
+            if (f.dirty && f.workspaceType !== 'browser') {
+              // Fire-and-forget an async sync for this specific file
+              this.syncFile(f as CachedFile).catch((err) => {
+                console.warn('Realtime sync failed for', f.id, err);
+              });
+            }
+          } catch (err) {
+            console.warn('Error processing cached file change:', err);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to subscribe to cached file changes:', err);
+    }
+
     console.log('SyncManager started');
   }
 
@@ -133,6 +155,17 @@ export class SyncManager {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+    // Unsubscribe from observed cached file changes
+    try {
+      if (this.cachedFilesSub && typeof this.cachedFilesSub.unsubscribe === 'function') {
+        this.cachedFilesSub.unsubscribe();
+      } else if (this.cachedFilesSub && typeof this.cachedFilesSub === 'function') {
+        // observeCachedFiles may return an unsubscribe function
+        this.cachedFilesSub();
+      }
+    } catch (err) {
+      console.warn('Error unsubscribing cachedFilesSub:', err);
     }
 
     this.statusSubject.next(SyncStatus.IDLE);
@@ -351,11 +384,13 @@ export class SyncManager {
       const mergedState = Y.encodeStateAsUpdate(localDoc);
       const mergedStateBase64 = Buffer.from(mergedState).toString('base64');
 
-      await upsertCachedFile({
-        ...crdtDoc,
+      // Persist merged CRDT state (force-overwrite on conflict handled in DB layer)
+      await upsertCrdtDoc({
+        id: crdtId,
+        fileId: crdtDoc.fileId,
         yjsState: mergedStateBase64,
         lastUpdated: Date.now()
-      } as any);
+      });
 
       console.log(`Merged remote changes for CRDT ${crdtId}`);
     } catch (error) {

@@ -92,25 +92,51 @@ export async function getDirectoryHandle(
 
     if (!record) return null;
 
-    // Verify the handle is still valid by requesting permission
+    // Return the stored handle without prompting for permissions.
+    // Permission prompts (requestPermission) must be triggered from a user gesture,
+    // otherwise browsers will throw SecurityError. Higher-level logic should call
+    // `requestPermissionForWorkspace` when a user-initiated action is available.
+    return record.directoryHandle;
+  } catch (error) {
+    console.error("Error getting directory handle:", error);
+    return null;
+  }
+}
+
+/**
+ * Request permission for a stored workspace handle. MUST be called from a user gesture.
+ * Returns the handle if permission was granted, otherwise null.
+ */
+export async function requestPermissionForWorkspace(
+  workspaceId: string
+): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const database = await initDB();
+
+    const record = await new Promise<FileHandleRecord | null>((resolve, reject) => {
+      const transaction = database.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(workspaceId);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(new Error("Failed to get directory handle"));
+    });
+
+    if (!record) return null;
+
     const handle = record.directoryHandle;
-    
-    // Check if we still have permission
+
+    // First check if permission is already granted
     const permission = await handle.queryPermission({ mode: "readwrite" });
-    
-    if (permission === "granted") {
-      return handle;
-    } else if (permission === "prompt") {
-      // Request permission again
-      const newPermission = await handle.requestPermission({ mode: "readwrite" });
-      if (newPermission === "granted") {
-        return handle;
-      }
-    }
+    if (permission === "granted") return handle;
+
+    // Otherwise request permission - must be called from a user gesture
+    const newPermission = await handle.requestPermission({ mode: "readwrite" });
+    if (newPermission === "granted") return handle;
 
     return null;
   } catch (error) {
-    console.error("Error getting directory handle:", error);
+    console.error("Error requesting permission for workspace:", error);
     return null;
   }
 }
