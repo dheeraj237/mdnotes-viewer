@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { MarkdownFile } from "@/shared/types";
 import { useEditorStore } from "@/features/editor/store/editor-store";
+import { initializeFileOperations } from '@/core/cache/file-operations';
 
 /**
  * Workspace Interface
@@ -99,6 +100,25 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           workspaces: [...state.workspaces, workspace],
           activeWorkspaceId: workspace.id,
         }));
+
+        // Create a default file for new browser workspaces (but skip the verve-samples placeholder)
+        if (type === 'browser' && workspaceId !== 'verve-samples') {
+          (async () => {
+            try {
+              // Ensure file operations are initialized before saving
+              try {
+                await initializeFileOperations();
+              } catch (initErr) {
+                console.warn('Failed to initialize file operations before creating default file:', initErr);
+              }
+
+              const { saveFile } = await import('@/core/cache/file-operations');
+              await saveFile('verve.md', '# Verve', type);
+            } catch (err) {
+              console.warn('Failed to create default verve.md file in new workspace:', err);
+            }
+          })();
+        }
       },
 
       /**
@@ -253,22 +273,21 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
               isLoading: true
             });
 
-            // Then reload file contents from the file manager for the new workspace
+            // Then reload file contents from the RxDB cache for the new workspace
             const workspace = get().workspaces.find(w => w.id === idToRestore);
             if (workspace) {
-              const { getFileManager } = await import('@/core/store/file-manager-integration');
-              const fileManager = getFileManager(workspace);
+              const { loadFile } = await import('@/core/cache/file-operations');
 
-              // Reload each tab's content from the file manager
+              // Reload each tab's content from the RxDB cache
               const reloadedTabs = await Promise.all(
                 saved.openTabs.map(async (tab) => {
                   try {
-                    // Load fresh content from the file manager
-                    const fileData = await fileManager.loadFile(tab.path);
+                    // Load fresh content from RxDB cache
+                    const fileData = await loadFile(tab.path, workspace.type);
                     return {
                       ...tab,
                       content: fileData.content,
-                      id: fileData.id, // Use the file manager's ID
+                      id: fileData.id,
                     };
                   } catch (err) {
                     console.warn(`Failed to reload file ${tab.path}:`, err);

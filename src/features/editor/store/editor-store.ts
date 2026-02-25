@@ -1,54 +1,37 @@
 /**
  * Editor Store - Manages open files, tabs, and view mode
- * Uses Zustand for state management with File Manager V2 integration
+ * Uses Zustand for state management with RxDB cache integration
  * 
  * Features:
  * - Multi-tab editing
- * - File content synchronization
+ * - File content synchronization via RxDB
  * - External update handling (file watchers)
  * - Multiple view modes (markdown/code/source)
  * - Local and cloud file support
  */
 import { create } from "zustand";
 import { MarkdownFile } from "@/shared/types";
-import { getFileManager, switchFileManager } from "@/core/store/file-manager-integration";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
-import { DEBOUNCE_CONFIG } from "@/core/file-manager-v2/constants";
+import {
+  initializeFileOperations,
+  loadFile,
+  saveFile,
+  listFiles,
+} from "@/core/cache/file-operations";
+
+// Debounce config for auto-save
+const DEBOUNCE_CONFIG = {
+  autoSave: 1000, // 1 second
+  externalUpdate: 500, // 0.5 seconds
+  cache: 2000, // 2 seconds
+};
 
 /**
- * Gets the active file manager instance based on current workspace
+ * Gets the active workspace type from workspace store
  */
-function getActiveFileManager() {
+function getActiveWorkspaceType() {
   const workspace = useWorkspaceStore.getState().activeWorkspace();
-  if (!workspace) {
-    throw new Error('No active workspace');
-  }
-  return getFileManager(workspace);
-}
-
-/**
- * Enables Google Drive workspace
- * @param folderId - Google Drive folder ID
- */
-export async function enableGoogleDrive(folderId?: string) {
-  try {
-    if (folderId) {
-      window.localStorage.setItem("verve_gdrive_folder_id", folderId);
-    }
-
-    // Switch to drive workspace
-    const workspaceStore = useWorkspaceStore.getState();
-    const driveWorkspaces = workspaceStore.getDriveWorkspaces();
-
-    if (driveWorkspaces.length > 0) {
-      await switchFileManager(driveWorkspaces[0]);
-    }
-
-    return getActiveFileManager();
-  } catch (err) {
-    console.error("Failed to enable Google Drive:", err);
-    throw err;
-  }
+  return workspace?.type || 'browser';
 }
 
 /** Editor Store State Interface */
@@ -200,7 +183,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   }),
 
   /**
-   * Applies editor patch asynchronously to file manager
+   * Applies editor patch asynchronously to RxDB cache
    * Non-blocking - updates UI immediately, syncs to storage in background
    */
   applyEditorPatch: async (fileId, content) => {
@@ -208,8 +191,6 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     if (!tab) return;
 
     try {
-      const manager = getActiveFileManager();
-
       // Optimistic update - UI updates immediately
       get().updateFileContent(fileId, content);
 
@@ -217,7 +198,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       get().setFileSaving(fileId, true);
       // Clear any previous save error when starting a new save
       get().setFileSaveError(fileId, undefined);
-      manager.updateFile(tab.path, content, false)
+
+      const workspaceType = getActiveWorkspaceType();
+
+      saveFile(tab.path, content, workspaceType)
         .then(() => {
           get().setFileSaving(fileId, false);
           get().setFileLastSaved(fileId, new Date());
@@ -235,22 +219,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   /**
-   * Loads a file through the file manager
+   * Loads a file through the RxDB cache
    * Creates a MarkdownFile object and opens it in a new tab
    */
   loadFileFromManager: async (path, isLocal = false) => {
     try {
       set({ isLoading: true });
 
-      const manager = getActiveFileManager();
-      const fileData = await manager.loadFile(path);
+      const workspaceType = getActiveWorkspaceType();
+      const fileData = await loadFile(path, workspaceType);
 
       const markdownFile: MarkdownFile = {
         id: fileData.id,
         path: fileData.path,
         name: fileData.name,
         content: fileData.content,
-        category: fileData.category,
+        category: isLocal ? 'local' : 'browser',
         isLocal,
       };
 
@@ -326,7 +310,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      
+      // Resolve the relative path
       let targetPath = relativePath;
       if (currentFilePath) {
         const resolved = resolveRelativePath(currentFilePath, relativePath);
@@ -336,19 +320,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         targetPath = resolved;
       }
 
-      
+      // Find the file in the tree
       const fileTree = useFileExplorerStore.getState().fileTree;
-
-      
       const fileNode = findFileInTree(fileTree, targetPath);
 
       if (!fileNode) {
         throw new Error(`File not found: ${targetPath}`);
       }
 
-      
+      // Handle local files with File System Access API
       if (fileNode.id.startsWith('local-file-')) {
-        
         const dirHandle = (window as any).__localDirHandle;
         if (!dirHandle) {
           throw new Error('No directory handle available');
@@ -357,7 +338,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const pathParts = fileNode.path.split('/');
         let currentHandle = dirHandle;
 
-        
+        // Navigate to the file
         for (let i = 0; i < pathParts.length - 1; i++) {
           currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
         }
@@ -376,16 +357,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
           isLocal: true,
         });
       } else {
-        
-        const manager = getActiveFileManager();
-        const fileData = await manager.loadFile(fileNode.path);
+        // Load from RxDB cache
+        const workspaceType = getActiveWorkspaceType();
+        const fileData = await loadFile(fileNode.path, workspaceType);
 
         get().openFile({
           id: fileData.id,
           path: fileData.path,
           name: fileData.name,
           content: fileData.content,
-          category: fileData.category,
+          category: 'browser',
         });
       }
 

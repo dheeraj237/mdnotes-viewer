@@ -2,13 +2,37 @@ import { createRxDatabase, addRxPlugin, RxDatabase, RxCollection } from 'rxdb';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { RxDBLeaderElectionPlugin } from 'rxdb/plugins/leader-election';
 import { RxDBJsonDumpPlugin } from 'rxdb/plugins/json-dump';
+import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
+import { RxDBMigrationPlugin } from 'rxdb/plugins/migration';
 
-import { cachedFileSchema, crdtDocSchema, syncQueueSchema } from './schemas';
+import { cachedFileSchema, crdtDocSchema, syncQueueSchema, migrationStrategies } from './schemas';
 import type { CachedFile, CrdtDoc } from './types';
 
 // Plugin registration for browser environment
+if (import.meta.env.DEV) {
+  addRxPlugin(RxDBDevModePlugin);
+}
 addRxPlugin(RxDBLeaderElectionPlugin);
 addRxPlugin(RxDBJsonDumpPlugin);
+addRxPlugin(RxDBMigrationPlugin);
+
+/**
+ * Safely convert an error to a serializable string, handling circular references
+ */
+function safeErrorToString(error: any): string {
+  try {
+    // Try to stringify first (for simple errors)
+    return JSON.stringify(error);
+  } catch {
+    // If that fails, construct a string from error properties
+    const parts: string[] = [];
+    if (error?.message) parts.push(`Message: ${error.message}`);
+    if (error?.code) parts.push(`Code: ${error.code}`);
+    if (error?.name) parts.push(`Name: ${error.name}`);
+    if (error?.stack) parts.push(`Stack: ${error.stack.substring(0, 200)}`);
+    return parts.length > 0 ? parts.join(' | ') : String(error).substring(0, 200);
+  }
+}
 
 export interface SyncQueueDoc {
   id: string;
@@ -30,46 +54,209 @@ export interface CacheDatabase {
 }
 
 let cachedDb: CacheDatabase | null = null;
+let initInProgress = false;
+let retryCount = 0;
+const MAX_RETRIES = 2; // Prevent infinite loops
 
 /**
- * Initialize RxDB with IndexedDB adapter for browser persistence.
- * Registers cached_files, crdt_docs, and optional sync_queue collections.
+ * Clear all IndexedDB databases to reset state
+ */
+async function clearAllIndexedDatabases(): Promise<void> {
+  console.log('[RxDB] Clearing all IndexedDB databases...');
+
+  try {
+    // Get all databases (if available)
+    if ('databases' in indexedDB) {
+      const dbs = await indexedDB.databases();
+      console.log('[RxDB] Found databases:', dbs.map(d => d.name).filter(Boolean));
+
+      for (const dbInfo of dbs) {
+        if (dbInfo.name) {
+          console.log('[RxDB] Deleting database:', dbInfo.name);
+          await new Promise<void>((resolve) => {
+            const request = indexedDB.deleteDatabase(dbInfo.name!);
+            request.onsuccess = () => resolve();
+            request.onerror = () => resolve();
+            request.onblocked = () => console.warn(`[RxDB] Delete blocked for ${dbInfo.name}`);
+          });
+        }
+      }
+    }
+
+    // Also explicitly delete the specific database
+    console.log('[RxDB] Explicitly deleting verve_cache_db...');
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.deleteDatabase('verve_cache_db');
+      request.onsuccess = () => {
+        console.log('[RxDB] verve_cache_db deleted successfully');
+        resolve();
+      };
+      request.onerror = () => {
+        console.warn('[RxDB] Error deleting verve_cache_db');
+        resolve();
+      };
+    });
+
+    // Wait for full cleanup
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    console.log('[RxDB] All databases cleared');
+  } catch (err) {
+    console.warn('[RxDB] Error during database cleanup:', err);
+  }
+}
+
+/**
+ * Initialize RxDB with Dexie RxStorage for browser persistence.
+ * 
+ * Based on RxDB best practices for React applications (https://rxdb.info/articles/react-database.html):
+ * - Uses Dexie RxStorage for efficient IndexedDB-based persistence
+ * - Enables multiInstance: true for multi-tab synchronization
+ * - Enables eventReduce: true for performance optimization with reactive queries
+ * - Registers cached_files, crdt_docs, and sync_queue collections with defined schemas
+ * 
+ * Key features:
+ * - Reactive data handling: Observable queries automatically update when data changes
+ * - Local-first approach: Works offline with automatic sync when reconnected
+ * - Multi-tab support: Data changes propagated across browser tabs
+ * - Observable queries: Use .$ to subscribe to query results
+ * 
+ * @returns {Promise<CacheDatabase>} Initialized database instance
+ * @throws {Error} If initialization fails after retries
+ * 
+ * @see https://rxdb.info/articles/react-database.html
  */
 export async function initializeRxDB(): Promise<CacheDatabase> {
   if (cachedDb) {
     return cachedDb;
   }
 
+  // Prevent multiple simultaneous initialization attempts
+  if (initInProgress) {
+    console.log('[RxDB] Initialization already in progress, waiting...');
+    let attempts = 0;
+    while (initInProgress && attempts < 100) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+      if (cachedDb) return cachedDb;
+    }
+    if (cachedDb) return cachedDb;
+    throw new Error('RxDB initialization timeout');
+  }
+
+  initInProgress = true;
+
   try {
+    console.log('[RxDB] Initializing RxDB database...');
+
+    // Create database with recommended React best practices
     const db = await createRxDatabase<CacheDatabase>({
       name: 'verve_cache_db',
-      storage: getRxStorageDexie(),
-      multiInstance: true, // Enable multi-tab support
-      ignoreDuplicate: true // Ignore errors when reinitializing
+      storage: getRxStorageDexie(),               // Dexie-based IndexedDB storage
+      multiInstance: true,                        // Enable multi-tab synchronization
+      eventReduce: true,                          // Optimize performance for reactive queries
+      ignoreDuplicate: true                       // Allow reusing database across tabs
     });
 
-    // Register collections
-    await db.addCollections({
+    console.log('[RxDB] Database created, registering collections...');
+
+    // Register collections with their schemas and migration strategies
+    const collections = {
       cached_files: {
-        schema: cachedFileSchema
+        schema: cachedFileSchema,
+        migrationStrategies: migrationStrategies.cachedFile
       },
       crdt_docs: {
-        schema: crdtDocSchema
+        schema: crdtDocSchema,
+        migrationStrategies: migrationStrategies.crdtDoc
       },
       sync_queue: {
-        schema: syncQueueSchema
+        schema: syncQueueSchema,
+        migrationStrategies: migrationStrategies.syncQueue
       }
-    });
+    };
 
+    await db.addCollections(collections);
+
+    console.log('[RxDB] Collections registered successfully');
+
+    // Store database instance and reset retry count
     cachedDb = db;
-    
-    // Setup leader election for multi-tab coordination
-    await db.waitForLeadership();
+    retryCount = 0;
+
+    console.log('[RxDB] Database initialization complete');
 
     return db;
-  } catch (error) {
-    console.error('Failed to initialize RxDB:', error);
+  } catch (error: any) {
+    const safeErrorStr = safeErrorToString(error);
+    console.error('[RxDB] Initialization failed:', {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name
+    });
+
+    // Handle fatal errors - don't retry
+    if (error?.name === 'DatabaseClosedError' || error?.message?.includes('DatabaseClosedError')) {
+      console.error('[RxDB] Fatal error: Database is closed');
+      initInProgress = false;
+      cachedDb = null;
+      throw error;
+    }
+
+    // Detect incompatibility errors that warrant a full database reset
+    const isDXE1Error = error?.code === 'DXE1' || safeErrorStr.includes('DXE1');
+    const isDB1Error = error?.code === 'DB1' || safeErrorStr.includes('DB1');
+    const isSchemaError = error?.code?.includes('SC34') ||
+      error?.code?.includes('DB6') ||
+      error?.code?.includes('DB5') ||
+      error?.code?.includes('SC39') ||
+      safeErrorStr.includes('SC34') ||
+      safeErrorStr.includes('DB6') ||
+      safeErrorStr.includes('schema') ||
+      safeErrorStr.includes('previousSchema') ||
+      safeErrorStr.includes('maxLength') ||
+      safeErrorStr.includes('primary key') ||
+      error?.message?.includes('schema') ||
+      error?.message?.includes('DB6');
+
+    // Retry on incompatibility errors with database reset
+    if ((isDXE1Error || isDB1Error) && retryCount < MAX_RETRIES) {
+      console.log(`[RxDB] Storage incompatibility detected (${retryCount + 1}/${MAX_RETRIES}). Clearing and retrying...`);
+      try {
+        cachedDb = null;
+        retryCount++;
+        await clearAllIndexedDatabases();
+
+        initInProgress = false;
+        return initializeRxDB();
+      } catch (clearError) {
+        console.error('[RxDB] Failed to recover from incompatibility error:', clearError);
+        initInProgress = false;
+        throw error;
+      }
+    }
+
+    // Handle schema errors gracefully
+    if (isSchemaError) {
+      console.error('[RxDB] Schema error - clear browser storage and reload');
+      initInProgress = false;
+      cachedDb = null;
+      throw new Error(`RxDB schema error: ${error?.message || 'Unknown'}. Clear storage and reload.`);
+    }
+
+    // Max retries exceeded
+    if (retryCount >= MAX_RETRIES) {
+      console.error(`[RxDB] Max retries (${MAX_RETRIES}) exceeded`);
+      initInProgress = false;
+      cachedDb = null;
+      throw new Error(`RxDB initialization failed after ${MAX_RETRIES} attempts`);
+    }
+
+    initInProgress = false;
     throw error;
+  } finally {
+    if (initInProgress) {
+      initInProgress = false;
+    }
   }
 }
 
@@ -89,8 +276,15 @@ export function getCacheDB(): CacheDatabase {
  */
 export async function closeCacheDB(): Promise<void> {
   if (cachedDb) {
-    await cachedDb.destroy();
-    cachedDb = null;
+    try {
+      await cachedDb.destroy();
+    } catch (error) {
+      console.warn('[RxDB] Error during database destruction:', error);
+    } finally {
+      cachedDb = null;
+      initInProgress = false;
+      retryCount = 0;
+    }
   }
 }
 
@@ -120,15 +314,24 @@ export async function upsertCachedFile(file: CachedFile): Promise<void> {
 }
 
 /**
- * Get a cached file by ID.
+ * Get a cached file by id or path.
+ *
+ * Many callers historically passed a file `path` instead of the internal `id`.
+ * This helper first attempts to resolve by `id`, and if not found, falls back
+ * to resolving by `path` so both lookup styles are supported.
  */
-export async function getCachedFile(id: string): Promise<CachedFile | null> {
+export async function getCachedFile(idOrPath: string): Promise<CachedFile | null> {
   const db = getCacheDB();
   try {
-    const doc = await db.cached_files.findOne({ selector: { id } }).exec();
+    // Try to find by id first (most callers use id)
+    let doc = await db.cached_files.findOne({ selector: { id: idOrPath } }).exec();
+    if (doc) return doc.toJSON();
+
+    // Fallback: try to find by path (some modules pass the path)
+    doc = await db.cached_files.findOne({ selector: { path: idOrPath } }).exec();
     return doc ? doc.toJSON() : null;
   } catch (error) {
-    console.error('Failed to get cached file:', id, error);
+    console.error('Failed to get cached file (idOrPath=', idOrPath, '):', error);
     return null;
   }
 }

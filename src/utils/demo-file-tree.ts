@@ -1,19 +1,17 @@
 /**
  * Samples File Tree Initializer
- * Loads sample files into the file explorer
+ * Loads sample files from RxDB cache into the file explorer
  */
 
 import { FileNode } from '@/shared/types';
-import { getBrowserAdapter } from '@/hooks/use-browser-mode';
+import { getAllFiles } from '@/core/cache/file-operations';
 
 /**
- * Build browser file tree from browser adapter
+ * Build browser file tree from RxDB cache
  */
 export async function buildSamplesFileTree(): Promise<FileNode[]> {
-  const adapter = getBrowserAdapter();
-
-  // Get all files from browser adapter
-  const files = await adapter.listFiles('');
+  // Get all files from RxDB cache
+  const files = await getAllFiles();
   
   // Build a tree structure from flat file list
   const root: { [key: string]: any } = {};

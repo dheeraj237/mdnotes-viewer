@@ -223,23 +223,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
               console.warn('Failed to refresh file tree after creating default file', e);
             }
 
-            // Pre-cache the created file
-            try {
-              const { getFileManager } = await import('@/core/store/file-manager-integration');
-              const { useWorkspaceStore } = await import('@/core/store/workspace-store');
-              const driveWorkspace = useWorkspaceStore.getState().activeWorkspace();
-              if (driveWorkspace) {
-                const manager = getFileManager(driveWorkspace);
-                const files = await manager.listFiles();
-                files.forEach(file => {
-                  manager.loadFile(file.path).catch(err =>
-                    console.warn(`Failed to pre-cache file ${file.path}:`, err)
-                  );
-                });
-              }
-            } catch (err) {
-              console.warn('Failed to pre-cache files:', err);
-            }
+            // Pre-cache files - they're already in RxDB so no need for explicit pre-caching
           } catch (err) {
             console.warn('Failed to create default verve.md file:', err);
           }
@@ -255,27 +239,13 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         const workspaceId = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         createWorkspace(newWorkspaceName, 'browser', { id: workspaceId });
 
-        // Create default verve.md file for browser workspace
+        // Default file creation handled by workspace store for browser workspaces
+        // Refresh file tree so the new file appears when ready
         try {
-          const { getFileManager } = await import('@/core/store/file-manager-integration');
-          const { useWorkspaceStore } = await import('@/core/store/workspace-store');
-          const workspace = useWorkspaceStore.getState().workspaces.find(w => w.id === workspaceId);
-          if (workspace) {
-            const manager = getFileManager(workspace);
-            await manager.createFile('verve.md', '# Verve');
-              // Kick off background sync; don't block UI
-              manager.forceSync('verve.md').catch(err => console.warn('Background sync failed:', err));
-              // Refresh file tree to show the new file immediately from cache
-            try {
-              await refreshFileTree();
-            } catch (e) {
-              console.warn('Failed to refresh file tree after creating default file', e);
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to create default verve.md file:', err);
+          await refreshFileTree();
+        } catch (e) {
+          console.warn('Failed to refresh file tree after creating workspace', e);
         }
-
         toast.success("Browser workspace created successfully!");
       }
       
@@ -339,21 +309,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         // Refresh file tree for the newly active workspace
         await refreshFileTree();
 
-        // Pre-cache all files for the workspace to improve performance
-        try {
-          const { getFileManager } = await import('@/core/store/file-manager-integration');
-          const manager = getFileManager(workspace);
-          const files = await manager.listFiles();
-
-          // Pre-load all files into cache (don't wait for completion)
-          files.forEach(file => {
-            manager.loadFile(file.path).catch(err =>
-              console.warn(`Failed to pre-cache file ${file.path}:`, err)
-            );
-          });
-        } catch (err) {
-          console.warn('Failed to pre-cache files:', err);
-        }
+        // Files are already in RxDB cache, no need for explicit pre-caching
 
         toast.success(`Switched to "${workspace.name}"`);
       } catch (e) {

@@ -9,6 +9,22 @@ import {
 import type { CrdtDoc } from './types';
 
 /**
+ * Browser-compatible base64 encoding for Uint8Array
+ */
+function uint8ArrayToBase64(array: Uint8Array): string {
+  const chars = Array.from(array, (byte) => String.fromCharCode(byte)).join('');
+  return btoa(chars);
+}
+
+/**
+ * Browser-compatible base64 decoding to Uint8Array
+ */
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  return Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
+}
+
+/**
  * In-memory registry of Y.Doc instances keyed by crdtId
  * Prevents loading the same document multiple times
  */
@@ -38,7 +54,7 @@ function observeYjsUpdates(crdtId: string, ydoc: Y.Doc): () => void {
 async function persistYjsState(crdtId: string, ydoc: Y.Doc): Promise<void> {
   try {
     const state = Y.encodeStateAsUpdate(ydoc);
-    const stateBase64 = Buffer.from(state).toString('base64');
+    const stateBase64 = uint8ArrayToBase64(state);
 
     await upsertCrdtDoc({
       id: crdtId,
@@ -61,7 +77,7 @@ async function loadYjsState(crdtId: string, ydoc: Y.Doc): Promise<void> {
     if (crdtDoc && crdtDoc.yjsState) {
       let state: Uint8Array;
       if (typeof crdtDoc.yjsState === 'string') {
-        state = new Uint8Array(Buffer.from(crdtDoc.yjsState, 'base64'));
+        state = base64ToUint8Array(crdtDoc.yjsState);
       } else {
         state = crdtDoc.yjsState;
       }
@@ -117,7 +133,7 @@ export async function createOrLoadYjsDoc(
       await upsertCrdtDoc({
         id: crdtId,
         fileId: fileId || crdtId,
-        yjsState: Buffer.from(Y.encodeStateAsUpdate(ydoc)).toString('base64'),
+        yjsState: uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc)),
         lastUpdated: Date.now()
       });
     }

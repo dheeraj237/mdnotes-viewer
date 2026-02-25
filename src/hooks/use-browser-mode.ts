@@ -1,57 +1,62 @@
 /**
  * Browser Initialization Hook
- * Initializes browser files on app startup with File Manager V2
+ * Initializes RxDB cache and default workspace on app startup
  */
 
 import { useEffect, useState } from 'react';
-import { BrowserAdapterV2 } from '@/core/file-manager-v2/adapters/browser-adapter';
-import { FileManager } from '@/core/file-manager-v2/file-manager';
+import { initializeFileOperations, loadSampleFilesFromFolder } from '@/core/cache/file-operations';
+import { useWorkspaceStore } from '@/core/store/workspace-store';
 
-let browserAdapter: BrowserAdapterV2 | null = null;
-let fileManager: FileManager | null = null;
 export function useBrowserMode() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { createWorkspace, workspaces } = useWorkspaceStore();
 
   useEffect(() => {
-    const initializeBrowser = async () => {
+    const initializeCache = async () => {
       try {
-        if (!browserAdapter) {
-          browserAdapter = new BrowserAdapterV2();
-          await browserAdapter.initialize();
-          fileManager = new FileManager(browserAdapter);
+        // Initialize RxDB cache as single source of truth
+        await initializeFileOperations();
+
+        // Create default workspace if it doesn't exist
+        const verveStore = useWorkspaceStore.getState();
+        const hasVerveWorkspace = verveStore.workspaces.some(ws => ws.id === 'verve-samples');
+        
+        if (!hasVerveWorkspace) {
+          console.log('[BrowserMode] Creating default "Verve Samples" workspace...');
+          verveStore.createWorkspace('Verve Samples', 'browser', { id: 'verve-samples' });
+          
+          // Load sample files into the new workspace
+          console.log('[BrowserMode] Loading sample files...');
+          await loadSampleFilesFromFolder();
+          console.log('[BrowserMode] Sample files loaded');
         }
+
         setIsInitialized(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to initialize browser adapter');
-        console.error('Browser adapter initialization error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to initialize file cache');
+        console.error('File cache initialization error:', err);
       }
     };
 
-    initializeBrowser();
+    initializeCache();
   }, []);
 
   return {
     isInitialized,
     error,
-    adapter: browserAdapter,
-    fileManager,
   };
 }
 
+/**
+ * Get the global file cache (deprecated - use file-operations directly)
+ */
 export function getBrowserAdapter(workspaceId: string = 'default') {
-  // Always create a new adapter with the specific workspace ID
-  // This ensures each workspace has its own isolated adapter
-  const adapter = new BrowserAdapterV2(workspaceId);
-  adapter.initialize().catch(err => {
-    console.error(`Failed to initialize browser adapter for workspace ${workspaceId}:`, err);
-  });
-  return adapter;
+  console.warn('getBrowserAdapter is deprecated - use file-operations from @/core/cache instead');
+  return null;
 }
 
 export function getBrowserFileManager() {
-  if (!fileManager) {
-    fileManager = new FileManager(getBrowserAdapter());
-  }
-  return fileManager;
+  console.warn('getBrowserFileManager is deprecated - use file-operations from @/core/cache instead');
+  return null;
 }

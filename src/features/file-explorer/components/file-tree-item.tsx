@@ -8,8 +8,8 @@ import { FileContextMenu } from "./context-menu";
 import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { Button } from "@/shared/components/ui/button";
-import { getFileManager } from "@/core/store/file-manager-integration";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
+import { loadFile as loadFileData } from "@/core/cache";
 
 interface FileTreeItemProps {
   node: FileNode;
@@ -108,44 +108,41 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           isLocal: true,
         });
       } else if (node.id.startsWith('gdrive-')) {
-        // Google Drive file - use FileManager
+        // Google Drive file - load from RxDB cache
         if (!activeWorkspace || activeWorkspace.type !== 'drive') {
           throw new Error('No Google Drive workspace active');
         }
 
-        const fileManager = getFileManager(activeWorkspace);
-        const fileData = await fileManager.loadFile(node.path);
+        const fileData = await loadFileData(node.path, 'gdrive');
 
         openFile({
           id: node.id,
           path: node.path,
           name: node.name,
           content: fileData.content,
-          category: fileData.category,
+          category: 'gdrive',
         });
       } else if (node.id.startsWith('samples-') && activeWorkspace?.id === 'verve-samples') {
-        // Load from verve-samples workspace using FileManager (samples)
-        const fileManager = getFileManager(activeWorkspace);
-        const fileData = await fileManager.loadFile(node.path);
+        // Load from verve-samples workspace from RxDB cache
+        const fileData = await loadFileData(node.path, 'browser');
 
         openFile({
           id: node.id,
           path: node.path,
           name: node.name,
           content: fileData.content,
-          category: fileData.category,
+          category: 'browser',
         });
       } else if (activeWorkspace?.type === 'browser' && activeWorkspace.id !== 'verve-samples') {
-        // Browser workspace (non-samples) - use FileManager with BrowserAdapterV2
-        const fileManager = getFileManager(activeWorkspace);
-        const fileData = await fileManager.loadFile(node.path);
+        // Browser workspace (non-samples) - load from RxDB cache
+        const fileData = await loadFileData(node.path, 'browser');
 
         openFile({
           id: node.id,
           path: node.path,
           name: node.name,
           content: fileData.content,
-          category: fileData.category,
+          category: 'browser',
         });
       } else {
         // Fallback: attempt to load from public directory (relative path for Vite)

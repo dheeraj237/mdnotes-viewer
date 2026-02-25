@@ -7,20 +7,24 @@ import type { CachedFile, CrdtDoc } from './types';
  */
 export const cachedFileSchema: RxJsonSchema<CachedFile> = {
   title: 'cached_files schema',
-  version: 0,
+  version: 2,
   type: 'object',
   primaryKey: 'id',
+  additionalProperties: false,
   properties: {
     id: {
       type: 'string',
+      maxLength: 255,
       description: 'Unique file/directory identifier (UUID or path-based)'
     },
     name: {
       type: 'string',
+      maxLength: 255,
       description: 'File or directory name'
     },
     path: {
       type: 'string',
+      maxLength: 1024,
       description: 'Full path in workspace'
     },
     type: {
@@ -30,11 +34,13 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
     },
     workspaceType: {
       type: 'string',
+      maxLength: 50,
       enum: ['browser', 'local', 'gdrive', 's3'],
       description: 'Workspace storage type (determines sync adapters)'
     },
     crdtId: {
       type: ['string', 'null'],
+      maxLength: 255,
       description: 'Optional link to CRDT doc ID for text files'
     },
     metadata: {
@@ -51,8 +57,8 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
       description: 'Flag indicating local unsynced changes (not used for browser workspace)'
     }
   },
-  required: ['id', 'name', 'path', 'type', 'workspaceType'],
-  indexes: ['path', 'dirty', 'workspaceType']
+  required: ['id', 'name', 'path', 'type', 'workspaceType', 'dirty'],
+  indexes: [['path'], ['workspaceType']]
 };
 
 /**
@@ -61,16 +67,19 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
  */
 export const crdtDocSchema: RxJsonSchema<CrdtDoc> = {
   title: 'crdt_docs schema',
-  version: 0,
+  version: 2,
   type: 'object',
   primaryKey: 'id',
+  additionalProperties: false,
   properties: {
     id: {
       type: 'string',
+      maxLength: 255,
       description: 'CRDT document ID (same as crdtId in cached_files)'
     },
     fileId: {
       type: 'string',
+      maxLength: 255,
       description: 'Foreign key to cached_files.id'
     },
     yjsState: {
@@ -100,12 +109,14 @@ export const syncQueueSchema: RxJsonSchema<{
   createdAt?: number;
 }> = {
   title: 'sync_queue schema',
-  version: 0,
+  version: 2,
   type: 'object',
   primaryKey: 'id',
+  additionalProperties: false,
   properties: {
     id: {
       type: 'string',
+      maxLength: 255,
       description: 'Unique queue entry ID'
     },
     op: {
@@ -120,6 +131,7 @@ export const syncQueueSchema: RxJsonSchema<{
     },
     targetId: {
       type: 'string',
+      maxLength: 255,
       description: 'Primary key of the target document'
     },
     payload: {
@@ -132,10 +144,32 @@ export const syncQueueSchema: RxJsonSchema<{
       description: 'Number of sync attempts'
     },
     createdAt: {
-      type: ['number', 'null'],
+      type: 'number',
+      multipleOf: 1,
+      minimum: 0,
+      maximum: 253402300799999,
+      default: 0,
       description: 'Queue entry creation time'
     }
   },
-  required: ['id', 'op', 'target', 'targetId'],
+  required: ['id', 'op', 'target', 'targetId', 'createdAt'],
   indexes: ['createdAt']
+};
+
+/**
+ * Migration strategies for schema version upgrades
+ */
+export const migrationStrategies = {
+  cachedFile: {
+    1: (doc: any) => doc,  // No-op migration from v0 to v1
+    2: (doc: any) => doc   // No-op migration from v1 to v2
+  },
+  crdtDoc: {
+    1: (doc: any) => doc,  // No-op migration from v0 to v1
+    2: (doc: any) => doc   // No-op migration from v1 to v2
+  },
+  syncQueue: {
+    1: (doc: any) => doc,  // No-op migration from v0 to v1
+    2: (doc: any) => doc   // No-op migration from v1 to v2
+  }
 };

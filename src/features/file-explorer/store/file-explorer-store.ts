@@ -17,7 +17,7 @@ import {
   renameNode as renameNodeOp,
   deleteNode as deleteNodeOp,
 } from "./helpers/file-operations";
-import { getFileManager } from "@/core/store/file-manager-integration";
+import { getAllFiles } from "@/core/cache/file-operations";
 
 /**
  * File Explorer Store State
@@ -183,14 +183,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const filePath = parentPath ? `${parentPath}/${fileName}` : fileName;
           await createFileOp(parentPath, fileName);
 
-          // Kick off background sync but don't block the UI — file is already in cache
-          const workspace = useWorkspaceStore.getState().activeWorkspace();
-          if (workspace) {
-            const manager = getFileManager(workspace);
-            manager.forceSync(filePath).catch(err => console.warn('Background sync failed:', err));
-          }
-
-          // Refresh file tree immediately from cache/index
+          // Refresh file tree immediately from RxDB cache
           await get().refreshFileTree();
         } catch (error) {
           console.error('Error creating file:', error);
@@ -208,14 +201,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName;
           await createFolderOp(parentPath, folderName);
 
-          // Kick off background sync for folder creation; don't block UI
-          const workspace = useWorkspaceStore.getState().activeWorkspace();
-          if (workspace) {
-            const manager = getFileManager(workspace);
-            manager.forceSync(folderPath).catch(err => console.warn('Background sync failed:', err));
-          }
-
-          // Refresh file tree immediately from cache/index
+          // Refresh file tree immediately from RxDB cache
           await get().refreshFileTree();
         } catch (error) {
           console.error('Error creating folder:', error);
@@ -223,17 +209,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         }
       },
 
-      /** Renames a file or folder (currently demo mode only) */
+      /** Renames a file or folder */
       renameNode: async (nodePath: string, newName: string) => {
         try {
           await renameNodeOp(nodePath, newName);
-
-          // Kick off background sync for rename; don't block UI
-          const workspace = useWorkspaceStore.getState().activeWorkspace();
-          if (workspace) {
-            const manager = getFileManager(workspace);
-            manager.forceSync(nodePath).catch(err => console.warn('Background sync failed:', err));
-          }
 
           await get().refreshFileTree();
         } catch (error) {
@@ -250,13 +229,6 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       deleteNode: async (nodePath: string, isFolder: boolean) => {
         try {
           await deleteNodeOp(nodePath, isFolder);
-
-          // Kick off background sync for delete; don't block UI
-          const workspace = useWorkspaceStore.getState().activeWorkspace();
-          if (workspace) {
-            const manager = getFileManager(workspace);
-            manager.forceSync(nodePath).catch(err => console.warn('Background sync failed:', err));
-          }
 
           await get().refreshFileTree();
         } catch (error) {
@@ -287,7 +259,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         }
       },
 
-      /** Refreshes the file tree from the current source */
+      /** Refreshes the file tree from RxDB cache */
       refreshFileTree: async () => {
         const state = get();
 
@@ -300,28 +272,22 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return;
         }
 
-        // For browser workspaces, use adapter to load files
+        // For browser workspaces, load from RxDB
         if (activeWorkspace.type === 'browser') {
           if (activeWorkspace.id === 'verve-samples') {
-            // Special case: Load sample files for samples workspace using FileManager
+            // Special case: Load sample files for samples workspace
             try {
-              const fileManager = getFileManager(activeWorkspace);
-              const fileTree = await buildFileTreeFromAdapter(
-                fileManager,
-                '',
-                'samples-'
-              );
+              const fileTree = await buildSamplesFileTree();
               set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
             } catch (e) {
               console.error('Failed to load verve-samples workspace files', e);
               set({ fileTree: [], currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
             }
           } else {
-            // Other browser workspaces: Load from BrowserAdapterV2
+            // Other browser workspaces: Load from RxDB cache
             try {
-              const fileManager = getFileManager(activeWorkspace);
               const fileTree = await buildFileTreeFromAdapter(
-                fileManager,
+                null,  // No FileManager needed, uses RxDB
                 '',
                 ''
               );
@@ -352,13 +318,12 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return;
         }
 
-        // For Google Drive workspace: fetch and display all files from the drive folder
+        // For Google Drive workspace: fetch and display all files from RxDB
         if (activeWorkspace.type === 'drive' && activeWorkspace.driveFolder) {
           set({ isSyncingDrive: true });
           try {
-            const fileManager = getFileManager(activeWorkspace);
             const fileTree = await buildFileTreeFromAdapter(
-              fileManager,
+              null,  // No FileManager needed, uses RxDB
               activeWorkspace.driveFolder,
               'gdrive-'
             );
@@ -414,19 +379,4 @@ if (typeof window !== 'undefined') {
       // ignore
     }
   });
-
-  // Subscribe to file manager sync status for pending count
-  setInterval(() => {
-    try {
-      const workspace = useWorkspaceStore.getState().activeWorkspace();
-      if (workspace) {
-        const manager = getFileManager(workspace);
-        const syncStatus = manager.getSyncStatus();
-        const pendingCount = syncStatus.pending + syncStatus.processing;
-        useFileExplorerStore.getState().setPendingSyncCount(pendingCount);
-      }
-    } catch (e) {
-      // ignore if manager not initialized yet
-    }
-  }, 1000);
 }

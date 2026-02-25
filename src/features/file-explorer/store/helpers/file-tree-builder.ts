@@ -1,39 +1,42 @@
 import { FileNode } from "@/shared/types";
 import { MARKDOWN_EXTENSIONS, CODE_EXTENSIONS, TEXT_EXTENSIONS } from "@/shared/utils/file-type-detector";
-import { FileManager } from "@/core/file-manager-v2";
-import type { FileMetadata } from "@/core/file-manager-v2/types";
+import { getAllFiles } from "@/core/cache/file-operations";
+import type { FileMetadata } from "@/core/cache";
 
 /**
- * Builds a file tree from a FileManager adapter
- * Works with Google Drive, local, and other adapters
+ * Builds a file tree from RxDB cache
+ * Works with all workspace types by reading from the unified RxDB cache
  * 
- * @param fileManager - FileManager instance
  * @param directory - Directory path to list (empty for root)
  * @param idPrefix - Prefix for node IDs (e.g., 'gdrive-', 'local-')
  * @returns Promise<FileNode[]> - Array of file nodes sorted by type and name
  */
 export async function buildFileTreeFromAdapter(
-  fileManager: FileManager,
+  _fileManager: any,  // Kept for backwards compatibility but unused
   directory: string = '',
   idPrefix: string = ''
 ): Promise<FileNode[]> {
   try {
-    const files = await fileManager.listFiles(directory);
+    // Get all files from RxDB cache
+    const files = await getAllFiles();
+
+    // Filter files based on directory path
+    const filteredFiles = filterFilesByDirectory(files, directory);
 
     // Check if any files have nested paths (contain '/')
-    const hasNestedPaths = files.some(f => {
+    const hasNestedPaths = filteredFiles.some(f => {
       const pathWithoutLeadingSlash = f.path.startsWith('/') ? f.path.slice(1) : f.path;
       return pathWithoutLeadingSlash.includes('/');
     });
 
     // If we have nested paths, build a tree structure
     if (hasNestedPaths) {
-      return buildTreeFromFlatPaths(files, idPrefix);
+      return buildTreeFromFlatPaths(filteredFiles, idPrefix);
     }
 
     // Otherwise, use the simple flat mapping for adapters that return explicit folders
-    const nodes: FileNode[] = files.map((file: FileMetadata) => {
-      const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
+    const nodes: FileNode[] = filteredFiles.map((file: FileMetadata) => {
+      const isFolder = file.type === 'dir';
 
       return {
         id: `${idPrefix}${file.id}`,
@@ -47,9 +50,25 @@ export async function buildFileTreeFromAdapter(
 
     return sortFileNodes(nodes);
   } catch (error) {
-    console.error('Error building file tree from adapter:', error);
+    console.error('Error building file tree from cache:', error);
     return [];
   }
+}
+
+/**
+ * Filters files for a specific directory
+ */
+function filterFilesByDirectory(files: FileMetadata[], directory: string): FileMetadata[] {
+  if (!directory || directory === '' || directory === '/') {
+    // Return root level files (no slashes in path)
+    return files.filter(f => !f.path.includes('/'));
+  }
+
+  const dirPath = directory.replace(/\/$/, ''); // Remove trailing slash
+  const prefix = `${dirPath}/`;
+
+  // Return files that start with this directory path
+  return files.filter(f => f.path.startsWith(prefix));
 }
 
 /**

@@ -1,20 +1,23 @@
-import { getFileManager } from '@/core/store/file-manager-integration';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
+import {
+  saveFile,
+  createDirectory,
+  deleteFile as deleteFileRxDB,
+  renameFile as renameFileRxDB,
+  initializeFileOperations,
+} from '@/core/cache/file-operations';
 
 /**
- * Get the active file manager instance
+ * Get the active workspace type
  */
-function getActiveManager() {
+function getActiveWorkspaceType() {
   const workspace = useWorkspaceStore.getState().activeWorkspace();
-  if (!workspace) {
-    throw new Error('No active workspace');
-  }
-  return getFileManager(workspace);
+  return workspace?.type || 'browser';
 }
 
 /**
  * Creates a new file in the specified location
- * Uses File Manager V2 for all workspace types
+ * Uses RxDB cache for all workspace types
  * 
  * @param parentPath - Path of the parent folder (with prefix: 'gdrive-', 'local-', or empty for browser/samples)
  * @param fileName - Name of the file to create
@@ -22,9 +25,24 @@ function getActiveManager() {
  */
 export async function createFile(parentPath: string, fileName: string): Promise<void> {
   try {
-    const manager = getActiveManager();
+    // Ensure RxDB and file-operations are initialized in browser
+    try {
+      await initializeFileOperations();
+    } catch (initErr) {
+      console.warn('Failed to initialize file operations before creating file:', initErr);
+      // proceed — saveFile will throw if DB is unavailable
+    }
+    const workspaceType = getActiveWorkspaceType();
     const filePath = parentPath ? `${parentPath}/${fileName}` : fileName;
-    await manager.createFile(filePath, '');
+    // Provide sensible default content for certain filenames
+    let defaultContent = '';
+    const lowerName = fileName.toLowerCase();
+
+    if (lowerName === 'verve.md') {
+      defaultContent = '# Verve 🚀';
+    }
+
+    await saveFile(filePath, defaultContent, workspaceType);
   } catch (error) {
     console.error('Error creating file:', error);
     throw error;
@@ -33,7 +51,7 @@ export async function createFile(parentPath: string, fileName: string): Promise<
 
 /**
  * Creates a new folder in the specified location
- * Uses File Manager V2 for all workspace types
+ * Uses RxDB cache for all workspace types
  * 
  * @param parentPath - Path of the parent folder (with prefix)
  * @param folderName - Name of the folder to create
@@ -41,9 +59,15 @@ export async function createFile(parentPath: string, fileName: string): Promise<
  */
 export async function createFolder(parentPath: string, folderName: string): Promise<void> {
   try {
-    const manager = getActiveManager();
+    // Ensure RxDB is initialized
+    try {
+      await initializeFileOperations();
+    } catch (initErr) {
+      console.warn('Failed to initialize file operations before creating folder:', initErr);
+    }
+    const workspaceType = getActiveWorkspaceType();
     const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName;
-    await manager.createFolder(folderPath);
+    await createDirectory(folderPath, workspaceType);
   } catch (error) {
     console.error('Error creating folder:', error);
     throw error;
@@ -52,7 +76,7 @@ export async function createFolder(parentPath: string, folderName: string): Prom
 
 /**
  * Deletes a file or folder
- * Uses File Manager V2 for all workspace types
+ * Uses RxDB cache for all workspace types
  * 
  * @param nodePath - Path of the node to delete (with prefix)
  * @param isFolder - Whether the node is a folder
@@ -60,8 +84,7 @@ export async function createFolder(parentPath: string, folderName: string): Prom
  */
 export async function deleteNode(nodePath: string, isFolder: boolean): Promise<void> {
   try {
-    const manager = getActiveManager();
-    await manager.deleteFile(nodePath);
+    await deleteFileRxDB(nodePath);
   } catch (error) {
     console.error('Error deleting:', error);
     throw error;
@@ -70,7 +93,7 @@ export async function deleteNode(nodePath: string, isFolder: boolean): Promise<v
 
 /**
  * Renames a file or folder
- * Uses File Manager V2 for all workspace types
+ * Uses RxDB cache for all workspace types
  * 
  * @param nodePath - Current path of the node
  * @param newName - New name for the node
@@ -78,15 +101,13 @@ export async function deleteNode(nodePath: string, isFolder: boolean): Promise<v
  */
 export async function renameNode(nodePath: string, newName: string): Promise<void> {
   try {
-    const manager = getActiveManager();
     const pathParts = nodePath.split('/');
     pathParts[pathParts.length - 1] = newName;
     const newPath = pathParts.join('/');
 
-    await manager.renameFile(nodePath, newPath);
+    await renameFileRxDB(nodePath, newPath);
   } catch (error) {
     console.error('Error renaming:', error);
     throw error;
   }
 }
-

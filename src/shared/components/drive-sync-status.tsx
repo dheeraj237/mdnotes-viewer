@@ -1,14 +1,14 @@
 /**
  * Drive Sync Status Component
- * Shows detailed sync status for Google Drive operations
+ * Shows sync status using RxDB dirty file tracking
  */
 
 "use client";
 
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import { getFileManager } from "@/core/store/file-manager-integration";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
+import { getDirtyFiles } from "@/core/cache/file-operations";
 import { Button } from "@/shared/components/ui/button";
 import {
   Tooltip,
@@ -37,17 +37,25 @@ export function DriveSyncStatus() {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    // Poll sync status every second
+    // Poll dirty files every second to determine sync status
     const interval = setInterval(() => {
       try {
         const workspace = useWorkspaceStore.getState().activeWorkspace();
         if (workspace) {
-          const manager = getFileManager(workspace);
-          const status = manager.getSyncStatus();
-          setSyncStatus(status);
+          // Get dirty files from RxDB cache
+          getDirtyFiles().then(dirtyFiles => {
+            setSyncStatus({
+              pending: dirtyFiles.length,
+              processing: 0,
+              completed: 0,
+              failed: 0,
+              isProcessing: dirtyFiles.length > 0
+            });
+          });
         }
       } catch (e) {
-        // Ignore if manager not initialized
+        // Ignore if cache not initialized yet
+
       }
     }, 1000);
 
