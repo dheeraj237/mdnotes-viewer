@@ -2,12 +2,12 @@
  * RxDB File Operations - Single Source of Truth
  * 
  * This module provides all file operations (CRUD) backed by RxDB as the persistent cache layer.
- * All files are stored in RxDB's cached_files collection, with CRDT state in crdt_docs collection.
- * 
+ * All files are stored in RxDB's `cached_files` collection. CRDT/Yjs support
+ * has been disabled; file content is stored directly on `cached_files.content`.
+ *
  * Features:
  * - Unified interface for all workspace types (browser, local, gdrive, s3)
  * - Automatic dirty tracking for non-browser workspaces
- * - Yjs CRDT integration for text files
  * - Observable file changes for reactive UI updates
  */
 
@@ -18,51 +18,10 @@ import {
   getCachedFile,
   upsertCachedFile,
   observeCachedFiles,
-  upsertCrdtDoc,
-  getCrdtDoc,
 } from './index';
-import type { CachedFile, WorkspaceType, CrdtDoc } from './types';
+import type { CachedFile, WorkspaceType } from './types';
 
-// Helper: base64-encode a Uint8Array in both Node and browser environments
-function uint8ArrayToBase64(u8: Uint8Array): string {
-  if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-    return Buffer.from(u8).toString('base64');
-  }
-
-  // Browser fallback
-  let binary = '';
-  const chunkSize = 0x8000; // 32KB chunks to avoid call stack limits
-  for (let i = 0; i < u8.length; i += chunkSize) {
-    const chunk = u8.subarray(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, Array.prototype.slice.call(chunk));
-  }
-  return typeof btoa === 'function' ? btoa(binary) : '';
-}
-
-function uint8ArrayToUtf8String(u8: Uint8Array): string {
-  try {
-    if (typeof TextDecoder !== 'undefined') {
-      const td = new TextDecoder('utf-8');
-      return td.decode(u8);
-    }
-    return Buffer.from(u8).toString('utf-8');
-  } catch (e) {
-    return '';
-  }
-}
-
-function stringToBase64Utf8(str: string): string {
-  try {
-    if (typeof TextEncoder !== 'undefined') {
-      const te = new TextEncoder();
-      const u8 = te.encode(str);
-      return uint8ArrayToBase64(u8);
-    }
-    return Buffer.from(str, 'utf-8').toString('base64');
-  } catch (e) {
-    return '';
-  }
-}
+// Store plain UTF-8 `content` on `cached_files` as the single source of truth.
 
 /**
  * Convert workspace store type to cache WorkspaceType
@@ -130,7 +89,7 @@ export async function initializeFileOperations(): Promise<void> {
 
 /**
  * Load a file by path
- * Checks cached_files and returns content from crdt_docs if it exists, or empty string for new files
+ * Checks `cached_files` and returns stored `content`, or empty string for new files
  */
 export async function loadFile(
   path: string,
@@ -148,25 +107,10 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = 'browse
   const cached = await getCachedFile(path, workspaceId);
   
   if (cached) {
-    // File exists, load its content from CRDT doc if available
-    let content = '';
-
-    if (cached.crdtId) {
-      try {
-        const crdt = await getCrdtDoc(cached.crdtId);
-        if (crdt && crdt.yjsState) {
-          if (typeof crdt.yjsState === 'string') {
-            content = Buffer.from(crdt.yjsState, 'base64').toString('utf-8');
-          } else {
-            content = Buffer.from(crdt.yjsState as Uint8Array).toString('utf-8');
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to load CRDT doc content:', e);
-      }
-    }
+    // File exists, prefer stored `content` on the cached file record
+    let content = cached.content || '';
     
-    // Fallback: if CRDT content is empty (e.g., DB missing crdt_docs),
+    // Fallback: if content is empty (e.g., DB missing data),
     // try loading from the public `content/` folder so sample files still display.
     if ((!content || content.length === 0) && typeof window !== 'undefined') {
       try {
@@ -205,7 +149,7 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = 'browse
 
 /**
  * Save/update a file
- * Creates or updates entry in cached_files and stores content in crdt_docs
+ * Creates or updates entry in `cached_files` and stores content on the record
  * Marks as dirty for non-browser workspaces for later sync
  */
 export function saveFile(
@@ -238,17 +182,7 @@ async function saveSyncFile(
     fileId = uuidv4();
   }
   
-  // Create or reuse CRDT doc id and store raw content (base64 utf-8)
-  const crdtId = existing && (existing as any).crdtId ? (existing as any).crdtId : uuidv4();
-  const yjsStateBase64 = stringToBase64Utf8(content);
-  await upsertCrdtDoc({
-    id: crdtId,
-    fileId,
-    yjsState: yjsStateBase64,
-    lastUpdated: Date.now(),
-  });
-  
-  // Upsert cached file
+  // Upsert cached file with `content` stored directly
   const cachedFile: CachedFile = {
     id: fileId,
     name: path.split('/').pop() || 'untitled',
@@ -256,7 +190,7 @@ async function saveSyncFile(
     type: 'file',
     workspaceType,
     workspaceId: workspaceId,
-    crdtId,
+    content,
     metadata: metadata || { mimeType: 'text/markdown' },
     lastModified: Date.now(),
     dirty: workspaceType !== 'browser', // Mark dirty for sync-requiring workspaces
@@ -285,11 +219,6 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
   const cached = await getCachedFile(path, workspaceId);
   
   if (cached) {
-    // Delete CRDT doc if it exists
-    if (cached.crdtId) {
-      await db.crdt_docs.findByIds([cached.crdtId]).remove();
-    }
-    
     // Delete cached file by id
     await db.cached_files.findByIds([cached.id]).remove();
     // Attempt to delete from local filesystem if this is a local workspace
@@ -505,7 +434,7 @@ export async function clearAllFiles(): Promise<void> {
   const db = await getCacheDB();
   
   await db.cached_files.find().remove();
-  await db.crdt_docs.find().remove();
+  // CRDT docs removed; content stored on cached_files
 }
 
 /**
@@ -560,7 +489,7 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
         const content = await response.text();
         const fileId = `verve-samples-${sample.path}`;
 
-        // Create file in cache with browser workspace type
+        // Create file in cache with browser workspace type and store content
         await upsertCachedFile({
           id: fileId,
           name: sample.name,
@@ -568,17 +497,9 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
           type: 'file',
           workspaceType: 'browser',
           workspaceId: 'verve-samples',
-          crdtId: fileId,
+          content,
           lastModified: Date.now(),
           dirty: false,
-        });
-
-        // Create CRDT doc entry that stores raw content (base64 utf-8)
-        await upsertCrdtDoc({
-          id: fileId,
-          fileId: fileId,
-          yjsState: stringToBase64Utf8(content),
-          lastUpdated: Date.now(),
         });
 
         console.log(`[FileOperations] Loaded sample file: ${sample.path}`);

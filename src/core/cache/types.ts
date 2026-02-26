@@ -7,24 +7,17 @@ export type CachedFile = {
   type: 'file' | 'dir';
   workspaceType: WorkspaceType; // Determines which adapters to use
   workspaceId?: string; // Optional workspace instance id to separate multiple workspaces of same type
-  crdtId?: string;
+  // `content` holds the file text for single-source-of-truth storage in RxDB
+  content?: string;
   metadata?: Record<string, any>;
   lastModified?: number;
   dirty?: boolean; // Only relevant for 'local' and 'gdrive', not 'browser'
 };
 
-export type CrdtDoc = {
-  id: string; // crdtId
-  fileId: string;
-  // yjsState stored as base64 or binary attachment depending on platform
-  yjsState?: string | Uint8Array;
-  lastUpdated?: number;
-};
-
 export type SyncQueueEntry = {
   id: string;
   op: 'put' | 'delete';
-  target: 'file' | 'crdt';
+  target: 'file';
   targetId: string;
   payload?: any;
   attempts?: number;

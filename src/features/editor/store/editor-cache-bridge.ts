@@ -69,7 +69,7 @@ export function useOpenFileForEditing(
       return;
     }
 
-    const loadFile = async () => {
+    const fetchFile = async () => {
       try {
         const workspace = useWorkspaceStore.getState().activeWorkspace?.();
         const workspaceId = workspace?.id;
@@ -104,7 +104,7 @@ export function useOpenFileForEditing(
       }
     };
 
-    loadFile();
+    fetchFile();
   }, [fileId, filePath, workspaceType]);
 
   return { content, fileMetadata, isDirty, error };
@@ -248,7 +248,7 @@ export function useDirtyFiles() {
  */
 export async function closeEditorFile(fileId: string): Promise<void> {
   try {
-    // Optionally unload Yjs doc here if needed
+    // Optional cleanup for editor-backed resources; no CRDT unload required
     // For now, just mark it as synced or keep in memory cache
   } catch (error) {
     console.error('Failed to close editor file:', fileId, error);

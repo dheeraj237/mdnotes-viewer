@@ -20,8 +20,7 @@ export class S3Adapter implements ISyncAdapter {
   async push(file: CachedFile, content: string): Promise<boolean> {
     try {
       // TODO: Implement S3 PutObject
-      // Use AWS SDK or presigned URL to upload file
-      // Convert yjsState to a blob and upload to S3
+      // Use AWS SDK or presigned URL to upload file content as UTF-8 text or binary
       console.log(`S3Adapter push: ${file.id} (content length=${content.length})`);
       return true;
     } catch (error) {

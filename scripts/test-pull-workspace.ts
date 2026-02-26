@@ -5,15 +5,15 @@ import type { ISyncAdapter } from '@/core/sync/sync-manager';
 class MockAdapter implements ISyncAdapter {
   name = 'mock';
   async push(): Promise<boolean> { return true; }
-  async pull(): Promise<Uint8Array | null> { return null; }
+  async pull(): Promise<string | null> { return null; }
   async exists(): Promise<boolean> { return false; }
   async delete(): Promise<boolean> { return true; }
 
   async pullWorkspace(workspaceId?: string) {
     console.log('MockAdapter.pullWorkspace called for', workspaceId);
     const items = [
-      { fileId: `/mock/${workspaceId}/file1.md`, yjsState: new Uint8Array(Buffer.from('Hello from remote file1')) },
-      { fileId: `/mock/${workspaceId}/file2.md`, yjsState: new Uint8Array(Buffer.from('Hello from remote file2')) },
+      { fileId: `/mock/${workspaceId}/file1.md`, content: 'Hello from remote file1' },
+      { fileId: `/mock/${workspaceId}/file2.md`, content: 'Hello from remote file2' },
     ];
     return items;
   }

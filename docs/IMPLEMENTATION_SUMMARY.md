@@ -1,5 +1,9 @@
 # RxDB + Yjs CRDT Cache Implementation Summary
 
+> NOTE: The cache layer no longer persists Yjs/CRDT state. Files are stored
+> directly in the `cached_files` collection (`content` field) and CRDT logic
+> has been disabled and/or stubbed across the codebase.
+
 **Status:** Phase 1 Complete (Architecture, Core Cache Layer, SyncManager, Adapter Framework)
 
 ---

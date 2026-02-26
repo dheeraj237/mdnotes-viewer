@@ -5,7 +5,10 @@ This document explains how file create/read/update/delete (CRUD) operations flow
 **Actors**
 - UI: file-explorer and editor components (user actions: create, edit, rename, delete)
 - File Operations: `src/core/cache/file-operations.ts` (single source-of-truth API)
-- RxDB: `cached_files` and `crdt_docs` collections (persistence + CRDT storage)
+- RxDB: `cached_files` collection (persistence + content storage)
+
+> NOTE: CRDT/Yjs persistence has been removed. Text content is stored on
+> `cached_files.content` as the single source of truth.
 - SyncManager: `src/core/sync/sync-manager.ts` (observes RxDB, orchestrates sync)
 - Adapters: implementations in `src/core/sync/adapters/*` (LocalAdapter, GDriveAdapter, S3Adapter)
 - Target Storage: actual filesystem, Google Drive, S3, or browser IndexedDB (samples)

@@ -6,8 +6,8 @@ import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
 import { RxDBMigrationPlugin } from 'rxdb/plugins/migration';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 
-import { cachedFileSchema, crdtDocSchema, syncQueueSchema, migrationStrategies } from './schemas';
-import type { CachedFile, CrdtDoc } from './types';
+import { cachedFileSchema, syncQueueSchema, migrationStrategies } from './schemas';
+import type { CachedFile } from './types';
 
 // Plugin registration for browser environment
 if (import.meta.env.DEV) {
@@ -39,7 +39,7 @@ function safeErrorToString(error: any): string {
 export interface SyncQueueDoc {
   id: string;
   op: 'put' | 'delete';
-  target: 'file' | 'crdt';
+  target: 'file';
   targetId: string;
   payload?: any;
   attempts?: number;
@@ -48,7 +48,6 @@ export interface SyncQueueDoc {
 
 export interface CacheDatabase {
   cached_files: RxCollection<CachedFile>;
-  crdt_docs: RxCollection<CrdtDoc>;
   sync_queue?: any;
   destroy(): Promise<boolean>;
   waitForLeadership(): Promise<boolean>;
@@ -114,7 +113,7 @@ async function clearAllIndexedDatabases(): Promise<void> {
  * - Uses Dexie RxStorage for efficient IndexedDB-based persistence
  * - Enables multiInstance: true for multi-tab synchronization
  * - Enables eventReduce: true for performance optimization with reactive queries
- * - Registers cached_files, crdt_docs, and sync_queue collections with defined schemas
+ * - Registers `cached_files` and `sync_queue` collections with defined schemas
  * 
  * Key features:
  * - Reactive data handling: Observable queries automatically update when data changes
@@ -166,10 +165,6 @@ export async function initializeRxDB(): Promise<CacheDatabase> {
       cached_files: {
         schema: cachedFileSchema,
         migrationStrategies: migrationStrategies.cachedFile
-      },
-      crdt_docs: {
-        schema: crdtDocSchema,
-        migrationStrategies: migrationStrategies.crdtDoc
       },
       sync_queue: {
         schema: syncQueueSchema,
@@ -403,90 +398,6 @@ export async function getAllCachedFiles(pathPrefix?: string): Promise<CachedFile
     return [];
   }
 }
-
-/**
- * Add or update a CRDT doc entry.
- */
-export async function upsertCrdtDoc(doc: CrdtDoc): Promise<void> {
-  const db = getCacheDB();
-  try {
-    const existing = await db.crdt_docs.findOne({ selector: { id: doc.id } }).exec();
-    if (existing) {
-      try {
-        await existing.patch(doc);
-      } catch (err: any) {
-        // Handle revision conflicts by forcing an overwrite
-        const errStr = String(err || '');
-        if (errStr.includes('CONFLICT') || err?.status === 409) {
-          console.warn('[RxDB] CRDT patch conflict detected, attempting forced overwrite for', doc.id);
-          try {
-            await existing.remove();
-          } catch (removeErr) {
-            console.warn('[RxDB] Failed to remove conflicting crdt_doc, attempting insert anyway', removeErr);
-          }
-          try {
-            await db.crdt_docs.insert(doc);
-          } catch (insertErr) {
-            console.error('[RxDB] Forced insert of crdt_doc failed:', doc.id, insertErr);
-            throw insertErr;
-          }
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      await db.crdt_docs.insert(doc);
-    }
-  } catch (error) {
-    console.error('Failed to upsert CRDT doc:', doc.id, error);
-    throw error;
-  }
-}
-
-/**
- * Get a CRDT doc by ID.
- */
-export async function getCrdtDoc(id: string): Promise<CrdtDoc | null> {
-  const db = getCacheDB();
-  try {
-    const doc = await db.crdt_docs.findOne({ selector: { id } }).exec();
-    return doc ? doc.toJSON() : null;
-  } catch (error) {
-    console.error('Failed to get CRDT doc:', id, error);
-    return null;
-  }
-}
-
-/**
- * Get a CRDT doc by file ID (foreign key).
- */
-export async function getCrdtDocByFileId(fileId: string): Promise<CrdtDoc | null> {
-  const db = getCacheDB();
-  try {
-    const doc = await db.crdt_docs.findOne({ selector: { fileId } }).exec();
-    return doc ? doc.toJSON() : null;
-  } catch (error) {
-    console.error('Failed to get CRDT doc by file ID:', fileId, error);
-    return null;
-  }
-}
-
-/**
- * Remove a CRDT doc by ID.
- */
-export async function removeCrdtDoc(id: string): Promise<void> {
-  const db = getCacheDB();
-  try {
-    const doc = await db.crdt_docs.findOne({ selector: { id } }).exec();
-    if (doc) {
-      await doc.remove();
-    }
-  } catch (error) {
-    console.error('Failed to remove CRDT doc:', id, error);
-    throw error;
-  }
-}
-
 /**
  * Subscribe to changes in cached_files collection.
  */
@@ -498,14 +409,8 @@ export function observeCachedFiles(callback: (docs: CachedFile[]) => void) {
 }
 
 /**
- * Subscribe to changes in crdt_docs collection.
+ * Observe only `cached_files` collection. CRDT collection has been removed.
  */
-export function observeCrdtDocs(callback: (docs: CrdtDoc[]) => void) {
-  const db = getCacheDB();
-  return db.crdt_docs.find().$.subscribe((docs) => {
-    callback(docs.map((doc) => doc.toJSON()));
-  });
-}
 
 /**
  * Get all dirty cached files (unsynced changes).

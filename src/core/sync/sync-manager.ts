@@ -36,8 +36,8 @@ export interface ISyncAdapter {
   push(file: CachedFile, content: string): Promise<boolean>;
 
   /**
-   * Pull remote changes
-   * Returns null if not found, or the remote Yjs state
+  * Pull remote changes
+  * Returns remote content string or null if not found
    */
   // Pull returns the remote file content as a string, or null if missing.
   pull(fileId: string, localVersion?: number): Promise<string | null>;
@@ -65,10 +65,9 @@ export interface ISyncAdapter {
   listWorkspaceFiles?(workspaceId?: string, path?: string): Promise<{ id: string; path: string; metadata?: any }[]>;
 
   /**
-   * Optional: pull multiple files for a workspace. Adapter can implement
-   * optimized workspace-level pulls. Returns array of { fileId, yjsState }.
-   */
-  // Adapter workspace pull returns array of fileId + content string
+  * Optional: pull multiple files for a workspace. Adapter can implement
+  * optimized workspace-level pulls. Returns array of { fileId, content }.
+  */
   pullWorkspace?(workspaceId?: string, path?: string): Promise<Array<{ fileId: string; content: string }>>;
 }
 
@@ -90,7 +89,7 @@ export interface SyncStats {
 /**
  * Central SyncManager orchestrates multi-adapter sync
  * Watches RxDB for dirty files, coordinates with adapters,
- * and merges remote changes back to CRDT docs
+ * and applies remote content into the cache (CRDT merging disabled)
  */
 export class SyncManager {
   private adapters: Map<string, ISyncAdapter> = new Map();
@@ -360,37 +359,11 @@ export class SyncManager {
   }
 
   /**
-   * Merge remote Yjs state with local CRDT doc
-   * Yjs automatically handles conflict resolution via CRDT
+   * Merge remote content with local cache (CRDT merging currently disabled)
+   * This method is a no-op; future CRDT behavior should be implemented in the cache layer.
    */
-  private async mergeRemoteChanges(crdtId: string, remoteState: Uint8Array): Promise<void> {
-    try {
-      const crdtDoc = await getCrdtDoc(crdtId);
-      if (!crdtDoc) return;
-
-      // For now, disable CRDT merging and simply overwrite local CRDT doc
-      let remoteBase64 = '';
-      try {
-        if (remoteState instanceof Uint8Array) {
-          remoteBase64 = uint8ArrayToBase64(remoteState);
-        } else if (typeof remoteState === 'string') {
-          remoteBase64 = remoteState;
-        }
-      } catch (e) {
-        console.warn('Failed to encode remoteState to base64:', e);
-      }
-
-      await upsertCrdtDoc({
-        id: crdtId,
-        fileId: crdtDoc.fileId,
-        yjsState: remoteBase64,
-        lastUpdated: Date.now(),
-      });
-
-      console.log(`Overwrote CRDT ${crdtId} with remote state`);
-    } catch (error) {
-      console.error(`mergeRemoteChanges error for ${crdtId}:`, error);
-    }
+  private async mergeRemoteChanges(docId: string, remoteContent: string): Promise<void> {
+    return Promise.resolve();
   }
 
   /**
@@ -521,11 +494,12 @@ export class SyncManager {
       const workspaceId = workspace?.id;
 
       const file = await getCachedFile(fileId, workspaceId);
-      if (!file || !file.crdtId) return;
+      if (!file) return;
 
-      const remoteState = await adapter.pull(fileId);
-      if (remoteState) {
-        await this.mergeRemoteChanges(file.crdtId, remoteState);
+      const remoteContent = await adapter.pull(fileId);
+      if (typeof remoteContent === 'string' && remoteContent.length > 0) {
+        // Overwrite local cache with remote content
+        await saveFile(file.path, remoteContent, file.workspaceType as any, undefined, file.workspaceId);
       }
     } catch (error) {
       console.error(`pullFileFromAdapter error:`, error);

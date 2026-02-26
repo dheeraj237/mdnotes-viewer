@@ -1,5 +1,10 @@
 # RxDB + Yjs CRDT Architecture for Offline-First Editing
 
+> NOTE: The project has disabled Yjs/CRDT persistence in the cache layer.
+> File content is now stored directly in `cached_files.content` (RxDB) as
+> the single source of truth. The following document describes the original
+> CRDT architecture for reference.
+
 ## Goal
 Provide an offline-first cache layer using RxDB and Yjs (CRDT) with **workspace-aware sync**:
 

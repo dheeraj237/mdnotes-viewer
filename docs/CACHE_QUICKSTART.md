@@ -1,5 +1,9 @@
 # RxDB + Yjs CRDT Cache - Quick Start Guide
 
+> NOTE: Yjs/CRDT persistence is disabled in this branch. File content is
+> stored directly in RxDB `cached_files.content` (single source of truth).
+> The quick start below documents the original CRDT approach for reference.
+
 ## What Was Built
 
 A complete **offline-first cache layer** using RxDB + Yjs CRDT with **workspace-aware SyncManager** for seamless multi-adapter syncing.

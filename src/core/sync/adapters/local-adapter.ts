@@ -268,7 +268,7 @@ export class LocalAdapter implements ISyncAdapter {
   /**
    * Optional: pull multiple files for a workspace. Returns empty array by default.
    */
-  async pullWorkspace(workspaceId?: string, path?: string): Promise<Array<{ fileId: string; yjsState: Uint8Array }>> {
+  async pullWorkspace(workspaceId?: string, path?: string): Promise<Array<{ fileId: string; content: string }>> {
     try {
       const fs = await import('fs').then((m) => m.promises);
       const subpath = path || '';

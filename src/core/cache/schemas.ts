@@ -1,9 +1,9 @@
 import { RxJsonSchema } from 'rxdb';
-import type { CachedFile, CrdtDoc } from './types';
+import type { CachedFile } from './types';
 
 /**
  * RxDB JSON schema for cached_files collection
- * Stores lightweight file/directory metadata with links to CRDT docs
+ * Stores lightweight file/directory metadata and file content (SSoT)
  */
 export const cachedFileSchema: RxJsonSchema<CachedFile> = {
   title: 'cached_files schema',
@@ -43,10 +43,9 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
       maxLength: 255,
       description: 'Optional workspace instance id to scope files when multiple workspaces of same type exist'
     },
-    crdtId: {
+    content: {
       type: ['string', 'null'],
-      maxLength: 255,
-      description: 'Optional link to CRDT doc ID for text files'
+      description: 'File content stored as UTF-8 text for SSoT use'
     },
     metadata: {
       type: ['object', 'null'],
@@ -70,35 +69,7 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
  * RxDB JSON schema for crdt_docs collection
  * Stores Yjs encoded state for collaborative editing with CRDT merging
  */
-export const crdtDocSchema: RxJsonSchema<CrdtDoc> = {
-  title: 'crdt_docs schema',
-  version: 2,
-  type: 'object',
-  primaryKey: 'id',
-  additionalProperties: false,
-  properties: {
-    id: {
-      type: 'string',
-      maxLength: 255,
-      description: 'CRDT document ID (same as crdtId in cached_files)'
-    },
-    fileId: {
-      type: 'string',
-      maxLength: 255,
-      description: 'Foreign key to cached_files.id'
-    },
-    yjsState: {
-      type: ['string', 'null'],
-      description: 'Base64-encoded Yjs state vector or complete state'
-    },
-    lastUpdated: {
-      type: ['number', 'null'],
-      description: 'Last update timestamp in milliseconds'
-    }
-  },
-  required: ['id', 'fileId'],
-  indexes: ['fileId']
-};
+// CRDT docs removed from schema. Content is stored directly on `cached_files`.
 
 /**
  * RxDB JSON schema for sync_queue collection (optional, for batch operations)
@@ -107,7 +78,7 @@ export const crdtDocSchema: RxJsonSchema<CrdtDoc> = {
 export const syncQueueSchema: RxJsonSchema<{
   id: string;
   op: 'put' | 'delete';
-  target: 'file' | 'crdt';
+  target: 'file';
   targetId: string;
   payload?: any;
   attempts?: number;
@@ -131,7 +102,7 @@ export const syncQueueSchema: RxJsonSchema<{
     },
     target: {
       type: 'string',
-      enum: ['file', 'crdt'],
+      enum: ['file'],
       description: 'Target collection'
     },
     targetId: {
@@ -169,10 +140,7 @@ export const migrationStrategies = {
     1: (doc: any) => doc,  // No-op migration from v0 to v1
     2: (doc: any) => doc   // No-op migration from v1 to v2
   },
-  crdtDoc: {
-    1: (doc: any) => doc,  // No-op migration from v0 to v1
-    2: (doc: any) => doc   // No-op migration from v1 to v2
-  },
+  // crdtDoc migrations removed
   syncQueue: {
     1: (doc: any) => doc,  // No-op migration from v0 to v1
     2: (doc: any) => doc   // No-op migration from v1 to v2
