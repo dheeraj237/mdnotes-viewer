@@ -13,12 +13,8 @@ import { create } from "zustand";
 import { MarkdownFile, FileCategory } from "@/shared/types";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 import { WorkspaceType } from '@/core/cache/types';
-import {
-  initializeFileOperations,
-  loadFile,
-  saveFile,
-  listFiles,
-} from "@/core/cache/file-operations";
+import { initializeFileOperations } from "@/core/cache/file-operations";
+import { fileRepo } from '@/core/cache/file-repo';
 import { isFeatureEnabled } from '@/core/config/features';
 import { getSyncManager } from '@/core/sync/sync-manager';
 
@@ -206,7 +202,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const workspace = useWorkspaceStore.getState().activeWorkspace?.();
       const workspaceId = workspace?.id;
 
-      saveFile(tab.path, content, workspaceType, undefined, workspaceId)
+      fileRepo.saveFile(tab.path, content, workspaceType, undefined, workspaceId)
         .then(async (fileData) => {
           get().setFileSaving(fileId, false);
           get().setFileLastSaved(fileId, new Date());
@@ -248,7 +244,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const workspaceType = getActiveWorkspaceType();
       const workspace = useWorkspaceStore.getState().activeWorkspace?.();
       const workspaceId = workspace?.id;
-      const fileData = await loadFile(path, workspaceType, workspaceId);
+      const fileData = await fileRepo.loadFile(path, workspaceType, workspaceId);
 
       const markdownFile: MarkdownFile = {
         id: fileData.id,

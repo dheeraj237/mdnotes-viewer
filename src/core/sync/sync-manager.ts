@@ -11,6 +11,7 @@ import {
   loadFile,
   saveFile,
 } from '../cache';
+import { MergeStrategy, NoOpMergeStrategy } from './merge-strategies';
 import { enqueueSyncEntry, processPendingQueueOnce } from './sync-queue-processor';
 import { defaultRetryPolicy } from './retry-policy';
 import { v4 as uuidv4 } from 'uuid';
@@ -105,6 +106,8 @@ export class SyncManager {
   });
 
   private syncInterval = 5000; // 5 seconds
+  private mergeStrategy: MergeStrategy = new NoOpMergeStrategy();
+  private remoteWatcherSubs: Map<string, any> = new Map();
   private isRunning = false;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private maxRetries = 3;
@@ -207,9 +210,8 @@ export class SyncManager {
     this.isRunning = true;
     this.statusSubject.next(SyncStatus.IDLE);
 
-    // Start periodic sync and remote change monitoring
-    this.startPolling();
-    this.setupRemoteWatchers();
+    // Background polling and remote watchers are disabled by default.
+    // Enable via `enablePeriodicPull` or `enableRemoteWatching` when desired.
 
     // Subscribe to RxDB cached_files changes so we can react to edits immediately.
     try {
@@ -396,8 +398,8 @@ export class SyncManager {
         try {
           const remoteContent = await adapter.pull(fileId);
           if (remoteContent) {
-            // Save remote content into RxDB (single source of truth)
-            await saveFile(file.path, remoteContent, file.workspaceType as any, undefined, file.workspaceId);
+            // Delegate to merge strategy instead of blind overwrite
+            await this.mergeStrategy.handlePull(file, remoteContent);
           }
         } catch (error) {
           console.warn(`Failed to pull from ${adapter.name}:`, error);
@@ -490,6 +492,8 @@ export class SyncManager {
 
     try {
       // If adapter provides an optimized workspace pull, use it
+
+
       if (typeof adapter.pullWorkspace === 'function') {
         const items = await adapter.pullWorkspace(workspace.id, workspace.path);
         for (const item of items || []) {
@@ -497,7 +501,7 @@ export class SyncManager {
             // Adapter should return content string in `content`.
             const content = (item as any).content ?? '';
 
-            // Upsert cached file metadata and store content via saveFile
+            // Upsert cached file metadata and overwrite content (pull-on-switch semantics)
             await upsertCachedFile({ id: item.fileId, name: item.fileId.split('/').pop() || item.fileId, path: item.fileId, type: FileType.File, workspaceType: workspace.type as any, workspaceId: workspace.id, lastModified: Date.now(), dirty: false });
             await saveFile(item.fileId, content, workspace.type as any, undefined, workspace.id);
           } catch (err) {
@@ -549,6 +553,13 @@ export class SyncManager {
     }
   }
 
+  /**
+   * Public helper to enable periodic pulls (opt-in).
+   */
+  enablePeriodicPull(ms?: number): void {
+    this.startPeriodicPulls(ms);
+  }
+
   private async performPull(): Promise<void> {
     // Placeholder: iterate through configured workspaces and call pullWorkspace
     // Future enhancement: discover active workspaces and only pull those
@@ -575,8 +586,8 @@ export class SyncManager {
 
       const remoteContent = await adapter.pull(fileId);
       if (typeof remoteContent === 'string' && remoteContent.length > 0) {
-        // Overwrite local cache with remote content
-        await saveFile(file.path, remoteContent, file.workspaceType as any, undefined, file.workspaceId);
+        // Delegate to merge strategy instead of blind overwrite
+        await this.mergeStrategy.handlePull(file, remoteContent);
       }
     } catch (error) {
       console.error(`pullFileFromAdapter error:`, error);

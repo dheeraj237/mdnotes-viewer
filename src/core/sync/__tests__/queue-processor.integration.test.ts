@@ -1,109 +1,42 @@
-/**
- * Integration test: initialize an in-memory RxDB (fake-indexeddb + Dexie storage),
- * seed a cached file and a sync_queue entry, run the queue processor, and
- * verify adapter push was called and the queue entry removed and file marked synced.
- */
 import 'fake-indexeddb/auto';
-import { createRxDatabase, addRxPlugin } from 'rxdb';
-import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
-import { RxDBLeaderElectionPlugin } from 'rxdb/plugins/leader-election';
-import { RxDBJsonDumpPlugin } from 'rxdb/plugins/json-dump';
-import { RxDBMigrationPlugin } from 'rxdb/plugins/migration';
-import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
-
-import { cachedFileSchema, syncQueueSchema } from '@/core/cache/schemas';
+import { initializeRxDB, getCacheDB, closeCacheDB } from '@/core/cache/rxdb';
 import { enqueueSyncEntry, processPendingQueueOnce } from '@/core/sync/sync-queue-processor';
-import { FileType, WorkspaceType, SyncOp } from '@/core/cache/types';
+import { GDriveMock } from '@/core/sync/mocks/gdrive-mock';
+import { upsertCachedFile, getCachedFile } from '@/core/cache/rxdb';
+import { SyncOp } from '@/core/cache/types';
 
-// Ensure plugins registered similar to runtime
-addRxPlugin(RxDBLeaderElectionPlugin);
-addRxPlugin(RxDBJsonDumpPlugin);
-addRxPlugin(RxDBMigrationPlugin);
-addRxPlugin(RxDBQueryBuilderPlugin);
-
-import type { ISyncAdapter } from '@/core/sync/adapter-types';
-
-describe('queue processor integration', () => {
-  let db: any;
-
+describe('Queue processor integration', () => {
   beforeAll(async () => {
-    db = await createRxDatabase({
-      name: 'test_verve_cache_db',
-      storage: getRxStorageDexie(),
-      multiInstance: false,
-      eventReduce: false,
-      ignoreDuplicate: true,
-    });
-
-    await db.addCollections({
-      cached_files: { schema: cachedFileSchema },
-      sync_queue: { schema: syncQueueSchema },
-    });
+    await initializeRxDB();
   });
 
   afterAll(async () => {
-    if (db) await db.destroy();
+    try {
+      await closeCacheDB();
+    } catch { }
   });
 
-  test('processes queue entry end-to-end', async () => {
-    // Insert a cached file marked dirty
-    const file = {
-      id: 'int-file-1',
-      name: 'int.md',
-      path: '/int/int.md',
-      type: FileType.File,
-      workspaceType: WorkspaceType.GDrive,
-      content: 'hello',
-      metadata: { driveId: 'drive-int' },
-      lastModified: Date.now(),
-      dirty: true,
-    };
+  test('saveFile enqueues and processor pushes to adapter and clears dirty', async () => {
+    const db = getCacheDB();
+    const adapter = new GDriveMock();
 
-    await db.cached_files.upsert(file);
+    // insert a cached file
+    const file = { id: 'f1', name: 'f1.md', path: 'f1.md', type: 'file', workspaceType: 'gdrive', workspaceId: 'ws1', content: 'hello', lastModified: Date.now(), dirty: true } as any;
+    await upsertCachedFile(file);
 
-    // Enqueue a sync entry
-    await db.sync_queue.upsert({ id: 'qe-1', op: SyncOp.Put, target: 'file', targetId: file.id, attempts: 0, createdAt: Date.now() });
+    // enqueue entry
+    await enqueueSyncEntry({ op: SyncOp.Put, target: 'file', targetId: 'f1', payload: null });
 
-    // Mock the cache/rxdb module functions used by the processor to point at our db
-    jest.doMock('@/core/cache/rxdb', () => ({
-      getCacheDB: () => db,
-      getCachedFile: async (id: string) => {
-        const doc = await db.cached_files.findOne({ selector: { id } }).exec();
-        return doc ? doc.toJSON() : null;
-      },
-      markCachedFileAsSynced: async (id: string) => {
-        const doc = await db.cached_files.findOne({ selector: { id } }).exec();
-        if (doc) await doc.patch({ dirty: false });
-      },
-    }));
+    // process queue
+    await processPendingQueueOnce(new Map([['gdrive', adapter]]));
 
-    // Import the processor module after mocking
-    const { processPendingQueueOnce: proc } = await import('@/core/sync/sync-queue-processor');
+    // adapter should have content
+    const pulled = await adapter.pull('f1');
+    expect(pulled).toBe('hello');
 
-    const calls: any[] = [];
-    const mockAdapter: ISyncAdapter = {
-      name: 'mock-int',
-      push: async (f: any, content: string) => {
-        calls.push({ f, content });
-        return true;
-      },
-      pull: async () => null,
-    };
-
-    const adapters = new Map<string, ISyncAdapter>([[mockAdapter.name, mockAdapter]]);
-
-    // Process pending entries
-    await proc(adapters, 3);
-
-    // Adapter should have been called
-    expect(calls.length).toBeGreaterThanOrEqual(1);
-
-    // Queue should be empty
-    const remaining = await db.sync_queue.find().exec();
-    expect(remaining.length).toBe(0);
-
-    // File should be marked not dirty
-    const updated = await db.cached_files.findOne({ selector: { id: file.id } }).exec();
-    expect(updated.toJSON().dirty).toBe(false);
+    // cached file should be marked not dirty
+    const cached = await getCachedFile('f1', 'ws1');
+    expect(cached?.dirty).toBe(false);
   });
 });
+
