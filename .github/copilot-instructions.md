@@ -35,14 +35,15 @@ src/               # All application source code
 ```
 
 ## Code Style
-- ✅ Use "use client" for client components
-- ✅ TypeScript strict mode
-- ✅ Functional components with hooks
-- ✅ Use shadcn/ui components for all UI needs
-- ✅ Tailwind utility classes (no custom CSS)
-- ✅ Feature-based folder structure
-- ❌ No class components
-- ❌ No hardcoded colors (use CSS variables)
+- Use "use client" for client components
+- TypeScript strict mode
+- Functional components with hooks
+- Use shadcn/ui components for all UI needs
+- Tailwind utility classes (no custom CSS)
+- Feature-based folder structure
+- No class components
+- No hardcoded colors (use CSS variables)
+- Do not work with magic string values, create type enums instead
 
 ## Key Patterns
 ```typescript
