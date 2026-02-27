@@ -110,7 +110,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
         });
       } else if (node.id.startsWith('gdrive-')) {
         // Google Drive file - load from RxDB cache
-        if (!activeWorkspace || activeWorkspace.type !== WorkspaceType.Drive) {
+        if (!activeWorkspace || activeWorkspace.type !== WorkspaceType.GDrive) {
           throw new Error('No Google Drive workspace active');
         }
 
@@ -134,7 +134,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           content: fileData.content,
           category: FileCategory.Browser,
         });
-      } else if (activeWorkspace?.type === 'browser' && activeWorkspace.id !== 'verve-samples') {
+      } else if (activeWorkspace?.type === WorkspaceType.Browser && activeWorkspace.id !== 'verve-samples') {
         // Browser workspace (non-samples) - load from RxDB cache
         const fileData = await loadFileData(node.path, WorkspaceType.Browser);
 

@@ -1,3 +1,4 @@
+import { WorkspaceType } from '@/core/cache';
 import 'fake-indexeddb/auto';
 
 describe('app startup pulls', () => {
@@ -7,8 +8,8 @@ describe('app startup pulls', () => {
     // set a non-browser workspace as active
     useWorkspaceStore.setState({
       workspaces: [
-        { id: 'verve-samples', name: 'Verve Samples', type: 'browser' },
-        { id: 'ws-start', name: 'StartWS', type: 'gdrive', path: '/' },
+        { id: 'verve-samples', name: 'Verve Samples', type: WorkspaceType.Browser },
+        { id: 'ws-start', name: 'StartWS', type: WorkspaceType.GDrive, path: '/' },
       ],
       activeWorkspaceId: 'ws-start',
     });

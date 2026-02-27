@@ -28,7 +28,7 @@ export function CollapsibleFileExplorer() {
         // Only load demo files for Verve Samples workspace
         const currentWorkspace = useWorkspaceStore.getState().activeWorkspace();
 
-        if (currentWorkspace?.type === 'browser' && currentWorkspace.id === 'verve-samples') {
+        if (currentWorkspace?.type === WorkspaceType.Browser && currentWorkspace.id === 'verve-samples') {
           // Load sample files from browser adapter/localStorage
           const demoFileTree = await initializeSamplesFileTree();
 

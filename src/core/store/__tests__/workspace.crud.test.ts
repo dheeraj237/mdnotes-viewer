@@ -1,0 +1,50 @@
+import 'fake-indexeddb/auto';
+
+// Keep integration tests bounded so CI/dev runners don't wait indefinitely
+jest.setTimeout(10000);
+
+describe('workspace CRUD integration', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('creates, lists, reads and deletes a workspace', async () => {
+    const { useWorkspaceStore } = require('@/core/store/workspace-store');
+    const fileOps = await import('@/core/cache/file-operations');
+
+    await fileOps.initializeFileOperations();
+
+    // Start clean
+    useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
+
+    // Create a new workspace via public API
+    useWorkspaceStore.getState().createWorkspace('My Workspace', WorkspaceType.Browser, { id: 'my-ws' });
+
+    // Workspace should be in the store and active
+    const store = useWorkspaceStore.getState();
+    expect(store.workspaces.some((w: any) => w.id === 'my-ws')).toBeTruthy();
+    expect(store.activeWorkspaceId).toBe('my-ws');
+
+    // The default verve.md is created asynchronously; poll until content appears
+    let loaded: any = await fileOps.loadFile('verve.md', 'browser', 'my-ws');
+    const start = Date.now();
+    while ((loaded.content === '' || loaded.content == null) && Date.now() - start < 2000) {
+      await new Promise((r) => setTimeout(r, 20));
+      loaded = await fileOps.loadFile('verve.md', 'browser', 'my-ws');
+    }
+
+    expect(loaded).toBeDefined();
+    expect(loaded.content).toBe('# Verve 🚀');
+
+    // List workspaces via store helpers
+    const browserWS = useWorkspaceStore.getState().getBrowserWorkspaces();
+    expect(browserWS.some((w: any) => w.id === 'my-ws')).toBeTruthy();
+
+    // Delete the workspace and verify removal
+    useWorkspaceStore.getState().deleteWorkspace('my-ws');
+    const after = useWorkspaceStore.getState();
+    expect(after.workspaces.some((w: any) => w.id === 'my-ws')).toBeFalsy();
+    // activeWorkspaceId should be null or another workspace id
+    expect(after.activeWorkspaceId === null || typeof after.activeWorkspaceId === 'string').toBeTruthy();
+  });
+});

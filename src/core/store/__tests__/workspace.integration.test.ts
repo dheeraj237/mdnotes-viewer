@@ -18,16 +18,16 @@ describe('workspace integration tests', () => {
     // Prepare two browser workspaces
     useWorkspaceStore.setState({
       workspaces: [
-        { id: 'ws-A', name: 'Workspace A', type: 'browser' },
-        { id: 'ws-B', name: 'Workspace B', type: 'browser' },
+        { id: 'ws-A', name: 'Workspace A', type: WorkspaceType.Browser },
+        { id: 'ws-B', name: 'Workspace B', type: WorkspaceType.Browser },
       ],
       activeWorkspaceId: 'ws-A',
       tabsByWorkspace: {},
     });
 
     // Create nested files in ws-A
-    const f1 = await fileOps.saveFile('/notes/intro.md', 'Intro content', 'browser', undefined, 'ws-A');
-    const f2 = await fileOps.saveFile('/notes/guide/setup.md', 'Setup content', 'browser', undefined, 'ws-A');
+    const f1 = await fileOps.saveFile('/notes/intro.md', 'Intro content', WorkspaceType.Browser, undefined, 'ws-A');
+    const f2 = await fileOps.saveFile('/notes/guide/setup.md', 'Setup content', WorkspaceType.Browser, undefined, 'ws-A');
 
     // Open tabs in editor and save for workspace
     useEditorStore.setState({

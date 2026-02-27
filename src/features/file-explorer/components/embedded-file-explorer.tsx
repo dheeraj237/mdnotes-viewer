@@ -7,6 +7,7 @@ import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { initializeSamplesFileTree } from "@/utils/demo-file-tree";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
+import { WorkspaceType } from '@/core/cache/types';
 
 export function EmbeddedFileExplorer() {
   const {
@@ -28,7 +29,7 @@ export function EmbeddedFileExplorer() {
         // Only load demo files for Verve Samples workspace
         const currentWorkspace = useWorkspaceStore.getState().activeWorkspace();
 
-        if (currentWorkspace?.type === 'browser' && currentWorkspace.id === 'verve-samples') {
+        if (currentWorkspace?.type === WorkspaceType.Browser && currentWorkspace.id === 'verve-samples') {
           // Load sample files from browser adapter/localStorage
           const demoFileTree = await initializeSamplesFileTree();
 

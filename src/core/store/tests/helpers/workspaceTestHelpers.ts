@@ -1,5 +1,6 @@
 import { createRxdbTestHarness } from './rxdbTestHarness';
 import { createMockAdapter, MockAdapter } from './mockAdapterFactory';
+import { WorkspaceType } from '@/core/cache/types';
 
 export type TestEnv = {
   db: ReturnType<typeof createRxdbTestHarness>;
@@ -17,7 +18,7 @@ export function createTestEnv(): TestEnv {
 
 export async function createWorkspace(env: TestEnv, options?: { type?: string; name?: string }) {
   const name = options?.name ?? `ws-${++workspaceCounter}`;
-  const type = options?.type ?? 'browser';
+  const type = (options?.type as any) ?? WorkspaceType.Browser;
 
   const adapter = createMockAdapter(type);
   env.adapters[name] = adapter;

@@ -13,7 +13,7 @@ import { getDirectoryHandle } from '@/shared/utils/idb-storage';
  */
 function getActiveWorkspaceType() {
   const workspace = useWorkspaceStore.getState().activeWorkspace();
-  return workspace?.type || 'browser';
+  return workspace?.type || WorkspaceType.Browser;
 }
 
 /**

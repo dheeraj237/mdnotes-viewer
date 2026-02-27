@@ -130,7 +130,7 @@ export function useEditorSync(fileId: string | null, initialContent: string) {
       if (!fileId) return;
       try {
         const workspace = useWorkspaceStore.getState().activeWorkspace?.();
-        const workspaceType = workspace?.type || 'browser';
+        const workspaceType = workspace?.type || WorkspaceType.Browser;
         const workspaceId = workspace?.id;
 
         // Determine path to save: prefer an explicit path; if fileId looks like an id, resolve cached file
