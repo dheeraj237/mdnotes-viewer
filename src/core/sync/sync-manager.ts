@@ -247,6 +247,14 @@ export class SyncManager {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
     }
+    if (this.queueProcessInterval) {
+      clearInterval(this.queueProcessInterval);
+      this.queueProcessInterval = null;
+    }
+    if (this.pullInterval) {
+      clearInterval(this.pullInterval);
+      this.pullInterval = null;
+    }
     // Unsubscribe from observed cached file changes
     try {
       if (this.cachedFilesSub && typeof this.cachedFilesSub.unsubscribe === 'function') {

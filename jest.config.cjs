@@ -8,4 +8,10 @@ module.exports = {
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest'
   }
+  ,
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts']
+  ,
+  setupFiles: ['<rootDir>/src/setupNodeEnv.ts']
+  ,
+  forceExit: true
 };
