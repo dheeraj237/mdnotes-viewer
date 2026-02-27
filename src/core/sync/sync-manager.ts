@@ -11,6 +11,7 @@ import {
   loadFile,
   saveFile,
 } from '../cache';
+import type { ISyncAdapter as AdapterISyncAdapter } from './adapter-types';
 import { MergeStrategy, NoOpMergeStrategy } from './merge-strategies';
 import { enqueueSyncEntry, processPendingQueueOnce } from './sync-queue-processor';
 import { defaultRetryPolicy } from './retry-policy';
@@ -30,50 +31,7 @@ import { CachedFile, FileType, SyncOp, WorkspaceType } from '@/core/cache/types'
  * 
  * Implementations: LocalAdapter, GDriveAdapter, (future) S3Adapter
  */
-export interface ISyncAdapter {
-  name: string;
-  /**
-   * Push local changes to remote
-   * Returns true if successful
-   */
-  // Push receives the file metadata and plain `content` string.
-  push(file: CachedFile, content: string): Promise<boolean>;
-
-  /**
-  * Pull remote changes
-  * Returns remote content string or null if not found
-   */
-  // Pull returns the remote file content as a string, or null if missing.
-  pull(fileId: string, localVersion?: number): Promise<string | null>;
-
-  /**
-   * Check if a file exists remotely
-   */
-  exists(fileId: string): Promise<boolean>;
-
-  /**
-   * Delete a file remotely
-   */
-  delete(fileId: string): Promise<boolean>;
-
-  /**
-   * Watch for remote changes (optional)
-   * Should emit file IDs that changed
-   */
-  watch?(): Observable<string>;
-
-  /**
-   * Optional: list files for a workspace (used during workspace pulls)
-   * Returns objects containing an identifier and path/metadata.
-   */
-  listWorkspaceFiles?(workspaceId?: string, path?: string): Promise<{ id: string; path: string; metadata?: any }[]>;
-
-  /**
-  * Optional: pull multiple files for a workspace. Adapter can implement
-  * optimized workspace-level pulls. Returns array of { fileId, content }.
-  */
-  pullWorkspace?(workspaceId?: string, path?: string): Promise<Array<{ fileId: string; content: string }>>;
-}
+export type ISyncAdapter = AdapterISyncAdapter;
 
 export enum SyncStatus {
   IDLE = 'idle',

@@ -7,6 +7,7 @@ import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { initializeSamplesFileTree } from "@/utils/demo-file-tree";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
+import { WorkspaceType } from "@/core/cache/types";
 
 export function CollapsibleFileExplorer() {
   const {

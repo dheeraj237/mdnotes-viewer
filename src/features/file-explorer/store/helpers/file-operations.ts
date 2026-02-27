@@ -7,6 +7,7 @@ import {
   initializeFileOperations,
 } from '@/core/cache/file-operations';
 import { getDirectoryHandle } from '@/shared/utils/idb-storage';
+import { WorkspaceType } from '@/core/cache/types';
 
 /**
  * Get the active workspace type

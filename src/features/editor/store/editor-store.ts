@@ -378,7 +378,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         const workspaceType = getActiveWorkspaceType();
         const workspace = useWorkspaceStore.getState().activeWorkspace?.();
         const workspaceId = workspace?.id;
-        const fileData = await loadFile(fileNode.path, workspaceType, workspaceId);
+        const fileData = await fileRepo.loadFile(fileNode.path, workspaceType, workspaceId);
 
         get().openFile({
           id: fileData.id,
