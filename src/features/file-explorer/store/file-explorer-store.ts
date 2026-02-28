@@ -196,10 +196,14 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             const normalized = raw.replace(/^\/*/, '').replace(/\/*$/, '');
             const parts = normalized === '' ? [] : normalized.split('/');
 
-            // Build parent folders
+            // Build parent folders. For files we only create folders for the
+            // path segments *before* the filename (i < parts.length - 1). For
+            // directory entries we create nodes for all segments.
             let accum = '';
             let parent: FileNode | null = null;
-            for (let i = 0; i < parts.length; i++) {
+            const isDir = f.type === FileType.Dir || (String(f.type).toLowerCase() === 'dir');
+            const loopEnd = isDir ? parts.length : Math.max(0, parts.length - 1);
+            for (let i = 0; i < loopEnd; i++) {
               accum = parts.slice(0, i + 1).join('/');
               const node = map[accum] || ensureNode(parts.slice(0, i + 1), accum);
               if (i === 0) {
@@ -254,7 +258,28 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       openLocalDirectory: async (workspaceId?: string) => {
         try {
           set({ isLoadingLocalFiles: true });
-          // Local FS access is intentionally disabled for UI — use RxDB cache only
+
+          // If the browser supports the File System Access API, prefer prompting
+          // the user to pick a directory. Otherwise fall back to cache-only refresh.
+          if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+            try {
+              const { openLocalDirectory: pickerOpen } = await import(
+                '@/features/file-explorer/store/helpers/directory-handler'
+              );
+
+              const res = await pickerOpen(workspaceId);
+              // If the helper returned a file tree, use it. Otherwise refresh from cache.
+              if (res && Array.isArray(res.fileTree)) {
+                set({ fileTree: res.fileTree, expandedFolders: new Set(), currentDirectoryName: res.name ?? null, currentDirectoryPath: res.path ?? '/' });
+                return;
+              }
+            } catch (err) {
+              // If directory picker failed for any reason, fall back to cache behavior
+              console.warn('Directory picker failed, falling back to cache refresh', err);
+            }
+          }
+
+          // Fallback: refresh file tree from RxDB cache and set workspace name/path
           await get().refreshFileTree();
           const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
           set({ expandedFolders: new Set(), currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });

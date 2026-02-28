@@ -136,6 +136,12 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         const newWorkspaceId = `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         createWorkspace(newWorkspaceName, WorkspaceType.Local, { id: newWorkspaceId });
         toast.success("Local workspace created (cache-only)");
+        try {
+          // Prompt user to select a local directory when the platform supports it
+          await openLocalDirectory(newWorkspaceId);
+        } catch (err) {
+          // ignore picker errors; user can open folder via Search -> Open Folder
+        }
       } else if (selectedWorkspaceType === WorkspaceType.Drive) {
         // Create a Drive workspace entry — do not call Google APIs from UI
         createWorkspace(newWorkspaceName, WorkspaceType.Drive, {});
