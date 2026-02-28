@@ -50,8 +50,10 @@ export async function processPendingQueueOnce(adapters: Map<string, ISyncAdapter
   const db = getCacheDB();
   try {
     const docs = await db.sync_queue.find({ selector: { attempts: { $lt: maxAttempts } } }).sort({ createdAt: 'asc' }).exec();
+    console.info(`[QueueProcessor] Processing ${docs.length} pending queue entries (maxAttempts=${maxAttempts})`);
     for (const d of docs) {
       const entry = d.toJSON() as SyncQueueEntry;
+      console.debug(`[QueueProcessor] Processing entry: id=${entry.id} op=${entry.op} target=${entry.target} targetId=${entry.targetId}`);
       try {
         if (entry.target !== 'file') {
           // currently only file targets supported

@@ -6,7 +6,8 @@ import {
   renameFile as renameFileRxDB,
   initializeFileOperations,
 } from '@/core/cache/file-operations';
-import { getDirectoryHandle } from '@/shared/utils/idb-storage';
+import { getCachedFile } from '@/core/cache';
+import { existsInWorkspace } from '@/core/cache/file-operations';
 import { WorkspaceType } from '@/core/cache/types';
 
 /**
@@ -37,7 +38,14 @@ export async function createFile(parentPath: string, fileName: string): Promise<
     const workspaceType = getActiveWorkspaceType();
     const workspace = useWorkspaceStore.getState().activeWorkspace?.();
     const workspaceId = workspace?.id;
-    const filePath = parentPath ? `${parentPath}/${fileName}` : fileName;
+
+    // Normalize parentPath: treat '/' or empty as root (''), preserve leading slash if present
+    const normalizedParent = (!parentPath || parentPath === '/') ? '' : parentPath.replace(/\/$/, '');
+    const filePath = normalizedParent ? `${normalizedParent}/${fileName}` : fileName;
+
+    // Prevent overwriting existing file or folder at the same path (workspace-scoped)
+    const exists = await existsInWorkspace(filePath, workspaceId);
+    if (exists) throw new Error(`A file or folder already exists at path: ${filePath}`);
     // Provide sensible default content for certain filenames
     let defaultContent = '';
     const lowerName = fileName.toLowerCase();
@@ -76,7 +84,13 @@ export async function createFolder(parentPath: string, folderName: string): Prom
     const workspaceType = getActiveWorkspaceType();
     const workspace = useWorkspaceStore.getState().activeWorkspace?.();
     const workspaceId = workspace?.id;
-    const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName;
+
+    const normalizedParent = (!parentPath || parentPath === '/') ? '' : parentPath.replace(/\/$/, '');
+    const folderPath = normalizedParent ? `${normalizedParent}/${folderName}` : folderName;
+
+    // Prevent creating a folder where a file or folder already exists (workspace-scoped)
+    const existsFolder = await existsInWorkspace(folderPath, workspaceId);
+    if (existsFolder) throw new Error(`A file or folder already exists at path: ${folderPath}`);
     // Persist directory to RxDB cache first. SyncManager will handle
     // creating the actual directory on the target storage later.
     await createDirectory(folderPath, workspaceType, workspaceId);
@@ -102,17 +116,10 @@ export async function deleteNode(nodePath: string, isFolder: boolean): Promise<v
     // target storage asynchronously based on workspace type and workspaceId.
     await deleteFileRxDB(nodePath, workspaceId);
 
-    // If this is a local workspace, also attempt to remove the file/folder
-    // immediately from the user's filesystem so the UI reflects the change
-    // without waiting for background queue processing.
-    if (workspace?.type === WorkspaceType.Local) {
-      try {
-        await deleteLocalEntry(nodePath, isFolder, workspaceId);
-      } catch (e) {
-        // Ignore — deletion will be handled by background sync queue.
-        console.warn('Immediate local delete failed, will rely on background sync:', e);
-      }
-    }
+    // Note: Do not perform local filesystem side-effects here.
+    // UI code should only update the RxDB cache (UI → RxDB).
+    // The SyncManager and adapters will observe the change and perform
+    // the actual deletion on the target storage asynchronously.
   } catch (error) {
     console.error('Error deleting:', error);
     throw error;
@@ -144,117 +151,9 @@ export async function renameNode(nodePath: string, newName: string): Promise<voi
   }
 }
 
-/** Helpers for local filesystem operations */
-async function getLocalRootHandle(workspaceId?: string): Promise<FileSystemDirectoryHandle | null> {
-  // Prefer in-memory handle set by directory-handler
-  const win = window as any;
-  if (win && win.__localDirHandle) return win.__localDirHandle as FileSystemDirectoryHandle;
+// NOTE: Local filesystem operations were intentionally removed from this
+// helper because `file-explorer` should only update the RxDB cache (UI → RxDB).
+// Actual filesystem side-effects (local disk, gdrive, etc.) are performed by
+// the central `SyncManager` and adapters which subscribe to RxDB changes.
 
-  // Fallback: try to retrieve stored handle from IndexedDB without prompting
-  try {
-    const handle = await getDirectoryHandle(workspaceId || '');
-    return handle;
-  } catch (e) {
-    console.warn('No local dir handle available:', e);
-    return null;
-  }
-}
-
-async function traverseToParent(root: FileSystemDirectoryHandle, path: string, create = false): Promise<{ parent: FileSystemDirectoryHandle; name: string } | null> {
-  const parts = path.split('/').filter(Boolean);
-  if (parts.length === 0) return { parent: root, name: '' };
-
-  const name = parts.pop() as string;
-  let dir: FileSystemDirectoryHandle = root;
-  for (const part of parts) {
-    try {
-      dir = await dir.getDirectoryHandle(part, { create });
-    } catch (e) {
-      return null;
-    }
-  }
-
-  return { parent: dir, name };
-}
-
-async function writeFileToLocal(path: string, content: string, workspaceId?: string): Promise<void> {
-  const root = await getLocalRootHandle(workspaceId);
-  if (!root) throw new Error('No local directory handle available');
-
-  const res = await traverseToParent(root, path, true);
-  if (!res) throw new Error('Failed to traverse to parent directory');
-
-  const { parent, name } = res;
-  const fileHandle = await parent.getFileHandle(name, { create: true });
-  const writable = await (fileHandle as any).createWritable();
-  await writable.write(content);
-  await writable.close();
-}
-
-async function createFolderLocal(path: string, workspaceId?: string): Promise<void> {
-  const root = await getLocalRootHandle(workspaceId);
-  if (!root) throw new Error('No local directory handle available');
-
-  const res = await traverseToParent(root, path, true);
-  if (!res) throw new Error('Failed to traverse to parent directory');
-
-  // createDirectory handled by traverse (create=true), nothing else needed
-}
-
-async function deleteLocalEntry(path: string, isFolder: boolean, workspaceId?: string): Promise<void> {
-  const root = await getLocalRootHandle(workspaceId);
-  if (!root) throw new Error('No local directory handle available');
-
-  const res = await traverseToParent(root, path, false);
-  if (!res) throw new Error('Failed to traverse to parent directory');
-
-  const { parent, name } = res;
-  // Use removeEntry when available
-  try {
-    if (typeof (parent as any).removeEntry === 'function') {
-      await (parent as any).removeEntry(name, { recursive: !!isFolder });
-    } else {
-      // Fallback: try to get handle and remove contents manually for folders
-      if (isFolder) {
-        // No reliable fallback implemented
-        throw new Error('removeEntry not supported in this browser');
-      } else {
-        // Can't remove file without removeEntry
-        throw new Error('removeEntry not supported in this browser');
-      }
-    }
-  } catch (e) {
-    throw e;
-  }
-}
-
-async function renameLocalEntry(oldPath: string, newPath: string, workspaceId?: string): Promise<void> {
-  const root = await getLocalRootHandle(workspaceId);
-  if (!root) throw new Error('No local directory handle available');
-
-  // Handle files only for now
-  const oldRes = await traverseToParent(root, oldPath, false);
-  const newRes = await traverseToParent(root, newPath, true);
-  if (!oldRes || !newRes) throw new Error('Failed to traverse directories for rename');
-
-  const { parent: oldParent, name: oldName } = oldRes;
-  const { parent: newParent, name: newName } = newRes;
-
-  try {
-    const oldHandle = await oldParent.getFileHandle(oldName);
-    const file = await oldHandle.getFile();
-    const arrayBuffer = await file.arrayBuffer();
-
-    const newHandle = await newParent.getFileHandle(newName, { create: true });
-    const writable = await (newHandle as any).createWritable();
-    await writable.write(new Uint8Array(arrayBuffer));
-    await writable.close();
-
-    // Remove old entry
-    if (typeof (oldParent as any).removeEntry === 'function') {
-      await (oldParent as any).removeEntry(oldName);
-    }
-  } catch (e) {
-    throw e;
-  }
-}
+// Local filesystem helpers removed. SyncManager/adapters perform actual I/O.

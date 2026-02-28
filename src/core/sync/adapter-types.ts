@@ -34,11 +34,20 @@ export interface IRemoteOps {
   delete?(fileId: string): Promise<boolean>;
 }
 
+export interface IAvailability {
+  /**
+   * Return true when the adapter is ready to perform I/O (e.g., initialized
+   * with credentials or directory handle). If absent, callers should assume
+   * the adapter may be available.
+   */
+  isReady?(): boolean;
+}
+
 /*
  * Backwards-compatible composite. Existing code can still import ISyncAdapter
  * while we transition callers to smaller capability interfaces.
  */
-export type ISyncAdapter = IPushAdapter & IPullAdapter & Partial<IWatchableAdapter & IWorkspaceAdapter & IRemoteOps> & { name: string };
+export type ISyncAdapter = IPushAdapter & IPullAdapter & Partial<IWatchableAdapter & IWorkspaceAdapter & IRemoteOps & IAvailability> & { name: string };
 
 // Helper to adapt a CachedFile to AdapterFileDescriptor
 export function toAdapterDescriptor(cached: CachedFile): AdapterFileDescriptor {

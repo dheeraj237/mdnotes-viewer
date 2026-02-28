@@ -446,10 +446,10 @@ export async function markCachedFileAsSynced(id: string): Promise<void> {
         console.warn('[RxDB] Conflict while marking cached file as synced, attempting safe upsert for', id);
         const existing = await db.cached_files.findOne({ selector: { id } }).exec();
         if (existing) {
-          const json = existing.toJSON();
-          json.dirty = false;
+          const current = existing.toJSON();
+          const updated = { ...current, dirty: false };
           // Use upsertCachedFile helper which already handles conflicts robustly
-          await upsertCachedFile(json as any);
+          await upsertCachedFile(updated as any);
           return;
         }
       } catch (resolveErr) {

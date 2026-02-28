@@ -72,6 +72,7 @@ export class SyncManager {
   private retryDelays = [1000, 3000, 5000]; // exponential backoff
   private usePersistentQueue = false;
   private cachedFilesSub: any = null;
+  private syncQueueSub: any = null;
   private pullInterval: ReturnType<typeof setInterval> | null = null;
   private periodicPullIntervalMs = 60000; // 1 minute
   private queueProcessInterval: ReturnType<typeof setInterval> | null = null;
@@ -195,9 +196,85 @@ export class SyncManager {
       console.warn('Failed to subscribe to cached file changes:', err);
     }
 
+    // Setup queue subscription for immediate processing of certain entries
+    try {
+      this.setupQueueSubscription();
+    } catch (err) {
+      // non-fatal
+    }
+
     console.log('SyncManager started');
   }
 
+  /**
+   * Subscribe to `sync_queue` and attempt best-effort immediate processing
+   * for UX-sensitive operations (local deletes and puts targeting the active workspace).
+   */
+  private setupQueueSubscription(): void {
+    try {
+      const db = getCacheDB();
+      if (!db || !db.sync_queue || typeof db.sync_queue.find !== 'function') return;
+
+      const query = db.sync_queue.find().sort({ createdAt: 'asc' });
+      if (!query || !query.$ || typeof query.$.subscribe !== 'function') return;
+
+      this.syncQueueSub = query.$.subscribe((docs: any[]) => {
+        try {
+          for (const doc of docs || []) {
+            const entry = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+            try {
+              // Immediate-delete optimization for local workspaces
+              if (entry.op === SyncOp.Delete && entry.payload && String(entry.payload.workspaceType) === WorkspaceType.Local) {
+                const localAdapter = this.adapters.get('local');
+                if (localAdapter) {
+                  console.info('[SyncManager] Immediate local delete detected, processing now');
+                  processPendingQueueOnce(new Map([[localAdapter.name, localAdapter]])).catch((e) => {
+                    console.warn('Immediate local delete processing failed:', e);
+                  });
+                  break;
+                }
+              }
+
+              // Immediate-Put optimization for active workspace (only if adapter ready)
+              if (entry.op === SyncOp.Put && entry.payload && entry.payload.workspaceId) {
+                try {
+                  const active = useWorkspaceStore.getState().activeWorkspace?.();
+                  if (active && String(active.id) === String(entry.payload.workspaceId)) {
+                    const adapterName = (entry.payload.workspaceType === WorkspaceType.Drive || String(entry.payload.workspaceType) === 'drive') ? 'gdrive' : String(entry.payload.workspaceType);
+                    const targetAdapter = this.adapters.get(adapterName);
+                    if (targetAdapter) {
+                      try {
+                        const ready = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady() : true;
+                        if (ready) {
+                          console.info('[SyncManager] Immediate Put detected for active workspace, processing now via adapter:', adapterName);
+                          processPendingQueueOnce(new Map([[targetAdapter.name, targetAdapter]])).catch((e) => {
+                            console.warn('Immediate put processing failed:', e);
+                          });
+                          break;
+                        } else {
+                          console.info('[SyncManager] Adapter not ready for immediate Put:', adapterName);
+                        }
+                      } catch (chk) {
+                        console.warn('Failed to check adapter readiness:', chk);
+                      }
+                    }
+                  }
+                } catch (innerPut) {
+                  // ignore per-entry Put errors
+                }
+              }
+            } catch (inner) {
+              // ignore per-entry errors
+            }
+          }
+        } catch (e) {
+          // ignore subscription handler errors
+        }
+      });
+    } catch (e) {
+      // non-fatal
+    }
+  }
   /**
    * Stop the sync manager
    */
@@ -224,6 +301,11 @@ export class SyncManager {
       } else if (this.cachedFilesSub && typeof this.cachedFilesSub === 'function') {
         // observeCachedFiles may return an unsubscribe function
         this.cachedFilesSub();
+      }
+      if (this.syncQueueSub && typeof this.syncQueueSub.unsubscribe === 'function') {
+        this.syncQueueSub.unsubscribe();
+      } else if (this.syncQueueSub && typeof this.syncQueueSub === 'function') {
+        this.syncQueueSub();
       }
     } catch (err) {
       console.warn('Error unsubscribing cachedFilesSub:', err);

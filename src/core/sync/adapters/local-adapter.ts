@@ -36,6 +36,13 @@ export class LocalAdapter implements ISyncAdapter {
     throw new Error('Local directory not initialized. Please provide a directory handle.');
   }
 
+  /**
+   * Return true when adapter has been initialized with a root handle.
+   */
+  isReady(): boolean {
+    return !!this.rootHandle;
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.rootHandle) return;
     const globalHandle = (window as any).__localDirHandle;

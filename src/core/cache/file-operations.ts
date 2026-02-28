@@ -49,6 +49,39 @@ export interface FileData {
 }
 
 /**
+ * Returns true if a file or folder exists at `path` within the optional workspaceId scope.
+ * This centralizes the existence check so callers don't duplicate lookup logic.
+ */
+export async function existsInWorkspace(path: string, workspaceId?: string): Promise<boolean> {
+  try {
+    const cached = await getCachedFile(path, workspaceId);
+    if (!cached) return false;
+    if (workspaceId) return String(cached.workspaceId) === String(workspaceId);
+    return true;
+  } catch (err) {
+    console.warn('existsInWorkspace check failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Returns true if a file or folder exists at `path` and belongs to the provided `workspaceType`.
+ * If `workspaceId` is provided, the check will also ensure the entry belongs to that workspace instance.
+ */
+export async function existsInWorkspaceType(path: string, workspaceType: WorkspaceType | string, workspaceId?: string): Promise<boolean> {
+  try {
+    const cacheType = toCacheWorkspaceType(workspaceType as any);
+    const cached = await getCachedFile(path, workspaceId);
+    if (!cached) return false;
+    if (workspaceId && String(cached.workspaceId) !== String(workspaceId)) return false;
+    return String(cached.workspaceType) === String(cacheType);
+  } catch (err) {
+    console.warn('existsInWorkspaceType check failed:', err);
+    return false;
+  }
+}
+
+/**
  * File metadata structure
  */
 export interface FileMetadata {
