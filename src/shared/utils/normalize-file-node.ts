@@ -1,3 +1,42 @@
+/* Replace duplicate/incorrect implementations with a single correct normalizer.
+  This version maps object children to id/path/name instead of stringifying them. */
+
+type Raw = Record<string, any>;
+
+function basename(p: string) {
+  if (!p) return '';
+  const s = String(p).replace(/\\/g, '/');
+  const parts = s.split('/');
+  return parts[parts.length - 1] || '';
+}
+
+const KNOWN_KEYS = new Set([
+  'id',
+  '_id',
+  'type',
+  'name',
+  'path',
+  'filePath',
+  'parentId',
+  'children',
+  'size',
+  'modifiedAt',
+  'createdAt',
+  'dirty',
+  'synced',
+  'isSynced',
+  'version',
+  'mimeType',
+  'meta',
+]);
+
+function toISODate(value: any): string {
+  if (!value) return new Date().toISOString();
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
+}
+
 export type FileNode = {
   id: string;
   type: 'file' | 'directory';
@@ -16,77 +55,52 @@ export type FileNode = {
   meta?: Record<string, any>;
 };
 
-const KNOWN_KEYS = new Set([
-  'id',
-  '_id',
-  'type',
-  'name',
-  'path',
-  'parentId',
-  'children',
-  'size',
-  'modifiedAt',
-  'createdAt',
-  'dirty',
-  'synced',
-  'isSynced',
-  'version',
-  'mimeType',
-]);
+export function normalizeToFileNode(raw: Raw): FileNode {
+  const now = new Date().toISOString();
 
-function toISODate(value: any): string {
-  if (!value) return new Date().toISOString();
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return new Date().toISOString();
-  return d.toISOString();
-}
-
-export function normalizeToFileNode(raw: Record<string, any>): FileNode {
-  const id = raw.id !== undefined ? raw.id : raw._id !== undefined ? raw._id : (raw.path !== undefined ? String(raw.path) : '');
+  const path = raw.path ?? raw.filePath ?? '';
+  const name = raw.name ?? basename(path);
+  const id = raw.id ?? raw._id ?? raw.uid ?? (path ? String(path) : undefined) ?? name ?? `${name}-${Math.random().toString(36).slice(2, 9)}`;
 
   const hasChildren = Array.isArray(raw.children) && raw.children.length > 0;
   let type: 'file' | 'directory';
-  if (raw.type === 'directory') type = 'directory';
-  else if (raw.type === 'file') type = 'file';
-  else type = hasChildren ? 'directory' : 'file';
+  if (raw.type) {
+    const t = String(raw.type).toLowerCase();
+    type = t === 'directory' || t === 'folder' ? 'directory' : 'file';
+  } else {
+    type = hasChildren ? 'directory' : 'file';
+  }
 
-  const path = raw.path !== undefined ? String(raw.path) : '';
-  const name = raw.name !== undefined ? String(raw.name) : (path ? String(path).split('/').filter(Boolean).pop() || '' : '');
+  const children = type === 'directory'
+    ? (Array.isArray(raw.children) ? raw.children.map((c: any) => {
+      if (typeof c === 'string') return c;
+      if (c && typeof c === 'object') return String(c.id ?? c.path ?? c.name ?? JSON.stringify(c));
+      return String(c);
+    }) : [])
+    : undefined;
+
+  const meta: Record<string, any> = { ...(raw.meta || {}) };
+  for (const k of Object.keys(raw)) {
+    if (!KNOWN_KEYS.has(k)) meta[k] = raw[k];
+  }
 
   const node: FileNode = {
     id: String(id),
     type,
-    name: String(name),
-    path: String(path),
-    parentId: raw.parentId !== undefined ? raw.parentId : null,
-    size: raw.size !== undefined ? Number(raw.size) : undefined,
-    modifiedAt: toISODate(raw.modifiedAt),
-    createdAt: toISODate(raw.createdAt),
+    name: String(name ?? (type === 'directory' ? 'untitled-folder' : 'untitled')),
+    path: String(path ?? ''),
+    parentId: raw.parentId ?? raw.parent ?? null,
+    children,
+    size: typeof raw.size === 'number' ? raw.size : (raw.size ? Number(raw.size) : undefined),
+    modifiedAt: raw.modifiedAt ? toISODate(raw.modifiedAt) : now,
+    createdAt: raw.createdAt ? toISODate(raw.createdAt) : now,
     dirty: raw.dirty === true,
-    // Prefer explicit `isSynced`, fall back to legacy `synced` field
-    isSynced: raw.isSynced !== undefined ? raw.isSynced : (raw.synced === false ? false : true),
-    version: raw.version !== undefined ? Number(raw.version) : undefined,
-    mimeType: raw.mimeType !== undefined ? raw.mimeType : undefined,
-    meta: {},
+    isSynced: raw.isSynced !== undefined ? raw.isSynced : (raw.synced !== undefined ? raw.synced : undefined),
+    version: typeof raw.version === 'number' ? raw.version : (raw.version ? Number(raw.version) : undefined),
+    mimeType: raw.mimeType ?? raw.mimetype ?? undefined,
+    meta: Object.keys(meta).length ? meta : undefined,
   };
 
-  if (type === 'directory') {
-    node.children = Array.isArray(raw.children) ? raw.children.map((c: any) => String(c)) : [];
-  }
-
-  // preserve unknown fields in meta
-  const meta: Record<string, any> = {};
-  for (const key of Object.keys(raw)) {
-    if (!KNOWN_KEYS.has(key)) {
-      meta[key] = raw[key];
-    }
-  }
-  if (Object.keys(meta).length > 0) node.meta = meta;
-
-  // remove empty meta
-  if (node.meta && Object.keys(node.meta).length === 0) delete node.meta;
-
-  // for files, ensure children is not present
   if (node.type === 'file' && 'children' in node) delete node.children;
 
   return node;

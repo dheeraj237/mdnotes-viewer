@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>E2E Workspace Switch Test Harness</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px}button{margin:5px}</style>
+</head>
+<body>
+  <h1>Workspace Switch E2E Test Harness</h1>
+  <div id="workspaces"></div>
+  <h2>Files</h2>
+  <ul id="files"></ul>
+  <script>
+    // The page expects test scripts to seed `window.__E2E_WORKSPACES` before load
+    // If not present, fall back to localStorage key 'e2e.workspaces'
+    function readSeed() {
+      if (window.__E2E_WORKSPACES) return window.__E2E_WORKSPACES;
+      try {
+        const raw = localStorage.getItem('e2e.workspaces');
+        if (raw) return JSON.parse(raw);
+      } catch(e){}
+      return [];
+    }
+
+    let workspaces = readSeed();
+    let activeId = null;
+
+    const spacesEl = document.getElementById('workspaces');
+    const filesEl = document.getElementById('files');
+
+    function render() {
+      spacesEl.innerHTML = '';
+      workspaces.forEach(ws => {
+        const btn = document.createElement('button');
+        btn.textContent = (ws.id === activeId ? '● ' : '') + (ws.name || ws.id);
+        btn.dataset.id = ws.id;
+        btn.onclick = () => setActive(ws.id);
+        spacesEl.appendChild(btn);
+      });
+      renderFiles();
+    }
+
+    function renderFiles(){
+      filesEl.innerHTML = '';
+      const ws = workspaces.find(w => w.id === activeId);
+      if (!ws) return;
+      (ws.files || []).forEach(f => {
+        const li = document.createElement('li');
+        li.textContent = `${f.name} ${f.dirty ? '(dirty)' : ''}`;
+        filesEl.appendChild(li);
+      });
+    }
+
+    function setActive(id){
+      // Simulate unsubscribe/resubscribe by clearing a marker
+      activeId = id;
+      // also simulate editor reset by toggling a window property
+      window.__E2E_ACTIVE_WORKSPACE = id;
+      render();
+    }
+
+    // Expose helpers for tests
+    window.__e2e = {
+      setWorkspaces(list){ workspaces = list; render(); },
+      setActive(id){ setActive(id); },
+      getActive(){ return activeId; },
+      getFiles(){ return (workspaces.find(w=>w.id===activeId)||{files:[]}).files||[] }
+    }
+
+    // initial render
+    if (workspaces.length) {
+      activeId = workspaces[0].id;
+    }
+    render();
+  </script>
+</body>
+</html>

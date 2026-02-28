@@ -18,6 +18,8 @@ import { defaultRetryPolicy } from './retry-policy';
 import { v4 as uuidv4 } from 'uuid';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { CachedFile, FileType, SyncOp, WorkspaceType } from '@/core/cache/types';
+import { toAdapterDescriptor } from './adapter-types';
+import { pushCachedFile } from './adapter-bridge';
 
 // CRDT/Yjs handling removed from SyncManager. SyncManager now operates
 // on plain file content strings. Adapters should accept/return string
@@ -72,6 +74,8 @@ export class SyncManager {
   private retryDelays = [1000, 3000, 5000]; // exponential backoff
   private usePersistentQueue = false;
   private cachedFilesSub: any = null;
+  private workspaceSub: any = null;
+  private activeWorkspaceId: string | null = null;
   private syncQueueSub: any = null;
   private pullInterval: ReturnType<typeof setInterval> | null = null;
   private periodicPullIntervalMs = 60000; // 1 minute
@@ -176,24 +180,50 @@ export class SyncManager {
     // Background polling and remote watchers are disabled by default.
     // Enable via `enablePeriodicPull` or `enableRemoteWatching` when desired.
 
-    // Subscribe to RxDB cached_files changes so we can react to edits immediately.
+    // Subscribe to active workspace changes and listen to cached file updates
     try {
-      this.cachedFilesSub = observeCachedFiles((files) => {
-        for (const f of files) {
+      this.workspaceSub = useWorkspaceStore.subscribe(
+        (s) => s.activeWorkspaceId,
+        (newId: string | null, oldId: string | null) => {
           try {
-            if (f.dirty && String(f.workspaceType) !== WorkspaceType.Browser) {
-              // Fire-and-forget an async sync for this specific file
-              this.syncFile(f as CachedFile).catch((err) => {
-                console.warn('Realtime sync failed for', f.id, err);
-              });
+            // Teardown previous cachedFiles subscription
+            if (this.cachedFilesSub) {
+              try {
+                if (typeof this.cachedFilesSub.unsubscribe === 'function') this.cachedFilesSub.unsubscribe();
+                else if (typeof this.cachedFilesSub === 'function') this.cachedFilesSub();
+              } catch (u) {
+                // ignore
+              }
+              this.cachedFilesSub = null;
             }
+
+            this.activeWorkspaceId = newId;
+
+            // If there's no active workspace, don't subscribe to realtime pushes
+            if (!newId) return;
+
+      // Observe all cached files but filter for the active workspace in the handler
+            this.cachedFilesSub = observeCachedFiles((files) => {
+              for (const f of files) {
+                try {
+                  if (String(f.workspaceId) !== String(newId)) continue;
+                  if (f.dirty && String(f.workspaceType) !== WorkspaceType.Browser) {
+                    this.syncFile(f as CachedFile).catch((err) => {
+                      console.warn('Realtime sync failed for', f.id, err);
+                    });
+                  }
+                } catch (err) {
+                  console.warn('Error processing cached file change for active workspace:', err);
+                }
+              }
+            });
           } catch (err) {
-            console.warn('Error processing cached file change:', err);
+            console.warn('Failed to subscribe to cached file changes for active workspace:', err);
           }
         }
-      });
+      );
     } catch (err) {
-      console.warn('Failed to subscribe to cached file changes:', err);
+      console.warn('Failed to subscribe to workspace store changes:', err);
     }
 
     // Setup queue subscription for immediate processing of certain entries
@@ -301,6 +331,20 @@ export class SyncManager {
       } else if (this.cachedFilesSub && typeof this.cachedFilesSub === 'function') {
         // observeCachedFiles may return an unsubscribe function
         this.cachedFilesSub();
+      }
+      // Unsubscribe from workspace store subscription
+      if (this.workspaceSub && typeof this.workspaceSub === 'function') {
+        try {
+          this.workspaceSub();
+        } catch (e) {
+          // ignore
+        }
+      } else if (this.workspaceSub && typeof this.workspaceSub.unsubscribe === 'function') {
+        try {
+          this.workspaceSub.unsubscribe();
+        } catch (e) {
+          // ignore
+        }
       }
       if (this.syncQueueSub && typeof this.syncQueueSub.unsubscribe === 'function') {
         this.syncQueueSub.unsubscribe();
@@ -490,7 +534,7 @@ export class SyncManager {
   ): Promise<boolean> {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const success = await adapter.push(file, content as any);
+        const success = await pushCachedFile(adapter, file as any, content as any);
         if (success) return true;
       } catch (error) {
         console.warn(`Push attempt ${attempt + 1} failed:`, error);

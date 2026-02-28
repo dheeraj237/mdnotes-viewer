@@ -127,6 +127,22 @@ export class LocalAdapter implements ISyncAdapter {
     return out;
   }
 
+  // Backwards-compatible workspace-level helpers expected by SyncManager
+  async listWorkspaceFiles(_workspaceId?: string, directory = ''): Promise<Array<{ id: string; path: string; metadata?: any }>> {
+    const files = await this.listFiles(directory);
+    return files.map(f => ({ id: f.id, path: f.path, metadata: { name: f.name } }));
+  }
+
+  async pullWorkspace(_workspaceId?: string, directory = ''): Promise<Array<{ fileId: string; content: string }>> {
+    const files = await this.listFiles(directory);
+    const out: Array<{ fileId: string; content: string }> = [];
+    for (const f of files) {
+      const content = (await this.pull(f.path)) ?? '';
+      out.push({ fileId: f.path, content });
+    }
+    return out;
+  }
+
   private async getFileHandle(path: string, create = false): Promise<FileSystemFileHandle | undefined> {
     if (!this.rootHandle) throw new Error('Root not initialized');
     const cached = this.fileHandles.get(path);
