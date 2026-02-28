@@ -73,7 +73,8 @@ export async function processPendingQueueOnce(adapters: Map<string, ISyncAdapter
               if (!descriptor) break; // nothing to push
               success = await (adapter.push as any)(descriptor, cached?.content || '');
             } else if (entry.op === SyncOp.Delete) {
-              success = await (adapter.delete as any)(entry.targetId);
+              const deleteTarget = entry.payload && (entry.payload.path || entry.payload.fileId) ? (entry.payload.path || entry.payload.fileId) : entry.targetId;
+              success = await (adapter.delete as any)(deleteTarget);
             }
             if (success) break;
           } catch (err) {

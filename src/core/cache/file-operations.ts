@@ -19,6 +19,8 @@ import {
   upsertCachedFile,
   observeCachedFiles,
 } from './index';
+import { enqueueSyncEntry } from '@/core/sync/sync-queue-processor';
+import { SyncOp } from './types';
 import { CachedFile, WorkspaceType, FileType } from './types';
 
 // Store plain UTF-8 `content` on `cached_files` as the single source of truth.
@@ -234,7 +236,21 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
       console.warn('deleteFile fallback remove failed:', err);
       await db.cached_files.find().where('id').eq(cached.id).remove().catch(() => { });
     }
-    // Attempt to delete from local filesystem if this is a local workspace
+    // Enqueue a Delete operation for non-browser workspaces so adapters
+    // (local, gdrive, etc.) will remove the file from their storage.
+    try {
+      if (String(cached.workspaceType) !== WorkspaceType.Browser) {
+        await enqueueSyncEntry({
+          op: SyncOp.Delete,
+          target: 'file',
+          targetId: cached.id,
+          payload: { path: cached.path, workspaceType: cached.workspaceType, workspaceId: cached.workspaceId }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to enqueue delete sync entry:', e);
+    }
+
     // NOTE: Local filesystem deletes are handled by SyncManager/adapters.
     // `file-operations` will only update RxDB collections.
   }

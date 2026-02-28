@@ -101,6 +101,18 @@ export async function deleteNode(nodePath: string, isFolder: boolean): Promise<v
     // Delete from RxDB cache first; SyncManager will remove from actual
     // target storage asynchronously based on workspace type and workspaceId.
     await deleteFileRxDB(nodePath, workspaceId);
+
+    // If this is a local workspace, also attempt to remove the file/folder
+    // immediately from the user's filesystem so the UI reflects the change
+    // without waiting for background queue processing.
+    if (workspace?.type === WorkspaceType.Local) {
+      try {
+        await deleteLocalEntry(nodePath, isFolder, workspaceId);
+      } catch (e) {
+        // Ignore — deletion will be handled by background sync queue.
+        console.warn('Immediate local delete failed, will rely on background sync:', e);
+      }
+    }
   } catch (error) {
     console.error('Error deleting:', error);
     throw error;
