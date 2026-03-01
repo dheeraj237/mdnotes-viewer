@@ -61,11 +61,12 @@ describe('file explorer samples tree', () => {
     await explorer.refreshFileTree();
 
     const state = useFileExplorerStore.getState();
-    expect(state.fileTree.length).toBeGreaterThan(0);
+    const computed = state.getFileTree();
+    expect((computed || []).length).toBeGreaterThan(0);
 
     // Ensure a known file exists in the tree
     const flatten = (nodes: any[]): any[] => nodes.flatMap(n => n.children ? [n, ...flatten(n.children)] : [n]);
-    const all = flatten(state.fileTree);
+    const all = flatten(computed || []);
     const found = all.find(n => n.path === '/01-basic-formatting.md' || n.name === '01-basic-formatting.md');
     expect(found).toBeDefined();
   });

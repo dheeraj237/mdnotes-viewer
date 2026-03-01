@@ -45,7 +45,7 @@ export function SearchBar({ className }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   
   const { openTabs, openFile } = useEditorStore();
-  const { fileTree, openLocalDirectory } = useFileExplorerStore();
+  const { openLocalDirectory, getFileTree } = useFileExplorerStore();
 
   // Listen for Cmd+K to open search
   useEffect(() => {
@@ -78,6 +78,8 @@ export function SearchBar({ className }: SearchBarProps) {
     const query = searchQuery.toLowerCase();
     const newResults: SearchResult[] = [];
 
+    // Search through file tree using computed tree when available
+    const computedTree = getFileTree();
     // Search through file tree
     const searchInFileTree = (nodes: FileNode[]) => {
       nodes.forEach(node => {
@@ -99,14 +101,14 @@ export function SearchBar({ className }: SearchBarProps) {
             }
           });
         }
-        
+
         if (node.children) {
           searchInFileTree(node.children);
         }
       });
     };
 
-    searchInFileTree(fileTree);
+    if (computedTree && computedTree.length) searchInFileTree(computedTree);
 
     // Search through open tabs
     openTabs.forEach(tab => {
@@ -160,7 +162,7 @@ export function SearchBar({ className }: SearchBarProps) {
     });
 
     setResults(newResults.slice(0, 10)); // Limit to 10 results
-  }, [searchQuery, fileTree, openTabs, openFile, openLocalDirectory]);
+  }, [searchQuery, openTabs, openFile, openLocalDirectory, getFileTree]);
 
   const handleSelect = (result: SearchResult) => {
     result.action();

@@ -8,8 +8,8 @@ import { useFileExplorerStore } from '../file-explorer-store';
 describe('build file tree -> map integration', () => {
   beforeEach(() => {
     (getAllFiles as jest.Mock).mockReset();
-    // clear store
-    (useFileExplorerStore as any).setState({ fileMap: {}, rootIds: [], fileTree: [] });
+    // clear store (canonical shape)
+    (useFileExplorerStore as any).setState({ fileMap: {}, rootIds: [] });
   });
 
   test('builds deterministic tree and map from flat file list', async () => {

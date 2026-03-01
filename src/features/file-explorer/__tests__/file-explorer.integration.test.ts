@@ -27,7 +27,7 @@ describe('file explorer integration (hierarchy + UI actions)', () => {
     // Refresh file tree via store (UI-level behavior)
     await useFileExplorerStore.getState().refreshFileTree();
 
-    const tree = useFileExplorerStore.getState().fileTree;
+    const tree = useFileExplorerStore.getState().getFileTree();
     // root should contain folder 'alpha' and file 'root.md'
     expect(tree.some((n: any) => n.name === 'alpha' && n.type === 'folder')).toBeTruthy();
     expect(tree.some((n: any) => n.name === 'root.md' && n.type === 'file')).toBeTruthy();
@@ -48,7 +48,7 @@ describe('file explorer integration (hierarchy + UI actions)', () => {
     expect(created).toBeDefined();
     expect((created?.content || '')).not.toMatch(/<\/?html/i);
     // After createFile, refresh is called by the store; get updated tree
-    const updated = useFileExplorerStore.getState().fileTree;
+    const updated = useFileExplorerStore.getState().getFileTree();
     // alpha should now contain epsilon.md and new.md (epsilon exists as file under alpha)
     const alphaUpdated = updated.find((n: any) => n.name === 'alpha');
     const filesUnderAlpha = alphaUpdated.children.flatMap((c: any) => c.children ? c.children.map((cc: any) => cc.name) : [c.name]);
@@ -56,12 +56,12 @@ describe('file explorer integration (hierarchy + UI actions)', () => {
 
     // UI action: rename file /root.md -> /root-renamed.md via store.renameNode
     await useFileExplorerStore.getState().renameNode('/root.md', 'root-renamed.md');
-    const afterRename = useFileExplorerStore.getState().fileTree;
+    const afterRename = useFileExplorerStore.getState().getFileTree();
     expect(afterRename.some((n: any) => n.name === 'root-renamed.md')).toBeTruthy();
 
     // UI action: delete a nested file via store.deleteNode
     await useFileExplorerStore.getState().deleteNode('/alpha/epsilon.md', false);
-    const afterDelete = useFileExplorerStore.getState().fileTree;
+    const afterDelete = useFileExplorerStore.getState().getFileTree();
     // epsilon.md should no longer exist under alpha
     const alphaAfterDelete = afterDelete.find((n: any) => n.name === 'alpha');
     const containsEpsilon = alphaAfterDelete.children.flatMap((c: any) => c.children ? c.children.map((cc: any) => cc.name) : [c.name]).some((n: string) => n === 'epsilon.md');

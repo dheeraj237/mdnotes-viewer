@@ -50,8 +50,9 @@ describe('create workspace default file', () => {
     await explorer.refreshFileTree();
 
     const state = useFileExplorerStore.getState();
+    const computed = state.getFileTree();
     const flatten = (nodes: any[]): any[] => nodes.flatMap(n => n.children ? [n, ...flatten(n.children)] : [n]);
-    const all = flatten(state.fileTree);
+    const all = flatten(computed || []);
     const node = all.find(n => n.name === 'verve.md' || n.path === 'verve.md' || n.path === '/verve.md');
     expect(node).toBeDefined();
   });

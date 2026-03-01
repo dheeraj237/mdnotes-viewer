@@ -14,8 +14,46 @@ jest.mock('@/core/store/workspace-store', () => {
 });
 
 jest.mock('@/features/file-explorer/store/file-explorer-store', () => {
-  const fileExplorerState: any = { fileTree: [], currentDirectoryPath: '/', setCurrentDirectory: (_: any, p: string) => { fileExplorerState.currentDirectoryPath = p; }, createFile: async () => { } };
-  const useFileExplorerStore = () => ({ fileTree: fileExplorerState.fileTree, currentDirectoryPath: fileExplorerState.currentDirectoryPath });
+  const fileExplorerState: any = {
+    fileTree: [],
+    fileMap: {},
+    rootIds: [],
+    currentDirectoryPath: '/',
+    setCurrentDirectory: (_: any, p: string) => { fileExplorerState.currentDirectoryPath = p; },
+    createFile: async () => { }
+  };
+
+  function buildTreeFromMap() {
+    const map = fileExplorerState.fileMap || {};
+    const roots = fileExplorerState.rootIds || [];
+
+    function buildNode(id: string) {
+      const n = map[id];
+      if (!n) return null;
+      const copy = { ...n } as any;
+      const childIds = (n as any).children || [];
+      if (childIds && childIds.length) {
+        copy.children = childIds.map((cid: string) => buildNode(cid)).filter(Boolean);
+      } else {
+        delete copy.children;
+      }
+      return copy;
+    }
+
+    if (roots && roots.length) return roots.map((r: string) => buildNode(r)).filter(Boolean);
+    return fileExplorerState.fileTree;
+  }
+
+  // expose getFileTree on the raw state as tests/readers may call getState().getFileTree()
+  fileExplorerState.getFileTree = () => buildTreeFromMap();
+
+  const useFileExplorerStore = () => ({
+    fileTree: fileExplorerState.fileTree,
+    fileMap: fileExplorerState.fileMap,
+    rootIds: fileExplorerState.rootIds,
+    currentDirectoryPath: fileExplorerState.currentDirectoryPath,
+    getFileTree: () => buildTreeFromMap(),
+  });
   useFileExplorerStore.getState = () => fileExplorerState;
   useFileExplorerStore.setState = (s: any) => Object.assign(fileExplorerState, s);
   return { useFileExplorerStore };
@@ -61,7 +99,8 @@ describe('FileExplorer UI behaviors (lightweight)', () => {
 
     // Minimal header component that mimics FileExplorer's root-create logic
     function HeaderTest() {
-      const { fileTree, currentDirectoryPath } = useFileExplorerStore();
+      const { getFileTree, currentDirectoryPath } = useFileExplorerStore();
+      const fileTree = getFileTree();
       const { activeWorkspace } = useWorkspaceStore();
       const [showInput, setShowInput] = React.useState(false);
 
@@ -124,15 +163,15 @@ describe('FileExplorer UI behaviors (lightweight)', () => {
 
     useWorkspaceStore.setState({ workspaces: [{ id: 'ui-ws', name: 'UI WS', type: 'browser' }], activeWorkspaceId: 'ui-ws' });
 
-    // seed a folder node
-    useFileExplorerStore.setState({ fileTree: [{ id: 'f1', name: 'alpha', path: '/alpha', type: 'folder', children: [] }] });
+    // seed a folder node (use canonical map + rootIds)
+    useFileExplorerStore.setState({ fileMap: { 'f1': { id: 'f1', name: 'alpha', path: '/alpha', type: 'folder', children: [] } }, rootIds: ['f1'] });
 
     let captured: { parent?: string; name?: string } = {};
     useFileExplorerStore.setState({ createFile: async (parentPath: string, fileName: string) => { captured = { parent: parentPath, name: fileName }; } });
 
     // Minimal folder component that mimics FileTreeItem new-file flow
     function FolderTest() {
-      const node = useFileExplorerStore.getState().fileTree[0];
+      const node = useFileExplorerStore.getState().getFileTree()[0];
       const [showInput, setShowInput] = React.useState(false);
       return (
         <div>
@@ -174,8 +213,8 @@ describe('FileExplorer UI behaviors (lightweight)', () => {
     useWorkspaceStore.setState({ workspaces: [{ id: 'ui-ws', name: 'UI WS', type: 'browser' }], activeWorkspaceId: 'ui-ws' });
     useFileExplorerStore.getState().setCurrentDirectory('FileSelected', 'verve.md');
 
-    // Seed fileTree with a file node at 'verve.md'
-    useFileExplorerStore.setState({ fileTree: [{ id: 'f1', name: 'verve.md', path: 'verve.md', type: 'file' }] });
+    // Seed with a single top-level file (use canonical map + rootIds)
+    useFileExplorerStore.setState({ fileMap: { 'f1': { id: 'f1', name: 'verve.md', path: 'verve.md', type: 'file' } }, rootIds: ['f1'] });
 
     // Spy on createFile to capture args
     let captured: { parent?: string; name?: string } = {};
@@ -227,8 +266,8 @@ describe('FileExplorer UI behaviors (lightweight)', () => {
 
     useWorkspaceStore.setState({ workspaces: [{ id: 'ui-ws', name: 'UI WS', type: 'browser' }], activeWorkspaceId: 'ui-ws' });
 
-    // Seed fileTree with a folder as the first entry
-    useFileExplorerStore.setState({ fileTree: [{ id: 'f1', name: 'alpha', path: '/alpha', type: 'folder', children: [] }] });
+    // Seed fileTree with a folder as the first entry (canonical)
+    useFileExplorerStore.setState({ fileMap: { 'f1': { id: 'f1', name: 'alpha', path: '/alpha', type: 'folder', children: [] } }, rootIds: ['f1'] });
 
     let captured: { parent?: string; name?: string } = {};
     useFileExplorerStore.setState({ createFile: async (parentPath: string, fileName: string) => { captured = { parent: parentPath, name: fileName }; } });
@@ -277,8 +316,8 @@ describe('FileExplorer UI behaviors (lightweight)', () => {
 
     useWorkspaceStore.setState({ workspaces: [{ id: 'ui-ws', name: 'UI WS', type: 'browser' }], activeWorkspaceId: 'ui-ws' });
 
-    // Seed fileTree with a single top-level file (no leading slash)
-    useFileExplorerStore.setState({ fileTree: [{ id: 'f1', name: 'verve.md', path: 'verve.md', type: 'file' }] });
+    // Seed fileTree with a single top-level file (no leading slash) using canonical map
+    useFileExplorerStore.setState({ fileMap: { 'f1': { id: 'f1', name: 'verve.md', path: 'verve.md', type: 'file' } }, rootIds: ['f1'] });
 
     let captured: { parent?: string; name?: string } = {};
     useFileExplorerStore.setState({ createFile: async (parentPath: string, fileName: string) => { captured = { parent: parentPath, name: fileName }; } });

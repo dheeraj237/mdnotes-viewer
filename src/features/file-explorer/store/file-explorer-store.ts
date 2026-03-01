@@ -3,7 +3,8 @@ import { persist } from "zustand/middleware";
 import { FileNode, FileNodeType } from "@/shared/types";
 import { WorkspaceType, FileType } from '@/core/cache/types';
 import { buildSamplesFileTree } from "@/utils/demo-file-tree";
-import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder } from "@/core/cache/file-operations";
+import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder } from '@/core/cache/file-operations';
+import { subscribeToWorkspaceFiles } from '@/core/cache/file-manager';
 import { getAllFolderIds } from "./helpers/file-tree-builder";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 
@@ -99,6 +100,30 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         const node = state.fileMap?.[id];
         if (!node) return [];
         return (node.children as any) || [];
+      },
+      /**
+       * Reconstruct nested object tree from canonical `fileMap` + `rootIds`.
+       * This is computed on demand to avoid storing heavy derived state.
+       */
+      getFileTree: () => {
+        const state = get();
+        const map = state.fileMap || {};
+        const roots = state.rootIds || [];
+
+        function buildNode(id: string): FileNode | null {
+          const n = map[id];
+          if (!n) return null;
+          const copy: FileNode = { ...n } as any;
+          const childIds = (n as any).children || [];
+          if (childIds && childIds.length) {
+            copy.children = childIds.map((cid: string) => buildNode(cid)).filter(Boolean) as FileNode[];
+          } else {
+            delete (copy as any).children;
+          }
+          return copy;
+        }
+
+        return roots.map(rid => buildNode(rid)).filter(Boolean) as FileNode[];
       },
       getPath: (id: string) => {
         const state = get();
@@ -212,12 +237,22 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const roots: FileNode[] = [];
           const rootIdsLocal: string[] = [];
 
+          // Build a lookup of directory ids from cached files (so folder nodes use DB ids when present)
+          const dirIdByPath: Record<string, string> = {};
+          for (const f of files) {
+            if (f.type === FileType.Dir) {
+              const p = (f.path || '').replace(/^\/*/, '').replace(/\/*$/, '');
+              dirIdByPath[p] = f.id;
+            }
+          }
+
           function ensureNode(pathSegments: string[], fullPath: string): FileNode {
             const nodePath = fullPath;
             if (map[nodePath]) return map[nodePath];
 
             const name = pathSegments[pathSegments.length - 1] || '';
-            const node: FileNode = { id: `node-${nodePath}`, name, path: nodePath, type: FileNodeType.Folder, children: [] };
+            const id = dirIdByPath[nodePath] || `node-${nodePath}`;
+            const node: FileNode = { id, name, path: nodePath, type: FileNodeType.Folder, children: [] };
             map[nodePath] = node;
             return node;
           }
@@ -238,7 +273,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
               accum = parts.slice(0, i + 1).join('/');
               const node = map[accum] || ensureNode(parts.slice(0, i + 1), accum);
               if (i === 0) {
-                if (!roots.find(r => r.path === node.path)) roots.push(node);
+                if (!roots.find(r => r.path === node.path)) {
+                  roots.push(node);
+                  if (!rootIdsLocal.includes(node.id)) rootIdsLocal.push(node.id);
+                }
               }
               if (parent && parent.children) {
                 if (!parent.children.find(c => c.path === node.path)) parent.children.push(node);
@@ -315,7 +353,16 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           buildMap(tidyRoots);
 
           // Persist map and root ids into state
-          set({ fileMap: map, rootIds: rootIdsLocal });
+          // Clean map: ensure only id-keyed entries remain (remove any path-keyed temporary entries)
+          const cleanedMap: Record<string, FileNode> = {};
+          for (const k of Object.keys(map)) {
+            const node = map[k];
+            if (node && node.id && String(node.id) === String(k)) {
+              cleanedMap[k] = node;
+            }
+          }
+
+          set({ fileMap: cleanedMap, rootIds: rootIdsLocal });
 
           return tidyRoots;
         } catch (e) {
@@ -527,9 +574,17 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return;
         }
 
-        // For the verve-samples workspace, just build the samples file tree from cache
+        // For the verve-samples workspace prefer the canonical cache builder
         if (activeWorkspace.type === WorkspaceType.Browser && activeWorkspace.id === 'verve-samples') {
           try {
+            // First try building from the RxDB cache (this will pick up test-upserted entries)
+            const treeFromCache = await (get() as any)._buildFileTreeFromCache(activeWorkspace.id);
+            if (treeFromCache && treeFromCache.length > 0) {
+              set({ fileTree: treeFromCache, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+              return;
+            }
+
+            // Fallback: attempt to load sample files via the helper (browser fetch or test mock)
             const fileTree = await buildSamplesFileTree();
             set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
           } catch (e) {
@@ -588,7 +643,23 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       }),
       onRehydrateStorage: () => (state) => {
           if (state) {
+            // Restore expandedFolders as a Set
             state.expandedFolders = new Set(state.expandedFolders as any);
+
+            // Dev invariant: prevent persisted derived `fileTree` from being rehydrated.
+            // If `fileTree` exists in persisted payload, clear it and warn so we don't
+            // accidentally rely on stale derived state. Consumers should call `getFileTree()`.
+            try {
+              if ((state as any).fileTree && (state as any).fileTree.length > 0) {
+                // In tests we may rely on fileTree for samples; only log in non-test env
+                if (process.env.NODE_ENV !== 'test') {
+                  console.warn('[FileExplorerStore] Persisted `fileTree` detected on rehydrate — clearing derived state. Use `getFileTree()` instead of persisting `fileTree`.');
+                }
+                (state as any).fileTree = [];
+              }
+            } catch (e) {
+              // swallow
+            }
           }
       },
     }
@@ -604,4 +675,51 @@ if (typeof window !== 'undefined') {
       // ignore
     }
   });
+}
+
+// Subscribe to workspace file changes and refresh the explorer when files change.
+try {
+  let currentWsId = useWorkspaceStore.getState().activeWorkspace?.()?.id ?? null;
+  let unsubFiles = subscribeToWorkspaceFiles(currentWsId, async () => {
+    try { await useFileExplorerStore.getState().refreshFileTree(); } catch (e) { /* ignore */ }
+  });
+
+  const unsubWorkspace = useWorkspaceStore.subscribe(s => s.activeWorkspaceId, (newId) => {
+    try { unsubFiles(); } catch (_) { }
+    currentWsId = newId ?? null;
+    unsubFiles = subscribeToWorkspaceFiles(currentWsId, async () => {
+      try { await useFileExplorerStore.getState().refreshFileTree(); } catch (e) { /* ignore */ }
+    });
+  });
+
+  // Clean up on window unload
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+      try { unsubFiles(); } catch (_) { }
+      try { unsubWorkspace(); } catch (_) { }
+    });
+  }
+} catch (e) {
+  // ignore subscription failures
+}
+
+// Dev-only subscription: detect accidental persistence or usage of derived `fileTree`.
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    useFileExplorerStore.subscribe((state) => {
+      try {
+        const ft = (state as any).fileTree;
+        if (ft && Array.isArray(ft) && ft.length > 0) {
+          // Warn in non-test environments to avoid noisy test logs
+          if (process.env.NODE_ENV !== 'test') {
+            console.warn('[FileExplorerStore] `fileTree` is non-empty in memory. Prefer `fileMap + rootIds` and compute `getFileTree()` on demand.');
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
+  } catch (e) {
+    // ignore subscription failures
+  }
 }

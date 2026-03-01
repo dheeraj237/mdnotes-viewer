@@ -14,10 +14,9 @@ import { FileTreeFilter } from "./file-tree-filter";
 
 export function FileExplorer() {
   const {
-    fileTree,
     fileMap,
     rootIds,
-    setFileTree,
+    getFileTree,
     refreshFileTree,
     toggleCollapseExpand,
     expandedFolders,
@@ -73,8 +72,8 @@ export function FileExplorer() {
               demoFileTree.forEach(n => rootIdsLocal.push(n.id));
 
               // Persist into store so roots/rendering works as expected
-              // Use the zustand setter exposed on the hook to set multiple fields
-              (useFileExplorerStore as any).setState({ fileTree: demoFileTree, fileMap: map, rootIds: rootIdsLocal });
+            // Use the zustand setter exposed on the hook to set canonical fields
+            (useFileExplorerStore as any).setState({ fileMap: map, rootIds: rootIdsLocal });
 
               // Set default directory name for samples
               if (!currentDirectoryName) {
@@ -182,8 +181,9 @@ export function FileExplorer() {
   };
 
   const getExistingNames = (): string[] => {
+    const computed = getFileTree();
     if (filterValue.trim()) {
-      return fileTree.map(node => node.name);
+      return computed.map(node => node.name);
     }
     return (rootIds || []).map(id => fileMap?.[id]?.name).filter(Boolean) as string[];
   };
@@ -213,7 +213,8 @@ export function FileExplorer() {
     return filterNodes(nodes);
   };
 
-  const filteredFileTree = filterFileTree(fileTree, filterValue);
+  const computedTree = getFileTree();
+  const filteredFileTree = filterFileTree(computedTree, filterValue);
   const rootsToRender = filterValue.trim()
     ? filteredFileTree
     : (rootIds || []).map(id => fileMap?.[id]).filter(Boolean) as typeof fileTree;
@@ -310,11 +311,7 @@ export function FileExplorer() {
                 <FileTreeItem key={node.id} node={node} level={0} parentNode={undefined} />
               ))
             ) : (
-              fileTree.length > 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  No files match filter
-                </div>
-              )
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No files match filter</div>
             )
           )
         )}

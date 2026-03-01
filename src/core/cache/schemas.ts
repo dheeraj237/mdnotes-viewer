@@ -7,7 +7,7 @@ import type { CachedFile } from './types';
  */
 export const cachedFileSchema: RxJsonSchema<CachedFile> = {
   title: 'cached_files schema',
-  version: 1,
+  version: 2,
   type: 'object',
   primaryKey: 'id',
   additionalProperties: false,
@@ -36,7 +36,14 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
     metadata: { type: ['object', 'null'] }
   },
   required: ['id', 'name', 'path', 'type', 'workspaceType', 'dirty'],
-  indexes: [['path'], ['workspaceType'], ['workspaceId']]
+  // Composite indexes to improve workspace-scoped and name-based lookups
+  indexes: [
+    ['path'],
+    ['workspaceType'],
+    ['workspaceId'],
+    ['workspaceId', 'path'],
+    ['workspaceId', 'name']
+  ]
 };
 
 /**
@@ -112,6 +119,29 @@ export const syncQueueSchema: RxJsonSchema<{
 export const migrationStrategies = {
   cachedFile: {
     1: (doc: any) => doc,  // No-op migration from v0 to v1
+    // Migration to v2: normalize legacy fields and ensure defaults
+    2: (doc: any) => {
+      try {
+        // normalize workspaceType: treat 'gdrive' as 'drive'
+        if (doc.workspaceType === 'gdrive') doc.workspaceType = 'drive';
+
+        // ensure metadata/meta exist
+        if (typeof doc.metadata === 'undefined' && typeof doc.meta !== 'undefined') {
+          doc.metadata = doc.meta;
+        }
+        if (typeof doc.metadata === 'undefined') doc.metadata = null;
+
+        // ensure children is either null or an array
+        if (!doc.children) doc.children = null;
+
+        // ensure dirty/isSynced defaults
+        if (typeof doc.dirty === 'undefined') doc.dirty = false;
+        if (typeof doc.isSynced === 'undefined') doc.isSynced = true;
+      } catch (e) {
+        // migration best-effort; return doc unchanged on error
+      }
+      return doc;
+    },
   },
   // crdtDoc migrations removed
   syncQueue: {

@@ -31,8 +31,8 @@ describe('local workspace create updates file tree immediately', () => {
     await useFileExplorerStore.getState().createFile('', 'instant-local.md');
 
     // The store should immediately reflect the new file by reading from RxDB
-    const tree = useFileExplorerStore.getState().fileTree;
-    const found = tree.some(node => node.name === 'instant-local.md' || node.path === 'instant-local.md');
+    const tree = useFileExplorerStore.getState().getFileTree();
+    const found = (tree || []).some(node => node.name === 'instant-local.md' || node.path === 'instant-local.md');
 
     expect(found).toBe(true);
 

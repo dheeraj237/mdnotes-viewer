@@ -83,13 +83,17 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   // Get sibling names for duplicate checking
   const getSiblingNames = (): string[] => {
     try {
-      if (parentNode && parentNode.children && parentNode.children.length) {
-        return parentNode.children
-          .filter(child => child.id !== node.id)
-          .map(child => child.name);
+      if (parentNode && Array.isArray(parentNode.children) && parentNode.children.length) {
+        // children might be object nodes or id strings
+        const first = parentNode.children[0];
+        if (typeof first === 'object') {
+          return (parentNode.children as any[])
+            .filter(child => child.id !== node.id)
+            .map(child => child.name);
+        }
       }
       if (parentNode) {
-        const childIds = useFileExplorerStore.getState().getChildren(parentNode.id);
+        const childIds = useFileExplorerStore.getState().getChildren(parentNode.id) || [];
         const map = useFileExplorerStore.getState().fileMap || {};
         return childIds
           .filter((id) => id !== node.id)
@@ -105,10 +109,16 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   // Get children names for new item duplicate checking
   const getChildrenNames = (): string[] => {
     try {
-      if (node.children && node.children.length) {
-        return node.children.map(child => child.name);
+      if (Array.isArray(node.children) && node.children.length) {
+        const first = node.children[0];
+        if (typeof first === 'object') {
+          return (node.children as any[]).map(child => child.name);
+        }
+        // children are ids
+        const map = useFileExplorerStore.getState().fileMap || {};
+        return (node.children as string[]).map(id => map[id]?.name).filter(Boolean) as string[];
       }
-      const childIds = useFileExplorerStore.getState().getChildren(node.id);
+      const childIds = useFileExplorerStore.getState().getChildren(node.id) || [];
       const map = useFileExplorerStore.getState().fileMap || {};
       return childIds.map(id => map[id]?.name).filter(Boolean) as string[];
     } catch (e) {
@@ -460,10 +470,19 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
             />
           )}
 
-          {/* Render children */}
+          {/* Render children: support both object-child trees (from filtered getFileTree)
+              and id-based children (canonical `fileMap` + `getChildren`). */}
           {(() => {
-            const childrenIds = getChildrenSelector(node.id);
-            const map = fileMapSelector;
+            // If node has object children (from getFileTree/filter), render them directly
+            if (Array.isArray(node.children) && node.children.length && typeof node.children[0] === 'object') {
+              return (node.children as any[]).map((childObj) => (
+                <FileTreeItem key={childObj.id} node={childObj} level={level + 1} parentNode={node} />
+              ));
+            }
+
+            // Otherwise use the id-based selector and fileMap
+            const childrenIds = getChildrenSelector(node.id) || [];
+            const map = fileMapSelector || {};
             return childrenIds.map((cid) => {
               const childNode = map?.[cid];
               if (!childNode) return null;

@@ -8,6 +8,7 @@ import { MarkdownFile } from "@/shared/types";
 import { WorkspaceType } from '@/core/cache/types';
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { initializeFileOperations } from '@/core/cache/file-operations';
+import { createWorkspace as workspaceManagerCreateWorkspace, createSampleWorkspaceIfMissing } from '@/core/cache/workspace-manager';
 import { getSyncManager } from '@/core/sync/sync-manager';
 
 /**
@@ -84,43 +85,34 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
        * Clears all opened tabs since new workspace has no opened files
        */
       createWorkspace: (name, type, options = {}) => {
-        const workspaceId = options.id ?? `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const workspace: Workspace = {
-          id: workspaceId,
-          name,
-          type,
-          path: options.path,
-          driveFolder: options.driveFolder,
-          createdAt: new Date().toISOString(),
-          lastAccessed: new Date().toISOString(),
-        };
-
         // Clear all opened tabs as new workspace has no opened files
         useEditorStore.getState().closeAllTabs();
 
+        // Create a deterministic id if not provided so callers/tests can observe the workspace synchronously
+        const workspaceId = options.id || `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        const now = new Date().toISOString();
+        const rec = {
+          id: workspaceId,
+          name,
+          type,
+          createdAt: now,
+          lastAccessed: now,
+        } as any;
+
+        // Synchronously update the store so tests and UI see the new workspace immediately
         set((state) => ({
-          workspaces: [...state.workspaces, workspace],
-          activeWorkspaceId: workspace.id,
+          workspaces: [...state.workspaces, { ...rec, path: options.path, driveFolder: options.driveFolder }],
+          activeWorkspaceId: workspaceId,
         }));
 
-        // Create a default file for new browser workspaces (but skip the verve-samples placeholder)
-        if (type === WorkspaceType.Browser && workspaceId !== 'verve-samples') {
-          (async () => {
-            try {
-              // Ensure file operations are initialized before saving
-              try {
-                await initializeFileOperations();
-              } catch (initErr) {
-                console.warn('Failed to initialize file operations before creating default file:', initErr);
-              }
-
-              const { saveFile } = await import('@/core/cache/file-operations');
-              await saveFile('verve.md', '# Verve 🚀', type, undefined, workspaceId);
-            } catch (err) {
-              console.warn('Failed to create default verve.md file in new workspace:', err);
-            }
-          })();
-        }
+        // Run actual workspace creation side-effects in background (creates default verve.md etc.)
+        (async () => {
+          try {
+            await workspaceManagerCreateWorkspace(name, type, workspaceId);
+          } catch (err) {
+            console.warn('Failed to create workspace via workspace-manager:', err);
+          }
+        })();
       },
 
       /**
@@ -348,6 +340,22 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             // Call restore via the store API
             ws.restoreTabsForWorkspace?.(ws.activeWorkspaceId);
           }
+
+          // If no workspaces exist after hydration, create and populate sample workspace
+          (async () => {
+            try {
+              const state = (useWorkspaceStore as any).getState();
+              if (!state.workspaces || state.workspaces.length === 0) {
+                const sample = await createSampleWorkspaceIfMissing();
+                // Add sample workspace and switch to it
+                (useWorkspaceStore as any).setState({ workspaces: [sample], activeWorkspaceId: sample.id });
+                // Restore tabs (none) and ensure samples are loaded
+                await (useWorkspaceStore as any).restoreTabsForWorkspace?.(sample.id);
+              }
+            } catch (e) {
+              console.warn('Failed to ensure sample workspace during rehydrate:', e);
+            }
+          })();
         } catch (e) {
           // ignore
         }

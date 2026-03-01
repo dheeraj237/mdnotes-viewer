@@ -16,10 +16,12 @@ interface GoogleDriveSyncProps {
 
 export function GoogleDriveSync({ className }: GoogleDriveSyncProps) {
   const [isSyncing, setIsSyncing] = useState(false);
-  const { fileTree, currentDirectoryName, currentDirectoryPath } = useFileExplorerStore();
+  const { currentDirectoryName, currentDirectoryPath, getFileTree } = useFileExplorerStore();
+
+  const computedTree = getFileTree();
 
   // Check if we're in local file mode (files are loaded from local file system)
-  const isLocalMode = fileTree.length > 0 && currentDirectoryPath && currentDirectoryPath !== "/demo" && !currentDirectoryPath.includes("gdrive");
+  const isLocalMode = computedTree.length > 0 && currentDirectoryPath && currentDirectoryPath !== "/demo" && !currentDirectoryPath.includes("gdrive");
 
   const syncToGoogleDrive = async () => {
     if (!isLocalMode) {
@@ -27,7 +29,7 @@ export function GoogleDriveSync({ className }: GoogleDriveSyncProps) {
       return;
     }
 
-    if (fileTree.length === 0) {
+    if (computedTree.length === 0) {
       toast.error("No files to sync", "Please open a local folder first");
       return;
     }
@@ -56,7 +58,7 @@ export function GoogleDriveSync({ className }: GoogleDriveSyncProps) {
       const folderId = await createOrGetFolder(token, folderName);
 
       // Sync all files to Google Drive
-      const syncedFiles = await syncFilesToDrive(token, folderId, fileTree);
+      const syncedFiles = await syncFilesToDrive(token, folderId, computedTree);
 
       toast.success(`Synced ${syncedFiles} files to Google Drive`, `Files uploaded to folder: ${folderName}`);
     } catch (error) {

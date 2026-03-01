@@ -376,13 +376,24 @@ export async function getCachedFile(idOrPath: string, workspaceId?: string): Pro
     if (doc) return doc.toJSON();
 
     // Fallback: try to find by path (some modules pass the path)
+    // Try workspace-scoped path lookup with common path variants (with/without leading slash)
+    const variants = [idOrPath];
+    if (idOrPath && !idOrPath.startsWith('/')) variants.push(`/${idOrPath}`);
+    if (idOrPath && idOrPath.startsWith('/')) variants.push(idOrPath.replace(/^\//, ''));
+
     if (workspaceId) {
-      doc = await db.cached_files.findOne({ selector: { path: idOrPath, workspaceId } }).exec();
+      for (const p of variants) {
+        doc = await db.cached_files.findOne({ selector: { path: p, workspaceId } }).exec();
+        if (doc) return doc.toJSON();
+      }
+    }
+
+    for (const p of variants) {
+      doc = await db.cached_files.findOne({ selector: { path: p } }).exec();
       if (doc) return doc.toJSON();
     }
 
-    doc = await db.cached_files.findOne({ selector: { path: idOrPath } }).exec();
-    return doc ? doc.toJSON() : null;
+    return null;
   } catch (error) {
     console.error('Failed to get cached file (idOrPath=', idOrPath, '):', error);
     return null;
@@ -427,6 +438,7 @@ export async function getAllCachedFiles(pathPrefix?: string): Promise<CachedFile
 export function observeCachedFiles(callback: (docs: CachedFile[]) => void) {
   const db = getCacheDB();
   return db.cached_files.find().$.subscribe((docs) => {
+    console.log("rxdb subscribe:", docs);
     callback(docs.map((doc) => doc.toJSON() as unknown as CachedFile));
   });
 }

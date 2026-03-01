@@ -9,6 +9,7 @@ import {
 import { getCachedFile } from '@/core/cache';
 import { existsInWorkspace } from '@/core/cache/file-operations';
 import { WorkspaceType } from '@/core/cache/types';
+import { subscribeToWorkspaceFiles } from '@/core/cache/file-manager';
 
 /**
  * Get the active workspace type
@@ -149,6 +150,32 @@ export async function renameNode(nodePath: string, newName: string): Promise<voi
     console.error('Error renaming:', error);
     throw error;
   }
+}
+
+/**
+ * Subscribe to current active workspace file list and invoke callback on updates.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToActiveWorkspaceFiles(callback: (files: any[]) => void): () => void {
+  let currentWorkspaceId = useWorkspaceStore.getState().activeWorkspace()?.id ?? null;
+
+  // Create initial subscription
+  let unsub = subscribeToWorkspaceFiles(currentWorkspaceId, callback);
+
+  // Listen for workspace changes and re-subscribe when it changes
+  const unsubscribeStore = useWorkspaceStore.subscribe(
+    (s) => s.activeWorkspaceId,
+    (newId) => {
+      try { unsub(); } catch (_) { }
+      currentWorkspaceId = newId ?? null;
+      unsub = subscribeToWorkspaceFiles(currentWorkspaceId, callback);
+    }
+  );
+
+  return () => {
+    try { unsub(); } catch (_) { }
+    try { unsubscribeStore(); } catch (_) { }
+  };
 }
 
 // NOTE: Local filesystem operations were intentionally removed from this

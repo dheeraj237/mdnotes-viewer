@@ -337,8 +337,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         targetPath = resolved;
       }
 
-      // Find the file in the tree
-      const fileTree = useFileExplorerStore.getState().fileTree;
+      // Find the file in the tree (compute on demand from canonical map)
+      const fileTree = useFileExplorerStore.getState().getFileTree();
       const fileNode = findFileInTree(fileTree, targetPath);
 
       if (!fileNode) {
