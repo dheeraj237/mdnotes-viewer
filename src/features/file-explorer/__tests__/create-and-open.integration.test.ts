@@ -21,6 +21,12 @@ describe('create file and open it via editor', () => {
     // create a file via the store API (this will save to RxDB and refresh the directory)
     await useFileExplorerStore.getState().createFile('', 'open-me.md');
 
+    // Ensure cache did not accidentally store HTML content for new file
+    const cache = await import('@/core/cache');
+    const created = await cache.getCachedFile('open-me.md');
+    expect(created).toBeDefined();
+    expect((created?.content || '')).not.toMatch(/<\/?html/i);
+
     // Now open the file by path via editor (simulates clicking the file in tree)
     await useEditorStore.getState().openFileByPath('open-me.md');
 

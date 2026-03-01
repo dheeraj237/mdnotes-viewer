@@ -31,6 +31,12 @@ describe('file explorer preserve tree on create/delete', () => {
     // Create a new root file via store API (this calls saveFile and updates the directory)
     await useFileExplorerStore.getState().createFile('', 'three.md');
 
+    // Ensure the created file did not receive HTML content
+    const cache = await import('@/core/cache');
+    const created = await cache.getCachedFile('three.md');
+    expect(created).toBeDefined();
+    expect((created?.content || '')).not.toMatch(/<\/?html/i);
+
     const after = useFileExplorerStore.getState().fileTree.map((n: any) => n.name);
     expect(after).toContain('one.md');
     expect(after).toContain('two.md');

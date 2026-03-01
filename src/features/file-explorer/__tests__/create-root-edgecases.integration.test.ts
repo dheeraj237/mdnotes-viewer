@@ -34,6 +34,11 @@ describe('create in root edge cases across workspace types', () => {
       expect(loaded).toBeDefined();
       expect(loaded.content).toBe('');
 
+      // Also ensure we didn't accidentally save HTML into the cache
+      const created = await cache.getCachedFile('root-new.md', wsId);
+      expect(created).toBeDefined();
+      expect((created?.content || '')).not.toMatch(/<\/?html/i);
+
       // Create folder in root
       await useFileExplorerStore.getState().createFolder('', 'root-folder');
 

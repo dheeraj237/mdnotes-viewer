@@ -36,3 +36,48 @@ export async function startSyncManagerWithAdapter(adapter: any) {
   mgr.start();
   return mgr;
 }
+
+/**
+ * Test helper: mock global.fetch to serve sample files from `public/content` on disk.
+ * Use in Node/Jest tests so browser-only `loadSampleFilesFromFolder` can fetch sample files.
+ */
+export function mockFetchForSamples() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('path');
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (global as any).fetch = jest.fn(async (url: string) => {
+    try {
+      const prefix = '/content';
+      if (typeof url === 'string' && url.startsWith(prefix)) {
+        const rel = url.slice(prefix.length);
+        const diskPath = path.join(process.cwd(), 'public', 'content', rel.startsWith('/') ? rel.slice(1) : rel);
+        const text = fs.readFileSync(diskPath, 'utf8');
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (k: string) => 'text/markdown' },
+          text: async () => text,
+        };
+      }
+    } catch (e) {
+      // fall through to not found
+    }
+
+    return {
+      ok: false,
+      status: 404,
+      headers: { get: () => '' },
+      text: async () => '',
+    };
+  });
+}
+
+export function restoreFetchMock() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((global as any).fetch && (global as any).fetch.mockReset) (global as any).fetch.mockReset();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  try { delete (global as any).fetch; } catch (_) { (global as any).fetch = undefined; }
+}

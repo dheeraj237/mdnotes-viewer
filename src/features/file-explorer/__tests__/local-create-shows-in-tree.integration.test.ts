@@ -35,6 +35,12 @@ describe('local workspace create updates file tree immediately', () => {
     const found = tree.some(node => node.name === 'instant-local.md' || node.path === 'instant-local.md');
 
     expect(found).toBe(true);
+
+    // Ensure the created local file content is not HTML
+    const cache = await import('@/core/cache');
+    const created = await cache.getCachedFile('instant-local.md', 'local-ws');
+    expect(created).toBeDefined();
+    expect((created?.content || '')).not.toMatch(/<\/?html/i);
   });
 
   afterAll(async () => {

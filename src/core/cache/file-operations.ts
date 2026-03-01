@@ -146,25 +146,10 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = Workspa
     // File exists, prefer stored `content` on the cached file record
     let content = cached.content || '';
     
-    // Fallback: if content is empty (e.g., DB missing data),
-    // try loading from the public `content/` folder so sample files still display.
-    if ((!content || content.length === 0) && typeof window !== 'undefined') {
-      try {
-        const baseUrl = (globalThis as any).__VERVE_BASE_URL__ ?? (typeof process !== 'undefined' ? (process.env.BASE_URL ?? '/') : '/');
-        const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-        const contentPrefix = `${normalizedBase}/content`;
-        const fetchPath = cached.path.startsWith('/') ? `${contentPrefix}${cached.path}` : `${contentPrefix}/${cached.path}`;
-        const res = await fetch(fetchPath);
-        if (res.ok) {
-          const fetched = await res.text();
-          if (fetched && fetched.length > 0) {
-            content = fetched;
-          }
-        }
-      } catch (err) {
-        // ignore fetch errors and return whatever content we have
-      }
-    }
+    // Do not perform network fetches here. The sample workspace should be
+    // populated at application initialization via `loadSampleFilesFromFolder`.
+    // Returning stored `content` (or empty string) keeps `loadFile` simple
+    // and avoids pulling HTML from dev-server `index.html` into the cache.
 
     return {
       id: cached.id,
@@ -265,33 +250,81 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
   const cached = await getCachedFile(path, workspaceId);
   
   if (cached) {
-    // Delete cached file by id (use findOne/remove for RxDB compatibility)
+    // If the cached entry is a directory, remove the directory and all
+    // descendant files/dirs from the cache. Otherwise remove the single file.
     try {
-      const doc = await db.cached_files.findOne(cached.id).exec();
-      if (doc && typeof doc.remove === 'function') {
-        await doc.remove();
+      if (cached.type === FileType.Dir) {
+        // Normalize stored path (strip leading/trailing slashes)
+        const norm = (cached.path || '').replace(/^\/*/, '').replace(/\/*$/, '');
+
+        // Build selector: match exact dir path or any path starting with "dir/"
+        let selector: any;
+        if (!norm) {
+          // root: remove everything
+          selector = {};
+        } else {
+          // Use regex to match prefix (either exact match or startsWith dir/)
+          const esc = norm.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+          selector = { path: { $regex: `^${esc}(?:$|/)` } };
+        }
+
+        if (workspaceId) selector = { ...selector, workspaceId };
+
+        const docs = await db.cached_files.find({ selector }).exec();
+        for (const d of docs) {
+          try {
+            await d.remove();
+          } catch (remErr) {
+            console.warn('Failed to remove cached doc during folder delete:', remErr);
+            // fallback: attempt remove by id
+            try {
+              await db.cached_files.find().where('id').eq(d.id).remove();
+            } catch (_) { /* swallow */ }
+          }
+
+          // Enqueue delete for each removed item if non-browser workspace
+          try {
+            if (String(d.workspaceType) !== WorkspaceType.Browser) {
+              await enqueueSyncEntry({
+                op: SyncOp.Delete,
+                target: 'file',
+                targetId: d.id,
+                payload: { path: d.path, workspaceType: d.workspaceType, workspaceId: d.workspaceId }
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to enqueue delete sync entry for child:', e);
+          }
+        }
       } else {
-        // Fallback: query by id and remove
-        await db.cached_files.find().where('id').eq(cached.id).remove();
+        // Delete cached file by id (use findOne/remove for RxDB compatibility)
+        const doc = await db.cached_files.findOne(cached.id).exec();
+        if (doc && typeof doc.remove === 'function') {
+          await doc.remove();
+        } else {
+          // Fallback: query by id and remove
+          await db.cached_files.find().where('id').eq(cached.id).remove();
+        }
+
+        // Enqueue a Delete operation for non-browser workspaces so adapters
+        // (local, gdrive, etc.) will remove the file from their storage.
+        try {
+          if (String(cached.workspaceType) !== WorkspaceType.Browser) {
+            await enqueueSyncEntry({
+              op: SyncOp.Delete,
+              target: 'file',
+              targetId: cached.id,
+              payload: { path: cached.path, workspaceType: cached.workspaceType, workspaceId: cached.workspaceId }
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to enqueue delete sync entry:', e);
+        }
       }
     } catch (err) {
-      // As a last resort, attempt to upsert an empty document to clear
+      // As a last resort, attempt to remove the single id
       console.warn('deleteFile fallback remove failed:', err);
       await db.cached_files.find().where('id').eq(cached.id).remove().catch(() => { });
-    }
-    // Enqueue a Delete operation for non-browser workspaces so adapters
-    // (local, gdrive, etc.) will remove the file from their storage.
-    try {
-      if (String(cached.workspaceType) !== WorkspaceType.Browser) {
-        await enqueueSyncEntry({
-          op: SyncOp.Delete,
-          target: 'file',
-          targetId: cached.id,
-          payload: { path: cached.path, workspaceType: cached.workspaceType, workspaceId: cached.workspaceId }
-        });
-      }
-    } catch (e) {
-      console.warn('Failed to enqueue delete sync entry:', e);
     }
 
     // NOTE: Local filesystem deletes are handled by SyncManager/adapters.
@@ -556,22 +589,28 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
     { path: '/notes-101/notes.md', name: 'notes.md' },
   ];
 
-  console.log('[FileOperations] Loading sample files...');
+  console.log('[FileOperations] Loading sample files (browser-only fetch)...');
 
   try {
     for (const sample of sampleFiles) {
       try {
-        // Fetch file from public/content folder
+        // Browser-only: load sample files via fetch from the public/content folder.
+        // Tests running in Node should mock global.fetch to return sample contents.
         const response = await fetch(`/content${sample.path}`);
         if (!response.ok) {
           console.warn(`[FileOperations] Failed to load ${sample.path}: ${response.status}`);
           continue;
         }
-
+        const ct = (response.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('text/html')) {
+          console.warn(`[FileOperations] Skipping ${sample.path} due to HTML response`);
+          continue;
+        }
         const content = await response.text();
+
         const fileId = `verve-samples-${sample.path}`;
 
-        // Create file in cache with browser workspace type and store content
+        // Create or upsert file in cache with browser workspace type and store content
         await upsertCachedFile({
           id: fileId,
           name: sample.name,

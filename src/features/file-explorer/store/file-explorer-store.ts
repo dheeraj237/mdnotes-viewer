@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { FileNode, FileNodeType } from "@/shared/types";
 import { WorkspaceType, FileType } from '@/core/cache/types';
 import { buildSamplesFileTree } from "@/utils/demo-file-tree";
-import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile } from "@/core/cache/file-operations";
+import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder } from "@/core/cache/file-operations";
 import { getAllFolderIds } from "./helpers/file-tree-builder";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 
@@ -527,7 +527,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           return;
         }
 
-        // For all workspace types use RxDB cache as the single source of truth
+        // For the verve-samples workspace, just build the samples file tree from cache
         if (activeWorkspace.type === WorkspaceType.Browser && activeWorkspace.id === 'verve-samples') {
           try {
             const fileTree = await buildSamplesFileTree();
@@ -545,6 +545,31 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         } catch (e) {
           console.error('Failed to load workspace files from cache', e);
           set({ fileTree: [], currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
+        }
+      },
+
+      /** Overwrite the `verve-samples` workspace by clearing and reloading sample files */
+      reloadSampleWorkspace: async () => {
+        try {
+          // Delete existing sample entries (RxDB only) then reload via browser fetch
+          try {
+            const existing = await getAllFiles('verve-samples');
+            for (const f of existing) {
+              try {
+                await deleteFile(f.path, 'verve-samples');
+              } catch (e) {
+                console.warn('Failed to delete sample child during reload:', e);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to enumerate existing sample files for reload:', e);
+          }
+
+          await loadSampleFilesFromFolder();
+          const fileTree = await buildSamplesFileTree();
+          set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+        } catch (e) {
+          console.error('Failed to reload verve-samples workspace files', e);
         }
       },
 

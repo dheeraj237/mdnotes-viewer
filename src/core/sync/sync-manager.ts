@@ -642,9 +642,11 @@ export class SyncManager {
 
       this.statusSubject.next(SyncStatus.ONLINE);
     } catch (error) {
-      console.error('pullWorkspace error:', error);
-      this.statusSubject.next(SyncStatus.ERROR);
-      throw error;
+      // Non-fatal: adapter initialization or listing failures (e.g. local dir not provided)
+      // should not throw and block workspace switching. Log a warning and continue.
+      console.warn('pullWorkspace warning (non-fatal):', error);
+      this.statusSubject.next(SyncStatus.OFFLINE);
+      return;
     }
   }
 

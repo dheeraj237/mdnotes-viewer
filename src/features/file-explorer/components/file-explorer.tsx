@@ -95,7 +95,13 @@ export function FileExplorer() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refreshFileTree();
+      const currentWorkspace = activeWorkspace();
+      if (currentWorkspace?.type === WorkspaceType.Browser && currentWorkspace.id === 'verve-samples') {
+        // Explicit refresh for samples should overwrite the sample workspace
+        await (useFileExplorerStore.getState() as any).reloadSampleWorkspace();
+      } else {
+        await refreshFileTree();
+      }
     } catch (error) {
       toast.error('Refresh failed', (error as Error).message);
     } finally {

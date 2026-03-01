@@ -19,8 +19,23 @@ export async function initializeApp(adapters?: any[]) {
 
   // Create default workspace only when there are no existing workspaces
   const verveStore = useWorkspaceStore.getState();
-  if (!verveStore.workspaces || verveStore.workspaces.length === 0) {
+  // Ensure the `verve-samples` browser workspace exists and is populated.
+  const hasSamples = verveStore.workspaces && verveStore.workspaces.find(w => w.id === 'verve-samples');
+  if (!hasSamples) {
     verveStore.createWorkspace('Verve Samples', WorkspaceType.Browser, { id: 'verve-samples' });
+    // Ensure store state contains the sample workspace immediately (defensive against rehydration timing)
+    useWorkspaceStore.setState((s) => {
+      const exists = s.workspaces && s.workspaces.find(w => w.id === 'verve-samples');
+      if (exists) return s;
+      const ws = {
+        id: 'verve-samples',
+        name: 'Verve Samples',
+        type: WorkspaceType.Browser,
+        createdAt: new Date().toISOString(),
+        lastAccessed: new Date().toISOString(),
+      } as any;
+      return { workspaces: [...(s.workspaces || []), ws], activeWorkspaceId: 'verve-samples' } as any;
+    });
     await loadSampleFilesFromFolder();
   }
 

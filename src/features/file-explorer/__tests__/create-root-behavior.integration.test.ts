@@ -31,6 +31,12 @@ describe('file-explorer root create & workspace switch behavior', () => {
     const loaded = await fileOps.loadFile('/myroot/created.md', WorkspaceType.Browser);
     expect(loaded).toBeDefined();
     expect(loaded.path).toBe('/myroot/created.md');
+
+    // Ensure no HTML was accidentally saved
+    const cache = await import('@/core/cache');
+    const created = await cache.getCachedFile('/myroot/created.md');
+    expect(created).toBeDefined();
+    expect((created?.content || '')).not.toMatch(/<\/?html/i);
   });
 
   it('switching active workspace changes currentDirectory and new creates go to the then-active root', async () => {

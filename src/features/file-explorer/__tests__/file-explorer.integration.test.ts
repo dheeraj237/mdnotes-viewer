@@ -42,6 +42,11 @@ describe('file explorer integration (hierarchy + UI actions)', () => {
 
     // UI action: create a new file under /alpha
     await useFileExplorerStore.getState().createFile('/alpha', 'new.md');
+    // Ensure the new file was not populated with HTML
+    const cache = await import('@/core/cache');
+    const created = await cache.getCachedFile('/alpha/new.md', 'ws-ui');
+    expect(created).toBeDefined();
+    expect((created?.content || '')).not.toMatch(/<\/?html/i);
     // After createFile, refresh is called by the store; get updated tree
     const updated = useFileExplorerStore.getState().fileTree;
     // alpha should now contain epsilon.md and new.md (epsilon exists as file under alpha)
