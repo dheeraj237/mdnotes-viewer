@@ -88,6 +88,76 @@ export class SyncManager {
   constructor(private batchSize = 5) {}
 
   /**
+   * Facade: request user to open a local directory (must be called from a user gesture).
+   * Delegates to the registered `local` adapter if it supports `openDirectoryPicker`.
+   */
+  async requestOpenLocalDirectory(workspaceId?: string): Promise<void> {
+    const adapter = this.adapters.get('local');
+    if (!adapter) throw new Error('Local adapter not registered');
+    const impl: any = adapter as any;
+    if (typeof impl.openDirectoryPicker === 'function') {
+      await impl.openDirectoryPicker(workspaceId);
+      // If a workspace id was provided, attempt to populate cache from the adapter
+      if (workspaceId) {
+        try {
+          await this.pullWorkspace({ id: workspaceId, type: WorkspaceType.Local });
+        } catch (e) {
+          // Non-fatal - UI should continue even if full pull fails
+          console.warn('pullWorkspace after openLocalDirectory failed:', e);
+        }
+      }
+      return;
+    }
+    throw new Error('Local adapter does not support directory picker');
+  }
+
+  /**
+   * Facade: prompt for permission and restore a stored local directory handle.
+   * Delegates to the local adapter if available.
+   */
+  async requestPermissionForLocalWorkspace(workspaceId: string): Promise<boolean> {
+    const adapter = this.adapters.get('local');
+    if (!adapter) return false;
+    const impl: any = adapter as any;
+    if (typeof impl.promptPermissionAndRestore === 'function') {
+      const res = await impl.promptPermissionAndRestore(workspaceId);
+      if (res && workspaceId) {
+        try {
+          await this.pullWorkspace({ id: workspaceId, type: WorkspaceType.Local });
+        } catch (e) {
+          console.warn('pullWorkspace after permission restore failed:', e);
+        }
+      }
+      return !!res;
+    }
+    return false;
+  }
+
+  /**
+   * Facade: pull a single file from the adapter into RxDB cache.
+   * Adapter must implement `pull(fileId)` which returns string content.
+   */
+  async pullFileToCache(fileId: string, workspaceType: WorkspaceType | string, workspaceId?: string): Promise<void> {
+    try {
+      const adapterName = (workspaceType === WorkspaceType.Drive || String(workspaceType) === 'drive') ? 'gdrive' : String(workspaceType);
+      const adapter = this.adapters.get(adapterName);
+      if (!adapter || typeof (adapter as any).pull !== 'function') {
+        throw new Error(`Adapter not available for ${adapterName}`);
+      }
+      const content = await (adapter as any).pull(fileId);
+      if (typeof content === 'string') {
+        // Normalize into cached file and upsert
+        const normalized = require('./adapter-normalize').adapterEntryToCachedFile({ fileId }, workspaceType as any, workspaceId);
+        await upsertCachedFile({ ...normalized, dirty: false });
+        await saveFile(normalized.path || fileId, content, workspaceType as any, undefined, workspaceId);
+      }
+    } catch (err) {
+      console.warn('pullFileToCache failed:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Enable persistent queue processing. When enabled, dirty files are enqueued
    * into the durable `sync_queue` and processed by the queue processor.
    */
@@ -730,6 +800,30 @@ export async function initializeSyncManager(adapters: ISyncAdapter[], options?: 
   const manager = getSyncManager();
   for (const adapter of adapters) {
     manager.registerAdapter(adapter);
+  }
+  // Attempt to auto-initialize local adapter from persisted directory handle for the active workspace.
+  try {
+    const active = useWorkspaceStore.getState().activeWorkspace?.();
+    if (active && active.type === WorkspaceType.Local) {
+      const localAdapter = manager.getAdapter('local') as any;
+      if (localAdapter && typeof localAdapter.initialize === 'function') {
+        try {
+          const { getDirectoryHandle } = await import('@/shared/utils/idb-storage');
+          const handle = await getDirectoryHandle(active.id);
+          if (handle) {
+            // Initialize adapter non-interactively with stored handle. This avoids prompting
+            // for permission; permission should have been granted previously. If the handle
+            // no longer has permissions, the adapter will fail later and UI can prompt.
+            await localAdapter.initialize(handle);
+          }
+        } catch (e) {
+          // Non-fatal: log and continue. UI/gesture based flows will prompt when needed.
+          console.warn('Failed to auto-initialize local adapter from stored handle:', e);
+        }
+      }
+    }
+  } catch (e) {
+    // ignore errors during best-effort adapter restore
   }
   if (options?.usePersistentQueue) {
     manager.enablePersistentQueue(options.queueProcessIntervalMs);

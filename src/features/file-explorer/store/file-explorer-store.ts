@@ -4,6 +4,8 @@ import { FileNode, FileNodeType } from "@/shared/types";
 import { WorkspaceType, FileType } from '@/core/cache/types';
 import { buildSamplesFileTree } from "@/utils/demo-file-tree";
 import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder } from '@/core/cache/file-operations';
+import { upsertCachedFile } from '@/core/cache/rxdb';
+import { CachedFile, FileType as CacheFileType } from '@/core/cache/types';
 import { subscribeToWorkspaceFiles } from '@/core/cache/file-manager';
 import { getAllFolderIds } from "./helpers/file-tree-builder";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
@@ -378,31 +380,16 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       openLocalDirectory: async (workspaceId?: string) => {
         try {
           set({ isLoadingLocalFiles: true });
-
-          // If the browser supports the File System Access API, prefer prompting
-          // the user to pick a directory. Otherwise fall back to cache-only refresh.
-          if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
-            try {
-              const { openLocalDirectory: pickerOpen } = await import(
-                '@/features/file-explorer/store/helpers/directory-handler'
-              );
-
-              const res = await pickerOpen(workspaceId);
-              // If the helper returned a file tree, use it. Otherwise refresh from cache.
-              if (res && Array.isArray(res.fileTree)) {
-                set({ fileTree: res.fileTree, expandedFolders: new Set(), currentDirectoryName: res.name ?? null, currentDirectoryPath: res.path ?? '/' });
-                return;
-              }
-            } catch (err) {
-              // If directory picker failed for any reason, fall back to cache behavior
-              console.warn('Directory picker failed, falling back to cache refresh', err);
-            }
+          const sm = await import('@/core/sync/sync-manager');
+          try {
+            await sm.getSyncManager().requestOpenLocalDirectory(workspaceId);
+          } catch (err) {
+            console.warn('requestOpenLocalDirectory failed, falling back to cache refresh', err);
+            // fallback to cache refresh
+            await get().refreshFileTree();
+            const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+            set({ expandedFolders: new Set(), currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });
           }
-
-          // Fallback: refresh file tree from RxDB cache and set workspace name/path
-          await get().refreshFileTree();
-          const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
-          set({ expandedFolders: new Set(), currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });
         } catch (error) {
           console.error('Error opening directory (cache-only):', error);
         } finally {
@@ -418,7 +405,12 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       restoreLocalDirectory: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
-          // Restoration via FS API is disabled; fall back to cache
+          const sm = await import('@/core/sync/sync-manager');
+          const ok = await sm.getSyncManager().requestPermissionForLocalWorkspace(workspaceId);
+          if (!ok) {
+            await get().refreshFileTree();
+            return false;
+          }
           await get().refreshFileTree();
           return true;
         } catch (error) {
@@ -436,9 +428,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       requestPermissionForWorkspace: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
-          // Permissions for FS API are intentionally not used; use cache instead
+          const sm = await import('@/core/sync/sync-manager');
+          const ok = await sm.getSyncManager().requestPermissionForLocalWorkspace(workspaceId);
           await get().refreshFileTree();
-          return true;
+          return !!ok;
         } catch (error) {
           console.error('Error requesting permission (cache-only):', error);
           return false;
@@ -456,6 +449,37 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         try {
           const filePath = parentPath ? `${parentPath}/${fileName}` : fileName;
           const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+          // If this is a Local workspace and a directory handle/adapter is available,
+          // create the file on disk first so the FS remains authoritative.
+          if (activeWs && activeWs.type === WorkspaceType.Local) {
+            try {
+              const sm = await import('@/core/sync/sync-manager');
+              const localAdapter = sm.getSyncManager().getAdapter('local');
+              const workspaceId = activeWs.id;
+              if (localAdapter && typeof (localAdapter as any).isReady === 'function' && (localAdapter as any).isReady()) {
+                const fileMeta: any = {
+                  id: filePath,
+                  name: fileName,
+                  path: filePath,
+                  type: CacheFileType.File,
+                  workspaceType: WorkspaceType.Local,
+                  workspaceId: workspaceId,
+                } as CachedFile;
+                try {
+                  await (localAdapter as any).push(fileMeta, '');
+                } catch (pe) {
+                  console.warn('Local adapter push failed for createFile, falling back to cache-only', pe);
+                }
+                // Persist to RxDB so file-explorer can rebuild from cache
+                await saveFile(filePath, '', activeWs?.type ?? WorkspaceType.Browser, { mimeType: 'text/markdown' }, workspaceId);
+                await get()._updateFileTreeForDirectory(parentPath || '');
+                return;
+              }
+            } catch (e) {
+              console.warn('Failed to create file on local adapter, falling back to cache-only', e);
+            }
+          }
+
           await saveFile(filePath, '', activeWs?.type ?? WorkspaceType.Browser, { mimeType: 'text/markdown' }, activeWs?.id);
           await get()._updateFileTreeForDirectory(parentPath || '');
         } catch (error) {

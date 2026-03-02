@@ -1,7 +1,8 @@
 import { FileNode } from "@/shared/types";
-import { buildFileTreeFromDirectory } from "./file-tree-builder";
-import { storeDirectoryHandle, getDirectoryHandle } from "@/shared/utils/idb-storage";
-import { requestPermissionForWorkspace } from "@/shared/utils/idb-storage";
+import { buildFileTreeFromDirectory, buildFileTreeFromAdapter } from "./file-tree-builder";
+import { getSyncManager } from '@/core/sync/sync-manager';
+import { WorkspaceType } from '@/core/cache/types';
+import { removeDirectoryHandle } from '@/shared/utils/idb-storage';
 
 /**
  * Opens a local directory using File System Access API
@@ -17,32 +18,14 @@ export async function openLocalDirectory(workspaceId?: string): Promise<{
   path: string;
   fileTree: FileNode[];
 }> {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // Delegate to SyncManager facade which runs user-gesture directory picker and adapter scanning.
+  const sm = getSyncManager();
+  await sm.requestOpenLocalDirectory(workspaceId);
 
-  if (!('showDirectoryPicker' in window)) {
-    if (isIOS) {
-      throw new Error(
-        'File System Access is not supported on iOS. Please use a Chromium-based browser on desktop (Chrome, Edge, Brave) to access your local files. The app currently supports reading the default content folder on all devices.'
-      );
-    }
-    throw new Error('Directory Picker is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.');
-  }
-
-  const dirHandle = await (window as any).showDirectoryPicker();
-
-  if (workspaceId) {
-    try {
-      await storeDirectoryHandle(workspaceId, dirHandle);
-    } catch (error) {
-      console.error('Failed to store directory handle:', error);
-    }
-  }
-
-  const fileTree = await buildFileTreeFromDirectory(dirHandle);
-
-  (window as any).__localDirHandle = dirHandle;
-
-  return { name: dirHandle.name, path: dirHandle.name, fileTree };
+  // After adapter has scanned and upserted files into RxDB, build file tree from cache.
+  const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
+  // Name/path are best-effort: use workspaceId as path when available
+  return { name: workspaceId ?? 'Local', path: workspaceId ?? '/', fileTree: tree };
 }
 
 /**
@@ -58,11 +41,11 @@ export async function restoreLocalDirectory(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const dirHandle = await getDirectoryHandle(workspaceId);
-    if (!dirHandle) return null;
-    const fileTree = await buildFileTreeFromDirectory(dirHandle);
-    (window as any).__localDirHandle = dirHandle;
-    return { name: dirHandle.name, path: dirHandle.name, fileTree };
+    const sm = getSyncManager();
+    const ok = await sm.requestPermissionForLocalWorkspace(workspaceId);
+    if (!ok) return null;
+    const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
+    return { name: workspaceId, path: workspaceId, fileTree: tree };
   } catch (error) {
     console.error('Error restoring directory:', error);
     return null;
@@ -79,13 +62,11 @@ export async function promptPermissionAndRestore(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const handle = await requestPermissionForWorkspace(workspaceId);
-    if (!handle) return null;
-
-    // If granted, build the file tree
-    const fileTree = await buildFileTreeFromDirectory(handle);
-    (window as any).__localDirHandle = handle;
-    return { name: handle.name, path: handle.name, fileTree };
+    const sm = getSyncManager();
+    const ok = await sm.requestPermissionForLocalWorkspace(workspaceId);
+    if (!ok) return null;
+    const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
+    return { name: workspaceId, path: workspaceId, fileTree: tree };
   } catch (error) {
     console.error('Error prompting permission and restoring directory:', error);
     return null;
@@ -99,10 +80,18 @@ export async function promptPermissionAndRestore(workspaceId: string): Promise<{
  * @returns Promise with the updated file tree or null if no directory is open
  */
 export async function refreshLocalDirectory(): Promise<FileNode[] | null> {
-  const dirHandle = (window as any).__localDirHandle;
-  if (!dirHandle) return null;
-  const fileTree = await buildFileTreeFromDirectory(dirHandle);
-  return fileTree;
+  // Rebuild tree from RxDB cache for the active local workspace
+  try {
+    const sm = getSyncManager();
+    // Attempt to discover active workspace id
+    const activeWs = (await import('@/core/store/workspace-store')).useWorkspaceStore.getState().activeWorkspace?.();
+    const wsId = activeWs?.id;
+    const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, wsId);
+    return tree;
+  } catch (e) {
+    console.warn('refreshLocalDirectory failed:', e);
+    return null;
+  }
 }
 
 /**
@@ -111,7 +100,14 @@ export async function refreshLocalDirectory(): Promise<FileNode[] | null> {
  * @returns true if a directory handle exists
  */
 export function hasLocalDirectory(): boolean {
-  return !!(window as any).__localDirHandle;
+  // Query local adapter readiness via SyncManager
+  try {
+    const adapter = getSyncManager().getAdapter('local');
+    if (!adapter) return false;
+    return typeof (adapter as any).isReady === 'function' ? (adapter as any).isReady() : false;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -119,5 +115,21 @@ export function hasLocalDirectory(): boolean {
  * Removes the global directory handle reference
  */
 export function clearLocalDirectory(): void {
-  delete (window as any).__localDirHandle;
+  // Dispose local adapter and remove stored directory handle from IndexedDB
+  try {
+    const adapter = getSyncManager().getAdapter('local');
+    if (adapter && typeof (adapter as any).dispose === 'function') {
+      (adapter as any).dispose().catch(() => { });
+    }
+  } catch (e) {
+    // ignore
+  }
+  try {
+    import('@/core/store/workspace-store').then((mod) => {
+      try {
+        const wsId = mod.useWorkspaceStore.getState().activeWorkspace?.()?.id;
+        if (wsId) removeDirectoryHandle(wsId).catch(() => { });
+      } catch (_) { }
+    }).catch(() => { });
+  } catch (_) { }
 }

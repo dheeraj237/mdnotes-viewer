@@ -8,6 +8,7 @@ import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 
 import { cachedFileSchema, syncQueueSchema, migrationStrategies } from './schemas';
 import type { CachedFile, SyncOp } from './types';
+import { WorkspaceType } from './types';
 
 // Plugin registration for browser environment
 // Use NODE_ENV for runtime checks to remain compatible with Jest/Node tests
@@ -321,6 +322,14 @@ export function isCacheDBInitialized(): boolean {
 export async function upsertCachedFile(file: CachedFile): Promise<void> {
   const db = getCacheDB();
   try {
+    try {
+      // Runtime guard: non-browser workspace files should be workspace-scoped.
+      if (String((file as any).workspaceType) !== String(WorkspaceType.Browser) && !(file as any).workspaceId) {
+        console.warn('[RxDB] upsertCachedFile called for non-browser file without workspaceId', { id: file.id, path: file.path, workspaceType: file.workspaceType });
+      }
+    } catch (w) {
+      // ignore guard failures
+    }
     const existing = await db.cached_files.findOne({ selector: { id: file.id } }).exec();
     if (existing) {
       try {

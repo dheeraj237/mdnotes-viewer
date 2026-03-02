@@ -89,7 +89,7 @@ export function FileExplorer() {
     }
 
     loadFiles();
-  }, [setFileTree, currentDirectoryName, setCurrentDirectory, activeWorkspace, hasInitialized]);
+  }, [currentDirectoryName, setCurrentDirectory, activeWorkspace, hasInitialized]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

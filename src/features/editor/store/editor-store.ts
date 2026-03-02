@@ -270,44 +270,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
    */
   openLocalFile: async () => {
     try {
-      
-      if (!('showOpenFilePicker' in window)) {
-        alert('File System Access API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.');
-        return;
-      }
-
-      const [fileHandle] = await (window as any).showOpenFilePicker({
-        types: [
-          {
-            description: 'Markdown Files',
-            accept: {
-              'text/markdown': ['.md', '.markdown'],
-              'text/plain': ['.txt'],
-            },
-          },
-        ],
-        multiple: false,
-      });
-
-      const file = await fileHandle.getFile();
-      const content = await file.text();
-
-      const markdownFile: MarkdownFile = {
-        id: `local-${file.name}-${Date.now()}`,
-        path: file.name,
-        name: file.name,
-        content,
-        category: FileCategory.Local,
-        fileHandle,
-        isLocal: true,
-      };
-
-      get().openFile(markdownFile);
+      // Open local directory via SyncManager facade. UI should rely on RxDB as source-of-truth.
+      const sm = await import('@/core/sync/sync-manager');
+      await sm.getSyncManager().requestOpenLocalDirectory();
+      // After directory is opened, UI can select files from the explorer which read from RxDB.
     } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        console.error('Error opening local file:', error);
-        alert('Failed to open file: ' + (error as Error).message);
-      }
+      console.error('Error opening local directory via SyncManager:', error);
+      alert('Failed to open local directory: ' + (error as Error).message);
     }
   },
 
@@ -345,32 +314,27 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         throw new Error(`File not found: ${targetPath}`);
       }
 
-      // Handle local files with File System Access API
+      // Handle local files by pulling into RxDB via SyncManager, then reading from cache
       if (fileNode.id.startsWith('local-file-')) {
-        const dirHandle = (window as any).__localDirHandle;
-        if (!dirHandle) {
-          throw new Error('No directory handle available');
+        const sm = await import('@/core/sync/sync-manager');
+        const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+        if (!activeWs || activeWs.type !== WorkspaceType.Local) {
+          throw new Error('No Local workspace active');
+        }
+        try {
+          await sm.getSyncManager().pullFileToCache(fileNode.path, WorkspaceType.Local, activeWs.id);
+        } catch (e) {
+          console.warn('Failed to pull local file to cache:', e);
         }
 
-        const pathParts = fileNode.path.split('/');
-        let currentHandle = dirHandle;
-
-        // Navigate to the file
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
-        }
-
-        const fileHandle = await currentHandle.getFileHandle(pathParts[pathParts.length - 1]);
-        const file = await fileHandle.getFile();
-        const content = await file.text();
+        const fileData = await fileRepo.loadFile(fileNode.path, WorkspaceType.Local, activeWs.id);
 
         get().openFile({
-          id: fileNode.id,
+          id: fileData?.id || fileNode.id,
           path: fileNode.path,
           name: fileNode.name,
-          content,
+          content: fileData?.content || '',
           category: FileCategory.Local,
-          fileHandle,
           isLocal: true,
         });
       } else {

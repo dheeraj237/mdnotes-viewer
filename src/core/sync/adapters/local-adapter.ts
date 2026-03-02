@@ -1,12 +1,17 @@
 import { Observable } from 'rxjs';
 import { ISyncAdapter } from '../sync-manager';
 import type { CachedFile } from '../../cache/types';
+import { storeDirectoryHandle, requestPermissionForWorkspace } from '@/shared/utils/idb-storage';
+import { buildFileTreeFromDirectory } from '@/features/file-explorer/store/helpers/file-tree-builder';
+import { upsertCachedFile } from '@/core/cache/rxdb';
+import { saveFile } from '@/core/cache/file-operations';
+import { CachedFile as CachedFileType, WorkspaceType } from '@/core/cache/types';
 
 /**
  * Browser-friendly Local Adapter using the File System Access API.
  * Keeps the same adapter contract as the previous Node/Electron adapter
- * but performs all operations via the browser API (uses a previously
- * stored directory handle at `window.__localDirHandle`).
+ * but performs all operations via the browser API. Adapter manages its
+ * own internal `rootHandle` and does not rely on global window state.
  */
 export class LocalAdapter implements ISyncAdapter {
   name = 'local';
@@ -24,16 +29,87 @@ export class LocalAdapter implements ISyncAdapter {
       await this.loadFileHandles();
       return;
     }
-
-    const globalHandle = (window as any).__localDirHandle;
-    if (globalHandle) {
-      this.rootHandle = globalHandle;
-      await this.loadFileHandles();
-      return;
-    }
-
     // Not initialized; adapters that call this should handle errors.
     throw new Error('Local directory not initialized. Please provide a directory handle.');
+  }
+
+  /**
+   * User-gesture: open directory picker and initialize adapter with chosen handle.
+   * Stores handle in IndexedDB and loads file handles cache.
+   */
+  async openDirectoryPicker(workspaceId?: string): Promise<void> {
+    if (!('showDirectoryPicker' in window)) throw new Error('Directory picker not supported');
+    const dirHandle = await (window as any).showDirectoryPicker();
+    if (workspaceId) {
+      try {
+        await storeDirectoryHandle(workspaceId, dirHandle);
+      } catch (e) {
+        console.warn('Failed to store directory handle via idb-storage:', e);
+      }
+    }
+    // Initialize adapter internal handle
+    this.rootHandle = dirHandle;
+    await this.loadFileHandles();
+    // Scan the directory and upsert discovered files into RxDB/cache
+    try {
+      const tree = await buildFileTreeFromDirectory(dirHandle);
+      // Walk tree and upsert files' metadata and content
+      const self = this;
+      async function walkAndUpsert(node: any) {
+        if (node.type === 'file' || node.type === 'File') {
+          try {
+            const filePath = node.path;
+            // read content via file handle
+            const fileHandle = await (self as any).getFileHandle(filePath, false).catch(() => undefined);
+            let content = '';
+            if (fileHandle) {
+              const f = await fileHandle.getFile();
+              content = await f.text();
+            }
+            const cached: CachedFileType = {
+              id: filePath,
+              name: node.name,
+              path: filePath,
+              type: 'file',
+              workspaceType: WorkspaceType.Local,
+              workspaceId: workspaceId || undefined,
+              content,
+              lastModified: Date.now(),
+              dirty: false,
+            } as any;
+            await upsertCachedFile(cached).catch((e) => console.warn('upsertCachedFile failed', e));
+            await saveFile(filePath, content, WorkspaceType.Local, undefined, workspaceId).catch((e) => console.warn('saveFile failed', e));
+          } catch (e) {
+            console.warn('walkAndUpsert file error', e);
+          }
+        }
+        const children = node.children || [];
+        for (const c of children) await walkAndUpsert.call(this, c);
+      }
+
+      for (const r of tree) {
+        await walkAndUpsert.call(this, r);
+      }
+    } catch (e) {
+      console.warn('Failed to scan and upsert local directory into RxDB:', e);
+    }
+  }
+
+  /**
+   * User-gesture: request permission for a previously stored handle and initialize adapter.
+   */
+  async promptPermissionAndRestore(workspaceId: string): Promise<boolean> {
+    try {
+      const handle = await requestPermissionForWorkspace(workspaceId);
+      if (!handle) return false;
+      // Initialize internal handle
+      this.rootHandle = handle;
+      await this.loadFileHandles();
+      return true;
+    } catch (e) {
+      console.warn('promptPermissionAndRestore failed:', e);
+      return false;
+    }
   }
 
   /**
@@ -45,11 +121,6 @@ export class LocalAdapter implements ISyncAdapter {
 
   private async ensureInitialized(): Promise<void> {
     if (this.rootHandle) return;
-    const globalHandle = (window as any).__localDirHandle;
-    if (globalHandle) {
-      await this.initialize(globalHandle);
-      return;
-    }
     throw new Error('Local directory not initialized');
   }
 

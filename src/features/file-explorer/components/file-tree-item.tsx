@@ -9,6 +9,7 @@ import { InlineInput } from "./inline-input";
 import { toast } from "@/shared/utils/toast";
 import { Button } from "@/shared/components/ui/button";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
+import { getSyncManager } from '@/core/sync/sync-manager';
 import { loadFile as loadFileData, subscribeToFileChanges, getCachedFile, getDirtyFiles } from "@/core/cache";
 import { WorkspaceType } from '@/core/cache/types';
 
@@ -157,33 +158,29 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
       // Get active workspace to determine how to load the file
       const activeWorkspace = useWorkspaceStore.getState().activeWorkspace();
 
-      // Check if this is a local file
+
+
+
+
+      // Handle local files by asking SyncManager to pull into RxDB, then read from cache
       if (node.id.startsWith('local-file-')) {
-        // Read file from local file system
-        const dirHandle = (window as any).__localDirHandle;
-        if (!dirHandle) {
-          throw new Error('No directory handle available');
+        if (!activeWorkspace || activeWorkspace.type !== WorkspaceType.Local) {
+          throw new Error('No Local workspace active');
+        }
+        try {
+          await getSyncManager().pullFileToCache(node.path, WorkspaceType.Local, activeWorkspace.id);
+        } catch (e) {
+          console.warn('Failed to pull local file to cache:', e);
         }
 
-        const pathParts = node.path.split('/');
-        let currentHandle = dirHandle;
-
-        // Navigate to the file through directory structure
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
-        }
-
-        const fileHandle = await currentHandle.getFileHandle(pathParts[pathParts.length - 1]);
-        const file = await fileHandle.getFile();
-        const content = await file.text();
+        const fileData = await loadFileData(node.path, WorkspaceType.Local, activeWorkspace?.id);
 
         openFile({
-          id: node.id,
+          id: fileData?.id || node.id,
           path: node.path,
           name: node.name,
-          content,
+          content: fileData?.content || '',
           category: FileCategory.Local,
-          fileHandle,
           isLocal: true,
         });
       } else if (node.id.startsWith('gdrive-')) {
