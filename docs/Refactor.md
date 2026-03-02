@@ -1,67 +1,191 @@
-TL;DR — Extend the `file-manager` to expose a workspace-scoped subscription API so UI can auto-update file tree when files are created/updated/deleted or when the active workspace switches. Keep all RxDB CRUD in `file-manager`; `workspace-manager` will manage switching and trigger workspace population. Wire `useWorkspaceStore` and the file-explorer to use the new subscription. Update schemas and tests accordingly.
+**Tech Spec: Make RxDB the single source of truth for workspaces, files, settings, and handle metadata**
 
-**Steps**
-1. **File manager**: implement subscription API in src/core/cache/file-manager.ts
-   - **Export**: `subscribeToWorkspaceFiles(workspaceId: string, cb: (files: FileMetadata[]) => void): () => void`
-   - **Behavior**: subscribe to RxDB changes (use existing `observeCachedFiles`/`rxdb` helpers), filter by `workspaceId`, normalize paths per schema, and call `cb` with current file list (or diffs). Return an unsubscribe function.
-   - **Also export**: `observeWorkspaceFiles(workspaceId: string)` — returns an observable/iterator for consumers that prefer reactive streams.
-   - **Keep**: all CRUD (`initializeFileOperations`, `loadFile`, `saveFile`, `deleteFile`, `renameFile`, `createDirectory`, `listFiles`, `getAllFiles`, `existsInWorkspace`, etc.) in this module.
-2. **Workspace manager**: in src/core/cache/workspace-manager.ts
-   - **Ensure** `switchWorkspace` updates files’ `workspaceId`/`workspaceType`/`dirty` appropriately (moved from prior `switchWorkspaceType`) and that switching emits to subscriptions (i.e., subscription callbacks for previous/new `workspaceId` are updated).
-   - **Implement** `createSampleWorkspaceIfMissing()` which calls the `sample-loader` and then switches to the sample workspace.
-3. **Sample loader**: add src/core/cache/sample-loader.ts
-   - **Read** content and `saveFile` into `verve-samples` workspace using deterministic IDs.
-   - **Browser tests**: support mocking `fetch`; Node tests can read files directly.
-4. **Schemas**: review/update schemas.ts
-   - **Enforce** file/dir `type`, `path` normalization (single canonical convention), `workspaceId`, and indexes on `path`, `workspaceId`, `type`.
-   - **Ensure** `listFiles`/prefix queries are efficient and deterministic so UI needs no extra computation.
-5. **Wire UI/store**:
-   - Update workspace-store.ts to call `workspace-manager` for create/switch operations.
-   - Update file-explorer entrypoints (original helper file-operations.ts or renamed helper) to:
-     - subscribe to the active workspace via `file-manager.subscribeToWorkspaceFiles(activeWorkspaceId, setTree)`
-     - use `file-manager` CRUD functions (no extra normalization in the stores/UI).
-6. **Tests**:
-   - Add unit tests for `subscribeToWorkspaceFiles` to verify callbacks on create/update/delete/rename and on workspace switch.
-   - Update integration/e2e tests that previously polled RxDB to instead rely on subscription updates where appropriate.
-   - Update all test imports to new modules (`file-manager`, `workspace-manager`, `sample-loader`).
-7. **Barrel & imports**:
-   - Update index.ts to re-export new modules.
-   - Run automated import updates across repo replacing `@/core/cache/file-operations` → `@/core/cache/file-manager` and adjust workspace-related imports.
-8. **Verification**
-   - Run `yarn test` and targeted suites (cache, file-explorer, workspace-store).
-   - Manual smoke: fresh app start → `createSampleWorkspaceIfMissing()` creates and populates `verve-samples`; file-explorer auto-updates when files are created/renamed/deleted and when workspace switches.
+Goal (non-ambiguous)
+- `RxDB` is the authoritative source of truth for everything UI/stores read and write: workspaces, file metadata, file content cache, user settings, and sync queue.
+- Low-level IndexedDB utilities will continue to persist raw `FileSystemDirectoryHandle` objects (browser handles) because they must be stored in native IndexedDB. The `workspace-manager` will be integrated with RxDB via a small helper so RxDB contains canonical metadata and a stable document ID that references the persisted handle.
+- UI and Zustand stores must only use RxDB wrapper APIs (CRUD + subscriptions). No direct IndexedDB, `window.showDirectoryPicker`, or file handle usage in UI/stores.
+- `SyncManager` coordinates adapters but uses RxDB collections for reads and writes: it observes RxDB for dirty files and writes updates into RxDB. Adapter code (Local/GDrive) is the only code allowed to interact with external storage/handles and must persist results into RxDB via the wrapper API.
+- Provide robust dev UX for seamless file editing: optimistic content updates, incremental saves, auto-save debounce, and consistent subscriptions so editor/file tree reflect changes immediately.
 
-**Decisions**
-- Subscription API is workspace-scoped and returns an unsubscribe function for easy UI lifecycle management.
-- `file-manager` will own the subscription implementation (uses RxDB `observeCachedFiles`) so UI components remain schema-agnostic.
-- Keep schema canonicalization at the DB layer so stores and UI receive normalized objects.
+Core design: collections + responsibilities
+- Collections (RxDB JSON schemas; names below):
+  - `workspaces`:
+    - Fields: `id` (string PK), `name`, `type` (enum: Browser|Local|Drive), `path?`, `driveFolder?`, `createdAt`, `lastAccessed`
+    - Purpose: list of workspaces & active workspace metadata.
+  - `files`:
+    - Fields: `id` (string PK, e.g., workspaceId + ':' + path), `workspaceId`, `workspaceType`, `path`, `name`, `content` (string), `dirty` (boolean), `lastModified` (number), `size?`, `mimeType?`, `syncStatus?` (enum), `version?` (number)
+    - Indexes: `workspaceId`, `dirty`, `path`
+    - Purpose: canonical file metadata + content cache.
+  - `settings`:
+    - Fields: `id` (string PK), `key`, `value` (any), `updatedAt`
+    - Purpose: app & user settings used by UI.
+  - `directory_handles_meta`:
+    - Fields: `id` (string PK = workspaceId), `workspaceId`, `directoryName`, `storedAt`, `permissionStatus` (`granted|prompt|denied`), `notes?`
+    - Purpose: metadata for persisted handles. The actual `FileSystemDirectoryHandle` remains in a dedicated low-level idb store; the metadata document keeps RxDB-aware UI informed and is managed via the `workspace-manager`.
+  - `sync_queue`:
+    - Fields: `id`, `op` (Put/Delete), `target` (`file`), `targetId`, `payload`, `createdAt`, `attempts`
+    - Purpose: durable queue for sync operations.
+- Additional invariants:
+  - `files.content` is authoritative for UI; adapters must write content into `files` (not directly into some other store).
+  - Editors read from `files` by `workspaceId` + `path`.
+  - When an adapter writes a file to remote or local FS it must also upsert the `files` doc with `dirty=false` and updated `lastModified` and `version`.
+  - UI-only writes (editor save) set `dirty=true` and update `content` and `lastModified`; `SyncManager` will observe and push using adapters.
 
-**Updated PR task list (small PRs)**
+APIs to implement (explicit signatures)
+- File: `src/core/rxdb/rxdb-client.ts` (new)
+  - export async function `createRxDB()` : Promise<void>
+  - export function `getCollection<T>(name: string)`: RxCollection<T>
+  - export async function `upsertDoc<T>(collection: string, doc: T & { id: string }): Promise<void>`
+  - export async function `getDoc<T>(collection: string, id: string): Promise<T | null>`
+  - export async function `findDocs<T>(collection: string, query: { selector?: any; sort?: any; limit?: number }): Promise<T[]>`
+  - export function `subscribeDoc<T>(collection: string, id: string, cb: (doc: T | null) => void): () => void`
+  - export function `subscribeQuery<T>(collection: string, query, cb: (docs: T[]) => void): () => void`
+  - export async function `atomicUpsert<T>(collection: string, id: string, mutator: (current?: T|null) => T): Promise<T>`
+  - export async function `bulkWrite<T>(collection: string, docs: Array<T & { id: string }>): Promise<void>`
+  - export async function `removeDoc(collection: string, id: string): Promise<void>`
+  - export function `observeCollectionChanges(collection: string, handler: (change) => void): Unsubscribe`
+  - Export strongly typed TypeScript interfaces for `FileDoc`, `WorkspaceDoc`, etc.
+- Special Handle helpers: `src/core/rxdb/handle-sync.ts`
+  - export async function `saveHandleMeta(workspaceId: string, handleMeta: {directoryName:string, permissionStatus:string}): Promise<void>`
+  - export async function `getHandleMeta(workspaceId: string): Promise<HandleMeta | null>`
+  - export async function `ensureHandleForWorkspace(workspaceId: string): Promise<FileSystemDirectoryHandle | null>`
+    - Implementation: check RxDB `directory_handles_meta` doc for workspaceId; call underlying `workspace-manager.getDirectoryHandle(workspaceId)` (or equivalent low-level handle accessor exposed by `workspace-manager`) to retrieve handle and return it.
+  - export async function `storeHandleForWorkspace(workspaceId: string, handle: FileSystemDirectoryHandle): Promise<void>`
+    - Implementation: call `workspace-manager.storeDirectoryHandle(workspaceId, handle)` (or an equivalent `workspace-manager` API) then upsert metadata into RxDB with `permissionStatus` set to `granted`.
+- File operations facade changes (adapter integration):
+  - `saveFile(path, content, workspaceType, options?, workspaceId?)` — should call `upsertDoc('files', fileDoc)` using `atomicUpsert` to avoid race conditions and increment `version`.
+  - `loadFile(path, workspaceType, workspaceId)` — should call `getDoc('files', id)` and return content and metadata.
+  - `getAllFiles(workspaceId)` — `findDocs('files', { selector: { workspaceId }})`.
 
-- PR 1 — Skeletons & barrel
-  - Add src/core/cache/file-manager.ts (skeleton), src/core/cache/workspace-manager.ts (skeleton), update index.ts.
-- PR 2 — Move file ops + add subscription
-  - Move file CRUD into `file-manager`.
-  - Implement `subscribeToWorkspaceFiles` and `observeWorkspaceFiles`.
-  - Update imports used by file-explorer and editor to `file-manager`.
-  - Tests: add unit tests for subscription behavior.
-- PR 3 — Workspace-manager + sample creation
-  - Implement workspace CRUD and `createSampleWorkspaceIfMissing()`.
-  - Wire `switchWorkspace` to notify subscriptions.
-  - Update `useWorkspaceStore` to call `workspace-manager`.
-  - Tests: workspace store tests & sample-creation test.
-- PR 4 — Sample-loader
-  - Implement [src/core/cache/sample-loader.ts] to load content into `verve-samples` via `file-manager`.
-  - Tests: mock `fetch` and verify upserts.
-- PR 5 — Schema updates & migrations
-  - Review/update [src/core/cache/schemas.ts], add indexes and migration notes.
-  - Update `rxdb` helpers to use indexes and normalization.
-  - Tests: migration and schema tests.
-- PR 6 — UI wiring & helper rename
-  - Update feature helper (file-operations.ts) to subscribe to `file-manager` and use its CRUD methods.
-  - Optionally rename helper to avoid naming confusion.
-  - Tests: update file-explorer tests to rely on subscription updates.
-- PR 7 — Repo-wide imports & tests stabilization
-  - Apply automated import fixes, update tests, run full suite and fix failures.
-- PR 8 — Cleanup & docs
-  - Remove/mark deprecated old `file-operations` file, add docs for `file-manager` subscription API and workspace lifecycle.
+SyncManager responsibilities (concrete)
+- Do not read file content from disk or browser handles directly. Instead:
+  - Observe RxDB `files` collection using `subscribeQuery` or `observeCollectionChanges`.
+  - When a `files` doc becomes `dirty === true` and `workspaceType !== Browser`, enqueue/push via adapter.
+- Pull workflow on workspace switch:
+  - When user switches to workspace (handled by `useWorkspaceStore.switchWorkspace`), `SyncManager.pullWorkspace({id, type})` should call adapter.pullWorkspace and for each returned item:
+    - `await upsertDoc('files', normalizedDoc)` and `saveFile(...)` as appropriate.
+  - If local adapter requires a directory handle to enumerate files, `SyncManager` should call `ensureHandleForWorkspace(workspaceId)` from `handle-sync.ts` to obtain the handle (if not available, `promptPermissionAndRestore` remains for user gestures). If non-null, adapter can `initialize(handle)` internally.
+- Push workflow:
+  - `SyncManager` will call adapter.push when `files` doc is dirty. After successful push, `SyncManager` will mark doc `dirty=false`, update `lastModified` and `syncStatus`.
+- When adapter reports remote changes (via `watch()` or pull), adapter must upsert `files` documents in RxDB only — adapters must not write to any external store other than remote APIs / FS.
+
+Migration approach for persisted handle integration (explicit)
+- Keep low-level idb utilities to store raw handles (unchanged functionally). The `workspace-manager` will act as the higher-level coordinator that integrates these raw handles with RxDB metadata.
+  - After the low-level store persists a handle, `workspace-manager` should call `handle-sync` to upsert a `directory_handles_meta` document into RxDB.
+  - Permission flows (e.g., `requestPermissionForWorkspace`) should be routed through `workspace-manager`; when a handle is returned and permission is granted, `workspace-manager` must upsert the corresponding `directory_handles_meta` with `permissionStatus: granted`.
+  - Remove any code that directly reads the low-level idb handle store except inside adapters and the `workspace-manager`. UI/stores should only query RxDB metadata.
+
+- Migration script:
+  - On startup migration, query the low-level idb handle store (e.g., `getAllDirectoryHandles()`) and write a mirrored metadata doc to RxDB for each handle. Set `permissionStatus` to `granted` if `queryPermission` returns `granted`, otherwise `prompt`.
+
+Schema & indexing (explicit)
+- Define JSON schema for `files` and `workspaces` in `src/core/rxdb/schemas.ts`. Example `files` schema:
+  - primary key `id` (string)
+  - required: `id`, `workspaceId`, `workspaceType`, `path`, `content`, `dirty`, `lastModified`
+  - indexes: `workspaceId`, `dirty`, `path`, `syncStatus`
+- Add migration versioning: `rxdb-client` should initialize RxDB with a controlled `migrationStrategies` handler to migrate older docs.
+
+UI/store migration checklist (explicit, file-level)
+- `src/features/file-explorer/store/*`:
+  - Replace direct calls to `getAllFiles` or `file-operations` implementations that read IndexedDB directly with `rxdb-client` wrappers (e.g., `findDocs('files', {selector:{workspaceId}})`).
+  - Replace `hasLocalDirectory()` to read `directory_handles_meta` doc and `isReady()` from adapter via `getSyncManager().getAdapter('local')`.
+- editor-store.ts:
+  - All saves must call `saveFile` (which now writes to RxDB).
+  - Editor open must read from RxDB `files` doc, and if missing call `getSyncManager().pullFileToCache(...)`.
+- `src/core/sync/*`:
+  - Ensure `observeCachedFiles` uses `rxdb-client.observeCollectionChanges('files', handler)` and not a custom watch that bypasses wrapper.
+ - `workspace-manager.ts`:
+  - Only adapters and the `workspace-manager` (via `handle-sync`) should call low-level raw handle functions. UI should never call these directly; UI must read handle metadata from RxDB.
+
+Concurrency & UX details (unambiguous)
+- Use `atomicUpsert` for all writes to `files` to avoid lost updates:
+  - `atomicUpsert('files', id, (current) => ({ ...current, content: newContent, dirty: true, lastModified: Date.now(), version: (current?.version || 0) + 1 }))`
+- Auto-save UX:
+  - Editor will debounce saves: 1000ms default; on save, call `atomicUpsert` and set `dirty=true`. Show a save indicator subscribing to the doc's `syncStatus`.
+  - Optimistic UI: `content` in `files` doc is updated immediately for editor reads.
+- Conflict UI:
+  - `SyncManager` should set `syncStatus` to `conflict` when the adapter returns a remote `version` > local `version`. Expose `merge` strategy hooks and an API in `rxdb-client` to `subscribeDoc` to show conflict badge.
+- Performance:
+  - Use RxDB queries with selectors and indexes to limit reactivity to the active workspace to avoid UI updates for unrelated workspaces.
+  - For file lists (explorer tree), query only summary fields (`id`, `name`, `path`, `lastModified`) to avoid moving large content around.
+
+Testing & verification (explicit)
+- Unit tests:
+  - `rxdb-client` CRUD + subscriptions
+  - `handle-sync` saving & retrieval with `workspace-manager` mocked
+  - `file-operations` writes upsert proper `files` docs and set `dirty`.
+  - `SyncManager` push/pull flows with mocked adapters that simulate success/failure and remote versions.
+- End-to-end tests:
+  - Scenario: Persisted local handle exists → reload app → `SyncManager` auto-initializes adapter → `pullWorkspace` populates `files` docs → explorer shows files.
+  - Scenario: Editor edits file → debounced save → `files` doc dirty true → `SyncManager` pushes to adapter → adapter succeeds → `dirty=false`.
+  - Scenario: Remote change arrives while local dirty → conflict detected & UI merge flow is displayed.
+- Test harness: reuse existing Jest+fake-indexeddb and add `rxdb-client` initialization in test `beforeEach`.
+
+Concrete implementation tasks & copy‑paste prompts
+(Each prompt is ready for you to paste to me to implement the corresponding change; pick one by one.)
+
+1) Task: Add RxDB schemas & `rxdb-client` wrapper
+- Files to create:
+  - `src/core/rxdb/schemas.ts` (JSON schemas for `files`, `workspaces`, `settings`, `directory_handles_meta`, `sync_queue`)
+  - `src/core/rxdb/rxdb-client.ts`
+- Prompt to paste to assistant:
+  > "Create `src/core/rxdb/schemas.ts` and `src/core/rxdb/rxdb-client.ts`. Implement schema definitions (files, workspaces, settings, directory_handles_meta, sync_queue) and a wrapper with functions: `createRxDB()`, `getCollection()`, `upsertDoc()`, `getDoc()`, `findDocs()`, `subscribeDoc()`, `subscribeQuery()`, `atomicUpsert()`, `bulkWrite()`, `removeDoc()`, `observeCollectionChanges()`. Use `rxdb` v14 APIs and `fake-indexeddb` for tests. Export TypeScript types `FileDoc`, `WorkspaceDoc`."
+
+2) Task: Integrate persisted handles via `workspace-manager` and RxDB metadata
+- Files to edit/create:
+  - update `workspace-manager.ts` to call new `handle-sync.ts` after persisting or restoring directory handles and when requesting permissions.
+  - create `src/core/rxdb/handle-sync.ts` with helpers `storeHandleForWorkspace`, `getHandleMeta`, `ensureHandleForWorkspace`.
+- Prompt:
+  > "Add `src/core/rxdb/handle-sync.ts` exposing `storeHandleForWorkspace`, `getHandleMeta`, and `ensureHandleForWorkspace`. Modify `workspace-manager.ts` so when it persists or restores directory handles it calls `handle-sync` to upsert metadata in RxDB. Keep the low-level idb handle storage as-is; `workspace-manager` will be the integration point."
+
+3) Task: Update `file-operations` to use `rxdb-client`
+- Files to edit:
+  - file-operations.ts
+  - `src/core/cache/rxdb` usages
+- Prompt:
+  > "Refactor file-operations.ts to use `rxdb-client.upsertDoc('files', fileDoc)` and `rxdb-client.getDoc('files', id)` for `saveFile` and `loadFile`. Ensure `saveFile` uses `atomicUpsert` to increment `version` and set `dirty` according to `options`."
+
+4) Task: Refactor stores/UI to use RxDB wrapper exclusively
+- Files to edit:
+  - `src/features/file-explorer/store/*`, editor-store.ts, and any UI components that used direct indexedDB or window handle
+- Prompt:
+  > "Replace direct calls to `workspace-manager` or handle usage in UI/stores with `rxdb-client` reads/subscriptions. For file lists, use `rxdb-client.subscribeQuery('files', { selector:{workspaceId}}, cb)`. For reading a file open, use `rxdb-client.getDoc('files', id)`."
+
+5) Task: Adjust `SyncManager` to use `rxdb-client` observation and handle push/pull via adapters
+- Files to edit:
+  - sync-manager.ts
+- Prompt:
+  > "Refactor `SyncManager` to use `rxdb-client.observeCollectionChanges('files', handler)` and to perform pushes when a doc's `dirty` flag becomes true. When pulling a workspace, ensure adapter results upsert into RxDB using `upsertDoc('files', ...)`. Use `handle-sync.ensureHandleForWorkspace(workspaceId)` when local adapter needs a handle."
+
+6) Task: Add test coverage & e2e scenarios
+- Files to add:
+  - `src/core/rxdb/__tests__/rxdb-client.unit.test.ts`
+  - `src/core/sync/__tests__/sync-manager.integration.test.ts`
+  - update existing e2e tests to initialize `createRxDB()` in beforeEach
+- Prompt:
+  > "Add tests for `rxdb-client` CRUD and subscriptions, adapter/harness tests to simulate local handle flows, and e2e tests for reload -> restore -> file explorer population."
+
+7) Task: Migration script & verification
+- Files to add:
+  - `scripts/migrate-handles-to-rxdb.ts` (node script invoked in local dev to populate `directory_handles_meta` for existing idb handles)
+- Prompt:
+  > "Create `scripts/migrate-handles-to-rxdb.ts` that calls `workspace-manager.getAllDirectoryHandles()` (or the low-level handle listing API exposed by `workspace-manager`) and writes corresponding metadata docs into RxDB using `rxdb-client.upsertDoc('directory_handles_meta', ...)`. Add a verification mode that lists workspaceIds and permissionStatus."
+
+8) Task: UX polish (auto-save, optimistic updates, conflict UI)
+- Changes to plan:
+  - Editor: debounce saves 1000ms, call `atomicUpsert`.
+  - File-tree: subscribe to `files` doc summary fields.
+  - Conflict UI: subscribe to `files` doc; when `syncStatus === 'conflict'` show merge dialog; expose `rxdb-client.atomicUpsert` to merge.
+- Prompt:
+  > "Implement editor auto-save (1000ms) using `atomicUpsert('files', id, mutator)` and update file-tree to subscribe to `files` summaries. Add a conflict banner when `file.syncStatus === 'conflict'` and a `resolveConflict` helper that merges content and sets `dirty` appropriately."
+
+Rollout & verification checklist (explicit)
+- Developer PR checklist:
+  - Add `rxdb-client` + schemas with migration strategy.
+  - Ensure tests pass locally: `yarn test`.
+  - Run migration script and verify output.
+  - Manual QA: open app, open local workspace, create file, edit, reload, verify explorer shows files without prompting for directory (if permission was previously granted).
+- CI checklist:
+  - Add `createRxDB()` step in test setup.
+  - Ensure `fake-indexeddb` is available in test environment.
+  - Add `--detectOpenHandles` in Jest for flaky tests.
