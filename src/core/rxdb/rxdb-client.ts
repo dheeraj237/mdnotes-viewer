@@ -98,7 +98,7 @@ export async function createRxDB(): Promise<void> {
       $: {
         subscribe: (cb: Function) => {
           listeners.add(cb);
-          cb(Array.from(docs.values()).map((d) => ({ toJSON: () => ({ ...d }) })));
+          cb(Array.from(docs.values()).map((d) => ({ toJSON: () => ({ ...d }) }))); 
           return { unsubscribe: () => listeners.delete(cb) };
         }
       }
@@ -193,5 +193,3 @@ export function observeCollectionChanges(collection: string, handler: (change: a
   const sub = col.$.subscribe((ev: any) => handler(ev));
   return () => sub.unsubscribe();
 }
-
-export type { FileDoc, WorkspaceDoc } from './schemas';

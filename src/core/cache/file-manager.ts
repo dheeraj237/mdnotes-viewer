@@ -14,6 +14,8 @@ import {
   upsertCachedFile,
   observeCachedFiles,
 } from './rxdb';
+import { upsertDoc, getDoc, atomicUpsert } from '@/core/rxdb/rxdb-client';
+import type { FileDoc } from '@/core/rxdb/schemas';
 import { enqueueSyncEntry } from '@/core/sync/sync-queue-processor';
 import { SyncOp } from './types';
 import { CachedFile, WorkspaceType, FileType } from './types';
@@ -152,14 +154,16 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = Workspa
   const db = await getCacheDB();
   const cached = await getCachedFile(path, workspaceId);
   if (cached) {
-    let content = cached.content || '';
+    // Prefer retrieving the canonical doc by id from rxdb-client
+    const doc = (await getDoc<FileDoc>('files', cached.id)) || (cached as unknown as FileDoc);
+    const content = doc.content || '';
     return {
-      id: cached.id,
-      name: cached.name,
-      path: cached.path,
+      id: doc.id,
+      name: doc.name,
+      path: doc.path,
       content,
-      metadata: cached.metadata,
-      lastModified: cached.lastModified,
+      metadata: (doc as any).metadata,
+      lastModified: doc.lastModified,
     };
   }
   return {
@@ -202,17 +206,24 @@ async function saveSyncFile(
   } catch (e) {
     console.warn('Failed to ensure parent folders for path', path, e);
   }
-  const cachedFile: CachedFile = {
-    id: fileId,
-    name: path.split('/').pop() || 'untitled',
-    path,
+  // Use atomicUpsert to safely increment version and avoid races
+  const name = path.split('/').pop() || 'untitled';
+  const mutator = (current?: any) => {
+    const nextVersion = (current && current.version ? current.version : 0) + 1;
+    return {
+      ...(current || {}),
+      id: fileId,
+      name,
+      path,
       type: FileType.File,
       workspaceType,
-    workspaceId: workspaceId,
-    content,
-    metadata: metadata || { mimeType: 'text/markdown' },
-    lastModified: Date.now(),
-      dirty: String(workspaceType) !== WorkspaceType.Browser, // Mark dirty for sync-requiring workspaces
+      workspaceId: workspaceId,
+      content,
+      metadata: metadata || { mimeType: 'text/markdown' },
+      lastModified: Date.now(),
+      dirty: String(workspaceType) !== WorkspaceType.Browser,
+      version: nextVersion,
+    } as CachedFile;
   };
   try {
     const preview = typeof content === 'string' ? content.slice(0, 200) : '';
@@ -221,16 +232,33 @@ async function saveSyncFile(
     console.warn('[RxDB] saveFile logging failed', e);
   }
 
-  await upsertCachedFile(cachedFile);
+  const saved = await atomicUpsert<FileDoc>('files', fileId, mutator as any);
+  try {
+    // Ensure final doc persisted (shim-safe)
+    await upsertDoc<FileDoc>('files', saved as any);
+  } catch (e) {
+    // Non-fatal: atomicUpsert already persisted via underlying helpers
+  }
 
   return {
-    id: fileId,
-    name: cachedFile.name,
-    path,
-    content,
-    metadata: cachedFile.metadata,
-    lastModified: cachedFile.lastModified,
+    id: (saved as any).id,
+    name: (saved as any).name,
+    path: (saved as any).path,
+    content: (saved as any).content,
+    metadata: (saved as any).metadata,
+    lastModified: (saved as any).lastModified,
   };
+}
+
+/**
+ * Get the raw `FileDoc` for a path (or id) scoped to an optional workspace.
+ * Returns `null` if not found.
+ */
+export async function getFile(pathOrId: string, workspaceId?: string): Promise<FileDoc | null> {
+  const cached = await getCachedFile(pathOrId, workspaceId);
+  if (!cached) return null;
+  const doc = await getDoc<FileDoc>('files', cached.id);
+  return doc;
 }
 
 export async function deleteFile(path: string, workspaceId?: string): Promise<void> {
