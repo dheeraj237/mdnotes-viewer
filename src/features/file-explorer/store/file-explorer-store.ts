@@ -3,22 +3,7 @@ import { persist } from "zustand/middleware";
 import { FileNode, FileType } from "@/shared/types";
 import { WorkspaceType } from '@/core/cache/types';
 import { buildSamplesFileTree } from "@/utils/demo-file-tree";
-import {
-  getAllFiles,
-  saveFile,
-  createDirectory,
-  renameFile,
-  deleteFile,
-  loadSampleFilesFromFolder,
-  upsertCachedFile,
-  subscribeToWorkspaceFiles,
-  // NEW FileNode API
-  getWorkspaceTree,
-  saveFileNode,
-  deleteFileNode,
-  queryByPath,
-} from '@/core/cache/file-manager';
-import { getAllFolderIds } from "./helpers/file-tree-builder";
+import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder, upsertCachedFile, subscribeToWorkspaceFiles, getWorkspaceTree, saveFileNode, deleteFileNode, queryByPath } from '@/core/cache/file-manager';
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 
 /**
@@ -28,8 +13,7 @@ import { useWorkspaceStore } from "@/core/store/workspace-store";
 interface FileExplorerStore {
   expandedFolders: Set<string>;
   selectedFileId: string | null;
-  fileTree: FileNode[];
-  // New canonical map: id -> FileNode (children as ids for directories)
+  // Canonical map: id -> FileNode (children as ids for directories)
   fileMap: Record<string, FileNode>;
   rootIds: string[];
   isLoadingLocalFiles: boolean;
@@ -40,7 +24,6 @@ interface FileExplorerStore {
 
   toggleFolder: (folderId: string) => void;
   setSelectedFile: (fileId: string | null) => void;
-  setFileTree: (tree: FileNode[]) => void;
   setIsLoadingLocalFiles: (loading: boolean) => void;
   setIsSyncingDrive: (loading: boolean) => void;
   setCurrentDirectory: (name: string, path: string) => void;
@@ -83,7 +66,6 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
       expandedFolders: new Set<string>(),
       selectedFileId: null,
-      fileTree: [],
       fileMap: {},
       rootIds: [],
       isLoadingLocalFiles: false,
@@ -107,8 +89,6 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       /** Sets the currently selected file */
       setSelectedFile: (fileId) => set({ selectedFileId: fileId }),
 
-      /** Updates the entire file tree */
-      setFileTree: (tree) => set({ fileTree: tree }),
       getChildren: (id: string) => {
         const state = get();
         const node = state.fileMap?.[id];
@@ -130,14 +110,28 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const copy: FileNode = { ...n } as any;
           const childIds = (n as any).children || [];
           if (childIds && childIds.length) {
-            copy.children = childIds.map((cid: string) => buildNode(cid)).filter(Boolean) as FileNode[];
+            const childNodes = childIds.map((cid: string) => buildNode(cid)).filter(Boolean) as FileNode[];
+            // Sort children: directories before files, alphabetically within each type
+            childNodes.sort((a, b) => {
+              if (a.type === FileType.Directory && b.type === FileType.File) return -1;
+              if (a.type === FileType.File && b.type === FileType.Directory) return 1;
+              return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            });
+            copy.children = childNodes;
           } else {
             delete (copy as any).children;
           }
           return copy;
         }
 
-        return roots.map(rid => buildNode(rid)).filter(Boolean) as FileNode[];
+        const tree = roots.map(rid => buildNode(rid)).filter(Boolean) as FileNode[];
+        // Sort root nodes: directories before files, alphabetically within each type
+        tree.sort((a, b) => {
+          if (a.type === FileType.Directory && b.type === FileType.File) return -1;
+          if (a.type === FileType.File && b.type === FileType.Directory) return 1;
+          return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        return tree;
       },
       getPath: (id: string) => {
         const state = get();
@@ -179,64 +173,17 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         return p.replace(/^\/*/, '').replace(/\/*$/, '');
       },
 
-      // Internal helper to replace children of a folder node matching dirPath
-      _replaceChildrenInTree: (nodes: FileNode[], dirPath: string, newChildren: FileNode[]): { tree: FileNode[]; replaced: boolean } => {
-        let replaced = false;
-
-        function norm(p: string) {
-          if (!p) return '';
-          return p.replace(/^\/*/, '').replace(/\/*$/, '');
-        }
-
-        function recurse(list: FileNode[]): FileNode[] {
-          return list.map(node => {
-            const nodePath = norm(node.path || '');
-            if (nodePath === norm(dirPath) && node.type === FileType.Directory) {
-              replaced = true;
-              return { ...node, children: newChildren };
-            }
-            if (node.children && node.children.length > 0) {
-              return { ...node, children: recurse(node.children) };
-            }
-            return node;
-          });
-        }
-
-        const newTree = recurse(nodes);
-        return { tree: newTree, replaced };
-      },
-
-      // Update only the affected directory in the UI by reading RxDB for that dir
+      // Update the canonical fileMap/rootIds by rebuilding from cache
       _updateFileTreeForDirectory: async (dirPath: string) => {
         const activeWs = useWorkspaceStore.getState().activeWorkspace();
         if (!activeWs) return;
         try {
-          // Rebuild the canonical fileMap/rootIds by scanning the cache first.
-          // `_buildFileTreeFromCache` updates `fileMap` and `rootIds` in state as a side-effect
-          const tree = await (get() as any)._buildFileTreeFromCache(activeWs.id);
-
-          // If dirPath is root, replace whole tree
-          const normalized = dirPath ? dirPath.replace(/^\/*/, '').replace(/\/*$/, '') : '';
-          if (!normalized) {
-            set({ fileTree: tree, currentDirectoryName: activeWs.name, currentDirectoryPath: '/' });
-            return;
-          }
-
-          const currentTree = get().fileTree || [];
-          const { tree: updatedTree, replaced } = get()._replaceChildrenInTree(currentTree, dirPath, tree);
-          if (replaced) {
-            // Ensure the canonical map/rootIds stay in sync with the rebuilt cache
-            const currentMap = get().fileMap;
-            const currentRootIds = get().rootIds;
-            set({ fileTree: updatedTree, fileMap: currentMap, rootIds: currentRootIds });
-            return;
-          }
-
-          // Parent folder not found in current tree — fall back to full rebuild
-          set({ fileTree: tree, currentDirectoryName: activeWs.name, currentDirectoryPath: '/' });
+          // Rebuild the canonical fileMap/rootIds by scanning the cache
+          await (get() as any)._buildFileTreeFromCache(activeWs.id);
+          set({ currentDirectoryName: activeWs.name, currentDirectoryPath: '/' });
         } catch (e) {
           console.error('Failed to update file tree for directory', dirPath, e);
-          // fallback
+          // fallback to full refresh
           await get().refreshFileTree();
         }
       },
@@ -556,34 +503,24 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       /** Expands all folders in the tree */
       expandAll: () => {
         const state = get();
-        // Prefer using the canonical `fileTree` if present, otherwise build
-        // folders list from `rootIds` + `fileMap` so expand all works when
-        // rendering uses `rootIds`/`fileMap` instead of `fileTree`.
+        const map = state.fileMap || {};
+        const roots = state.rootIds || [];
         let allFolderIds: string[] = [];
 
-        if (state.fileTree && state.fileTree.length > 0) {
-          allFolderIds = getAllFolderIds(state.fileTree);
-        } else {
-          // Walk the map starting at rootIds to collect folder ids
-          const visited = new Set<string>();
-          const map = state.fileMap || {};
-
-          function walkId(id?: string) {
-            if (!id || visited.has(id)) return;
-            visited.add(id);
-            const node = map[id];
-            if (!node) return;
-            if (node.type === FileType.Directory) {
-              allFolderIds.push(node.id);
-              const children = (node as any).children || [];
-              for (const cid of children) walkId(cid);
-            }
+        const visited = new Set<string>();
+        function walkId(id?: string) {
+          if (!id || visited.has(id)) return;
+          visited.add(id);
+          const node = map[id];
+          if (!node) return;
+          if (node.type === FileType.Directory) {
+            allFolderIds.push(node.id);
+            const children = (node as any).children || [];
+            for (const cid of children) walkId(cid);
           }
-
-          const roots = state.rootIds || [];
-          for (const rid of roots) walkId(rid);
         }
 
+        for (const rid of roots) walkId(rid);
         set({ expandedFolders: new Set(allFolderIds) });
       },
 
@@ -606,7 +543,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
         // If no workspace is active, show empty
         if (!activeWorkspace) {
-          set({ fileTree: [], currentDirectoryName: null, currentDirectoryPath: null });
+          set({ currentDirectoryName: null, currentDirectoryPath: null });
           return;
         }
 
@@ -616,26 +553,26 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             // First try building from the RxDB cache (this will pick up test-upserted entries)
             const treeFromCache = await (get() as any)._buildFileTreeFromCache(activeWorkspace.id);
             if (treeFromCache && treeFromCache.length > 0) {
-              set({ fileTree: treeFromCache, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+              set({ currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
               return;
             }
 
             // Fallback: attempt to load sample files via the helper (browser fetch or test mock)
-            const fileTree = await buildSamplesFileTree();
-            set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+            await buildSamplesFileTree();
+            set({ currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
           } catch (e) {
             console.error('Failed to load verve-samples workspace files', e);
-            set({ fileTree: [], currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+            set({ currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
           }
           return;
         }
 
         try {
-          const fileTree = await (get() as any)._buildFileTreeFromCache(activeWorkspace.id);
-          set({ fileTree, currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
+          await (get() as any)._buildFileTreeFromCache(activeWorkspace.id);
+          set({ currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
         } catch (e) {
           console.error('Failed to load workspace files from cache', e);
-          set({ fileTree: [], currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
+          set({ currentDirectoryName: activeWorkspace.name, currentDirectoryPath: '/' });
         }
       },
 
@@ -657,8 +594,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           }
 
           await loadSampleFilesFromFolder();
-          const fileTree = await buildSamplesFileTree();
-          set({ fileTree, currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
+          set({ currentDirectoryName: 'Verve Samples', currentDirectoryPath: '/samples' });
         } catch (e) {
           console.error('Failed to reload verve-samples workspace files', e);
         }
@@ -666,7 +602,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
       /** Clears the currently open local directory */
       clearLocalDirectory: () => {
-        set({ fileTree: [], currentDirectoryName: null, currentDirectoryPath: null, expandedFolders: new Set() });
+        set({ currentDirectoryName: null, currentDirectoryPath: null, expandedFolders: new Set() });
       },
     }),
     {
@@ -681,21 +617,6 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           if (state) {
             // Restore expandedFolders as a Set
             state.expandedFolders = new Set(state.expandedFolders as any);
-
-            // Dev invariant: prevent persisted derived `fileTree` from being rehydrated.
-            // If `fileTree` exists in persisted payload, clear it and warn so we don't
-            // accidentally rely on stale derived state. Consumers should call `getFileTree()`.
-            try {
-              if ((state as any).fileTree && (state as any).fileTree.length > 0) {
-                // In tests we may rely on fileTree for samples; only log in non-test env
-                if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
-                  console.warn('[FileExplorerStore] Persisted `fileTree` detected on rehydrate — clearing derived state. Use `getFileTree()` instead of persisting `fileTree`.');
-                }
-                (state as any).fileTree = [];
-              }
-            } catch (e) {
-              // swallow
-            }
           }
       },
     }
@@ -737,25 +658,4 @@ try {
   }
 } catch (e) {
   // ignore subscription failures
-}
-
-// Dev-only subscription: detect accidental persistence or usage of derived `fileTree`.
-if (typeof process === 'undefined' || process.env.NODE_ENV !== 'production') {
-  try {
-    useFileExplorerStore.subscribe((state) => {
-      try {
-        const ft = (state as any).fileTree;
-        if (ft && Array.isArray(ft) && ft.length > 0) {
-          // Warn in non-test environments to avoid noisy test logs
-          if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
-            console.warn('[FileExplorerStore] `fileTree` is non-empty in memory. Prefer `fileMap + rootIds` and compute `getFileTree()` on demand.');
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    });
-  } catch (e) {
-    // ignore subscription failures
-  }
 }

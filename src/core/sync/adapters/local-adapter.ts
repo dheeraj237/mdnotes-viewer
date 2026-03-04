@@ -5,7 +5,7 @@ import { requestPermissionForWorkspace, storeDirectoryHandle as workspaceStoreDi
 import { buildFileTreeFromDirectory } from '@/features/file-explorer/store/helpers/file-tree-builder';
 import { upsertCachedFile } from '@/core/cache/file-manager';
 import { saveFile } from '@/core/cache/file-manager';
-import { WorkspaceType } from '@/core/cache/types';
+import { FileType, WorkspaceType } from '@/core/cache/types';
 
 /**
  * Browser-friendly Local Adapter using the File System Access API.
@@ -56,7 +56,7 @@ export class LocalAdapter implements ISyncAdapter {
       // Walk tree and upsert files' metadata and content
       const self = this;
       async function walkAndUpsert(node: any) {
-        if (node.type === 'file' || node.type === 'File') {
+        if (node.type === FileType.File) {
           try {
             const filePath = node.path;
             // read content via file handle
@@ -70,12 +70,15 @@ export class LocalAdapter implements ISyncAdapter {
               id: filePath,
               name: node.name,
               path: filePath,
-              type: 'file',
+              type: FileType.File,
               workspaceType: WorkspaceType.Local,
               workspaceId: workspaceId || undefined,
               content,
               lastModified: Date.now(),
               dirty: false,
+              isSynced: true,
+              syncStatus: 'idle',
+              version: 1,
             } as any;
             await upsertCachedFile(cached).catch((e) => console.warn('upsertCachedFile failed', e));
             await saveFile(filePath, content, WorkspaceType.Local, undefined, workspaceId).catch((e) => console.warn('saveFile failed', e));

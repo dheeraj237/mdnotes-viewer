@@ -15,7 +15,6 @@ jest.mock('@/core/store/workspace-store', () => {
 
 jest.mock('@/features/file-explorer/store/file-explorer-store', () => {
   const fileExplorerState: any = {
-    fileTree: [],
     fileMap: {},
     rootIds: [],
     currentDirectoryPath: '/',
@@ -41,14 +40,13 @@ jest.mock('@/features/file-explorer/store/file-explorer-store', () => {
     }
 
     if (roots && roots.length) return roots.map((r: string) => buildNode(r)).filter(Boolean);
-    return fileExplorerState.fileTree;
+    return [];
   }
 
   // expose getFileTree on the raw state as tests/readers may call getState().getFileTree()
   fileExplorerState.getFileTree = () => buildTreeFromMap();
 
   const useFileExplorerStore = () => ({
-    fileTree: fileExplorerState.fileTree,
     fileMap: fileExplorerState.fileMap,
     rootIds: fileExplorerState.rootIds,
     currentDirectoryPath: fileExplorerState.currentDirectoryPath,

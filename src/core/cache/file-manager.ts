@@ -13,6 +13,7 @@ import type { FileNode } from '@/shared/types';
 import { initializeRxDB as rxInitializeRxDB, getCacheDB as rxGetCacheDB, upsertDoc as rxUpsertDoc, getDoc as rxGetDoc, findDocs as rxFindDocs, atomicUpsert as rxAtomicUpsert, removeDoc as rxRemoveDoc, subscribeQuery as rxSubscribeQuery } from '@/core/rxdb/rxdb-client';
 import Collections from '@/core/rxdb/collections';
 import { normalizePath } from '@/shared/utils/file-path-resolver';
+import { SyncStatus } from '../sync';
 
 // Local aliases to keep calls concise and avoid indirect circular-init problems.
 const upsertDoc = rxUpsertDoc;
@@ -481,6 +482,9 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
     workspaceId: workspaceId,
     modifiedAt: new Date().toISOString(),
     dirty: String(workspaceType) !== WorkspaceType.Browser,
+    isSynced: false,
+    syncStatus: SyncStatus.IDLE,
+    version: 1,
   };
   try {
     console.info(`[RxDB] createDirectory path='${path}' workspaceType='${workspaceType}' workspaceId='${workspaceId}'`);

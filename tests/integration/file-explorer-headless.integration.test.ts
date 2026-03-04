@@ -39,7 +39,7 @@ describe('FileExplorer headless integration with SyncManager (stores only)', () 
 
     // Ensure file is present in fileTree
     const state1 = useFileExplorerStore.getState();
-    const found1 = state1.fileTree.flatMap(n => n.children ? [n, ...n.children] : [n]).find((n: any) => n.name === 'headless-a.md' || n.path === 'headless-a.md');
+    const found1 = state1.getFileTree().flatMap(n => n.children ? [n, ...n.children] : [n]).find((n: any) => n.name === 'headless-a.md' || n.path === 'headless-a.md');
     expect(found1).toBeDefined();
 
     // Trigger explicit sync cycle to ensure processing in this test environment
@@ -55,7 +55,7 @@ describe('FileExplorer headless integration with SyncManager (stores only)', () 
 
     // Ensure new workspace file present and previous workspace file not present in the current tree
     const state2 = useFileExplorerStore.getState();
-    const textList = state2.fileTree.flatMap(n => n.children ? [n, ...n.children] : [n]).map((n: any) => n.name);
+    const textList = state2.getFileTree().flatMap(n => n.children ? [n, ...n.children] : [n]).map((n: any) => n.name);
     expect(textList).toContain('headless-b.md');
     expect(textList).not.toContain('headless-a.md');
   });

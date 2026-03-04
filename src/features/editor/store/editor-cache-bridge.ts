@@ -86,6 +86,9 @@ export function useOpenFileForEditing(
             type: FileType.File,
             workspaceType,
             dirty: false,
+            isSynced: false,
+            syncStatus: 'idle',
+            version: 1,
             workspaceId: workspaceId
           };
           await upsertCachedFile(cachedFile);
