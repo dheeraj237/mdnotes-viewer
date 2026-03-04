@@ -89,7 +89,7 @@ export function InlineInput({
       className="flex items-center gap-1 px-2 py-1 bg-accent rounded"
       style={{ paddingLeft: `${level * 12 + 8}px` }}
     >
-      {type === "folder" ? (
+      {type === FileType.Directory ? (
         <Folder className="h-4 w-4 text-primary shrink-0" />
       ) : (
         <>

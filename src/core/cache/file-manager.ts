@@ -467,7 +467,7 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
       path: existing.path,
       type: FileType.Directory,
       workspaceType: existing.workspaceType,
-      lastModified: existing.lastModified,
+      modifiedAt: existing.modifiedAt,
     };
   }
 

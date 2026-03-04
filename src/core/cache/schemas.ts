@@ -1,47 +1,4 @@
 import { RxJsonSchema } from 'rxdb';
-import type { FileNode } from '@/shared/types';
-
-/**
- * RxDB JSON schema for cached_files collection
- * Stores lightweight file/directory metadata and file content (SSoT)
- */
-export const cachedFileSchema: RxJsonSchema<FileNode> = {
-  title: 'cached_files schema',
-  version: 2,
-  type: 'object',
-  primaryKey: 'id',
-  additionalProperties: false,
-  properties: {
-    id: { type: 'string', maxLength: 255 },
-    type: { type: 'string', enum: ['file', 'directory'] },
-    name: { type: 'string', maxLength: 255 },
-    path: { type: 'string', maxLength: 1024 },
-    parentId: { type: ['string', 'null'] },
-    children: { type: ['array', 'null'], items: { type: 'string' } },
-    size: { type: ['number', 'null'] },
-    modifiedAt: { type: ['string', 'null'] },
-    createdAt: { type: ['string', 'null'] },
-    dirty: { type: 'boolean', default: false },
-    isSynced: { type: 'boolean', default: true },
-    version: { type: ['number', 'null'] },
-    mimeType: { type: ['string', 'null'] },
-    // Accept both 'drive' and 'gdrive' historically used by adapters
-    workspaceType: { type: 'string', maxLength: 50, enum: ['browser', 'local', 'drive', 'gdrive', 's3'] },
-    workspaceId: { type: 'string', maxLength: 255 },
-    content: { type: ['string', 'null'] },
-    // Many modules use `metadata` (not `meta`) — accept both shapes
-    metadata: { type: ['object', 'null'] }
-  },
-  required: ['id', 'name', 'path', 'type', 'workspaceType', 'dirty'],
-  // Composite indexes to improve workspace-scoped and name-based lookups
-  indexes: [
-    ['path'],
-    ['workspaceType'],
-    ['workspaceId'],
-    ['workspaceId', 'path'],
-    ['workspaceId', 'name']
-  ]
-};
 
 /**
  * RxDB JSON schema for crdt_docs collection

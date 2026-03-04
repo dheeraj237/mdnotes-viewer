@@ -1,5 +1,5 @@
 import type { RxJsonSchema } from 'rxdb';
-import { FileType, SyncOp, WorkspaceType } from '../cache/types';
+import { SyncOp, WorkspaceType } from '../cache/types';
 import type { FileNode } from '../../shared/types';
 import Collections from './collections';
 
@@ -46,6 +46,7 @@ export const fileSchema: RxJsonSchema<FileNode> = {
     // Metadata
     size: { type: 'number' },
     mimeType: { type: 'string', maxLength: 256 },
+    metadata: { type: 'object', description: 'Adapter-specific metadata (e.g. Google Drive file ID)' },
 
     // Timestamps (normalized to ISO 8601)
     createdAt: { type: 'string', maxLength: 64 },

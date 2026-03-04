@@ -29,7 +29,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   const fileMapSelector = useFileExplorerStore(state => state.fileMap);
 
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
+  const [newItemType, setNewItemType] = useState<FileType>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -182,7 +182,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           name: node.name,
           content: fileData?.content || '',
           isLocal: true,
-        });
+        } as FileNode);
       } else if (node.id.startsWith('gdrive-')) {
         // Google Drive file - load from RxDB cache
         if (!activeWorkspace || activeWorkspace.type !== WorkspaceType.GDrive) {
@@ -197,7 +197,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           path: node.path,
           name: node.name,
           content: fileData.content,
-        });
+        } as FileNode);
       } else if (node.id.startsWith('samples-') && activeWorkspace?.id === 'verve-samples') {
         // Load from verve-samples workspace from RxDB cache
         const fileData = await loadFileData(node.path, WorkspaceType.Browser, activeWorkspace?.id);
@@ -208,7 +208,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           path: node.path,
           name: node.name,
           content: fileData.content,
-        });
+        } as FileNode);
       } else if (activeWorkspace?.type === WorkspaceType.Browser && activeWorkspace.id !== 'verve-samples') {
         // Browser workspace (non-samples) - load from RxDB cache
         const fileData = await loadFileData(node.path, WorkspaceType.Browser, activeWorkspace?.id);
@@ -219,7 +219,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           path: node.path,
           name: node.name,
           content: fileData.content,
-        });
+        } as FileNode);
       } else {
         // Fallback: attempt to load from public directory (relative path for Vite)
         const response = await fetch(`content${node.path}`);
@@ -233,7 +233,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
           path: node.path,
           name: node.name,
           content,
-        });
+        } as FileNode);
       }
     } catch (error) {
       console.error("Error loading file:", error);
@@ -248,7 +248,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     if (!isExpanded) {
       toggleFolder(node.id);
     }
-    setNewItemType('file');
+    setNewItemType(FileType.File);
   };
 
   const handleNewFileTouch = (e: React.TouchEvent) => {
@@ -256,7 +256,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     if (!isExpanded) {
       toggleFolder(node.id);
     }
-    setNewItemType('file');
+    setNewItemType(FileType.File);
   };
 
   const handleNewFolderClick = (e: React.MouseEvent) => {
@@ -264,7 +264,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     if (!isExpanded) {
       toggleFolder(node.id);
     }
-    setNewItemType('folder');
+    setNewItemType(FileType.Directory);
   };
 
   const handleNewFolderTouch = (e: React.TouchEvent) => {
@@ -272,7 +272,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     if (!isExpanded) {
       toggleFolder(node.id);
     }
-    setNewItemType('folder');
+    setNewItemType(FileType.Directory);
   };
 
   const handleNewFile = () => {
@@ -280,7 +280,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
       if (!isExpanded) {
         toggleFolder(node.id);
       }
-      setNewItemType('file');
+      setNewItemType(FileType.File);
     }
   };
 
@@ -289,7 +289,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
       if (!isExpanded) {
         toggleFolder(node.id);
       }
-      setNewItemType('folder');
+      setNewItemType(FileType.Directory);
     }
   };
 
@@ -329,8 +329,8 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
   };
 
   const handleNewItemConfirm = async (name: string) => {
+    const itemType = newItemType === FileType.File ? 'File' : 'Folder';
     setNewItemType(null);
-    const itemType = newItemType === 'file' ? 'File' : 'Folder';
     const toastId = toast.loading(`Creating ${itemType.toLowerCase()}...`, name);
 
     try {
@@ -339,9 +339,9 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
       const expectedPath = parentPath ? `${parentPath}/${name}` : name;
       console.info(`[FileExplorer] Creating ${itemType} - parent: '${parentPath}', name: '${name}', expectedPath: '${expectedPath}'`);
 
-      if (newItemType === 'file') {
+      if (newItemType === FileType.File) {
         await createFile(parentPath, name);
-      } else if (newItemType === 'folder') {
+      } else if (newItemType === FileType.Directory) {
         await createFolder(parentPath, name);
       }
       toast.dismiss(toastId);

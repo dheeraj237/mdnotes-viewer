@@ -13,7 +13,7 @@ import { RxDBJsonDumpPlugin } from 'rxdb/plugins/json-dump';
 import { RxDBMigrationPlugin } from 'rxdb/plugins/migration';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 
-import { cachedFileSchema, syncQueueSchema, migrationStrategies } from '@/core/cache/schemas';
+import { syncQueueSchema, migrationStrategies } from '@/core/cache/schemas';
 import { FileType, WorkspaceType, SyncOp } from '@/core/cache/types';
 
 // Ensure plugins similar to runtime
@@ -37,7 +37,6 @@ describe('sync queue persistence and retry integration', () => {
     });
 
     await db.addCollections({
-      cached_files: { schema: cachedFileSchema, migrationStrategies: migrationStrategies.cachedFile || {} },
       sync_queue: { schema: syncQueueSchema, migrationStrategies: migrationStrategies.syncQueue || {} },
     });
   });

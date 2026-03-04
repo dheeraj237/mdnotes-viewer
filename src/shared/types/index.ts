@@ -24,6 +24,7 @@ export interface FileNode {
   // ========== METADATA ==========
   size?: number; // File size in bytes
   mimeType?: string; // 'text/markdown', 'application/json', etc.
+  metadata?: Record<string, any>; // Adapter-specific metadata (e.g. Google Drive file ID)
 
   // ========== TIMESTAMPS (NORMALIZED) ==========
   createdAt?: string; // ISO 8601 timestamp

@@ -126,7 +126,7 @@ export class LocalAdapter implements ISyncAdapter {
     throw new Error('Local directory not initialized');
   }
 
-  async push(file: CachedFile, content: string): Promise<boolean> {
+  async push(file: FileNode, content: string): Promise<boolean> {
     const context = `${this.name}::push(${file.id})`;
     try {
       await this.ensureInitialized();

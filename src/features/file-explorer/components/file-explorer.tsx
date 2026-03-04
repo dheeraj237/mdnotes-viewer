@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileNode } from "@/shared/types";
+import { FileNode, FileType } from "@/shared/types";
 import { useFileExplorerStore } from "../store/file-explorer-store";
 import { FileTreeItem } from "./file-tree-item";
 import { FilePlus, FolderPlus, RefreshCw, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
@@ -27,7 +27,7 @@ export function FileExplorer() {
     setCurrentDirectory,
   } = useFileExplorerStore();
   const { activeWorkspace } = useWorkspaceStore();
-  const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
+  const [newItemType, setNewItemType] = useState<FileType>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [filterValue, setFilterValue] = useState("");
@@ -118,7 +118,7 @@ export function FileExplorer() {
       toast.error('No workspace', 'Please create or select a workspace first');
       return;
     }
-    setNewItemType('file');
+    setNewItemType(FileType.File);
   };
 
   const handleNewFolder = () => {
@@ -127,12 +127,12 @@ export function FileExplorer() {
       toast.error('No workspace', 'Please create or select a workspace first');
       return;
     }
-    setNewItemType('folder');
+    setNewItemType(FileType.Directory);
   };
 
   const handleNewItemConfirm = async (name: string) => {
     setNewItemType(null);
-    const itemType = newItemType === 'file' ? 'File' : 'Folder';
+    const itemType = newItemType === FileType.File ? 'File' : 'Folder';
     const toastId = toast.loading(`Creating ${itemType.toLowerCase()}...`, name);
 
     try {
@@ -168,9 +168,9 @@ export function FileExplorer() {
 
       // (No DOM event emitted here — console.info above is sufficient for debugging)
 
-      if (newItemType === 'file') {
+      if (newItemType === FileType.File) {
         await createFile(rootPath, name);
-      } else if (newItemType === 'folder') {
+      } else if (newItemType === FileType.Directory) {
         await createFolder(rootPath, name);
       }
       toast.dismiss(toastId);
