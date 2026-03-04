@@ -10,6 +10,11 @@ import {
   upsertCachedFile,
   loadFile,
   saveFile,
+  // NEW FileNode API
+  queryDirtyFiles,
+  getFileNodeWithContent,
+  saveFileNode,
+  updateSyncStatus,
 } from '../cache';
 import type { ISyncAdapter as AdapterISyncAdapter } from './adapter-types';
 import { MergeStrategy, NoOpMergeStrategy } from './merge-strategies';
@@ -20,6 +25,8 @@ import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { CachedFile, FileType, SyncOp, WorkspaceType } from '@/core/cache/types';
 import { toAdapterDescriptor } from './adapter-types';
 import { pushCachedFile } from './adapter-bridge';
+// NEW: FileNode Bridge for type conversions
+import { fileNodeBridge } from './file-node-bridge';
 
 // CRDT/Yjs handling removed from SyncManager. SyncManager now operates
 // on plain file content strings. Adapters should accept/return string
@@ -776,6 +783,111 @@ export class SyncManager {
       }
     } catch (error) {
       console.error(`pullFileFromAdapter error:`, error);
+    }
+  }
+
+  // ==================== NEW FileNode-Based Sync Methods ====================
+  /**
+   * Pull changes from adapter using FileNode API
+   * Converts adapter entries to FileNode and persists to RxDB
+   * @param adapter Sync adapter to pull from
+   * @param workspaceId Target workspace ID
+   */
+  async pullFromAdapterWithFileNode(
+    adapter: ISyncAdapter,
+    workspaceId: string
+  ): Promise<void> {
+    try {
+      // Get adapter entries (if listWorkspaceFiles exists)
+      const adapterImpl = adapter as any;
+      if (!adapterImpl.listWorkspaceFiles) {
+        console.warn(`[SyncManager] Adapter ${adapter.name} does not support listWorkspaceFiles`);
+        return;
+      }
+
+      const entries = await adapterImpl.listWorkspaceFiles(workspaceId);
+      if (!entries || entries.length === 0) {
+        console.info(`[SyncManager] No files to pull from ${adapter.name}`);
+        return;
+      }
+
+      // Convert adapter entries to FileNode
+      const fileNodes = fileNodeBridge.adapterResponseToFileNode(
+        entries,
+        adapter.name as any,
+        workspaceId
+      );
+
+      // Persist to RxDB
+      for (const fileNode of fileNodes) {
+        try {
+          await saveFileNode(fileNode);
+        } catch (e) {
+          console.warn(`[SyncManager] Failed to save FileNode ${fileNode.id}`, e);
+        }
+      }
+
+      console.info(`[SyncManager] Pulled ${fileNodes.length} files from ${adapter.name} for workspace ${workspaceId}`);
+    } catch (e) {
+      console.error(`[SyncManager] pullFromAdapterWithFileNode failed:`, e);
+    }
+  }
+
+  /**
+   * Push dirty files to adapter using FileNode API
+   * Converts dirty FileNodes to adapter descriptors and pushes
+   * @param adapter S adapter to push to
+   * @param workspaceId Target workspace ID
+   */
+  async pushToAdapterWithFileNode(
+    adapter: ISyncAdapter,
+    workspaceId: string
+  ): Promise<void> {
+    try {
+      // Get all dirty files for this workspace
+      const dirtyFiles = await queryDirtyFiles(workspaceId);
+      if (dirtyFiles.length === 0) {
+        console.info(`[SyncManager] No dirty files to push for workspace ${workspaceId}`);
+        return;
+      }
+
+      // Load content for files if needed
+      const filesWithContent = await Promise.all(
+        dirtyFiles.map(async (file) => {
+          if (file.type === FileType.File && !file.content) {
+            return getFileNodeWithContent(file.id) || file;
+          }
+          return file;
+        })
+      );
+
+      // Convert to adapter descriptors
+      const descriptors = fileNodeBridge.fileNodeToAdapterDescriptor(
+        filesWithContent,
+        adapter.name as any
+      );
+
+      // Push to adapter
+      const adapterImpl = adapter as any;
+      if (adapterImpl.pushChanges && typeof adapterImpl.pushChanges === 'function') {
+        await adapterImpl.pushChanges(descriptors);
+      } else {
+        console.warn(`[SyncManager] Adapter ${adapter.name} does not support pushChanges`);
+        return;
+      }
+
+      // Mark files as synced
+      for (const file of dirtyFiles) {
+        try {
+          await updateSyncStatus(file.id, 'idle', (file.version ?? 0) + 1);
+        } catch (e) {
+          console.warn(`[SyncManager] Failed to update sync status for ${file.id}`, e);
+        }
+      }
+
+      console.info(`[SyncManager] Pushed ${dirtyFiles.length} files to ${adapter.name} for workspace ${workspaceId}`);
+    } catch (e) {
+      console.error(`[SyncManager] pushToAdapterWithFileNode failed:`, e);
     }
   }
 }

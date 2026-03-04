@@ -67,7 +67,7 @@ describe('Integration: ensureFolderDocs migration', () => {
     } as any);
 
     const before = await getAllFiles(wsId);
-    const dirsBefore = before.filter(f => f.type === FileType.Dir);
+    const dirsBefore = before.filter(f => f.type === FileType.Directory);
     expect(dirsBefore.length).toBe(0);
 
     // Run migration helper
@@ -75,7 +75,7 @@ describe('Integration: ensureFolderDocs migration', () => {
 
     const after = await getAllFiles(wsId);
     const dirPaths = after
-      .filter(f => f.type === FileType.Dir)
+      .filter(f => f.type === FileType.Directory)
       .map(f => (f.path || '').replace(/^\/+/,'').replace(/\/+$/,''))
       .sort();
 

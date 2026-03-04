@@ -1,5 +1,5 @@
-import type { CachedFile, WorkspaceType, FileType } from '@/core/cache/types';
-import { FileType as _FileType } from '@/core/cache/types';
+import type { CachedFile, WorkspaceType } from '@/core/cache/types';
+import { FileType as _FileType } from '@/shared/types';
 
 /**
  * Normalize a remote adapter listing entry into the local CachedFile shape
@@ -24,7 +24,7 @@ export function adapterEntryToCachedFile(
     id: String(id),
     name: String(name),
     path: String(path),
-    type: isDirectory ? _FileType.Dir : _FileType.File,
+    type: isDirectory ? _FileType.Directory : _FileType.File,
     workspaceType: workspaceType as any,
     workspaceId: workspaceId ?? null,
     content: undefined,

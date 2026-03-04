@@ -24,7 +24,7 @@ describe('adapterEntryToCachedFile', () => {
     const out = adapterEntryToCachedFile(entry, WorkspaceType.GDrive, 'ws-1');
     expect(out.type).toBeDefined();
     expect(out.type).toEqual(expect.any(String));
-    // Directory should use FileType.Dir which maps to 'directory'
+    // Directory should use FileType.Directory which maps to 'directory'
     expect(out.type).toBe('directory');
   });
 });

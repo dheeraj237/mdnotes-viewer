@@ -1,50 +1,84 @@
 import type { RxJsonSchema } from 'rxdb';
 import { FileType, SyncOp, WorkspaceType } from '../cache/types';
+import type { FileNode } from '../../shared/types';
 import Collections from './collections';
 
 // File document stored in `files` collection
-export interface FileDoc {
-  id: string; // primary key: `${workspaceId}:${path}`
-  workspaceId: string;
-  workspaceType: WorkspaceType;
-  // `type` is used throughout the codebase (FileType.File | FileType.Dir)
-  type: FileType;
-  path: string;
-  name: string;
-  content: string;
-  dirty: boolean;
-  lastModified: number;
-  size?: number;
-  mimeType?: string;
-  syncStatus?: 'idle' | 'syncing' | 'conflict' | 'error' | string;
-  version?: number;
-}
+// Now uses unified FileNode type
+export type FileDoc = FileNode;
 
-export const fileSchema: RxJsonSchema<FileDoc> = {
-  title: 'files schema',
-  description: 'File metadata and content cache',
+export const fileSchema: RxJsonSchema<FileNode> = {
+  title: 'files collection - unified FileNode schema',
+  description: 'File metadata and content cache (supports lazy-loaded content)',
   type: 'object',
   primaryKey: 'id',
-  required: ['id', 'workspaceId', 'workspaceType', 'path', 'name', 'content', 'dirty', 'lastModified', 'type'],
+  version: 1, // Incremented: added parentId, contentHash, createdAt, modifiedAt, isSynced; made content optional
+  required: [
+    'id',
+    'workspaceId',
+    'workspaceType',
+    'path',
+    'name',
+    'type',
+    'dirty',
+    'isSynced',
+    'syncStatus',
+    'version',
+  ],
   properties: {
+    // Core identity
     id: { type: 'string', maxLength: 1024 },
-    workspaceId: { type: 'string', maxLength: 1024 },
-    workspaceType: { type: 'string' },
-    type: { type: 'string', maxLength: 64 },
     path: { type: 'string', maxLength: 1024 },
-    name: { type: 'string' },
-    content: { type: 'string' },
-    dirty: { type: 'boolean' },
-    lastModified: { type: 'number' },
+    name: { type: 'string', maxLength: 1024 },
+
+    // Type & hierarchy
+    type: { type: 'string', maxLength: 64, enum: ['file', 'directory'] },
+    parentId: { type: ['string', 'null'], maxLength: 1024 },
+    children: {
+      type: 'array',
+      items: { type: 'object' },
+      description: 'Nested FileNode objects for UI tree (built on-demand)',
+    },
+
+    // Content (lazy-loaded)
+    content: { type: 'string', description: 'File content (lazy-loaded, may be omitted)' },
+    contentHash: { type: 'string', maxLength: 256, description: 'SHA-256 hash for change detection' },
+
+    // Metadata
     size: { type: 'number' },
-    mimeType: { type: 'string' },
-    syncStatus: { type: 'string', maxLength: 1024 },
-    version: { type: 'number' }
+    mimeType: { type: 'string', maxLength: 256 },
+
+    // Timestamps (normalized to ISO 8601)
+    createdAt: { type: 'string', maxLength: 64 },
+    modifiedAt: { type: 'string', maxLength: 64 },
+
+    // Workspace context
+    workspaceId: { type: 'string', maxLength: 1024 },
+    workspaceType: { type: 'string', maxLength: 64 },
+
+    // Sync state
+    dirty: { type: 'boolean' },
+    isSynced: { type: 'boolean' },
+    syncStatus: {
+      type: 'string',
+      maxLength: 64,
+      enum: ['idle', 'syncing', 'conflict', 'error'],
+    },
+    version: { type: 'number' },
+
+    // Editor support
+    isLocal: { type: 'boolean' },
+    fileHandle: { type: 'object', description: 'Browser File System API handle (serialized)' },
   },
-  // Note: Dexie storage does not support boolean indexes; omit `dirty` from
-  // indexed fields to remain compatible while still allowing queries on it.
-  indexes: ['workspaceId', 'path', 'syncStatus'],
-  version: 0
+  indexes: [
+    // Single field indexes
+    ['workspaceId'], // Fast: files in a workspace
+    // Composite indexes for common queries
+    ['workspaceId', 'path'], // Fast: find by path in workspace
+    ['workspaceId', 'type'], // Fast: list directories/files only
+    ['workspaceId', 'dirty'], // Fast: find unsaved changes for sync
+    ['workspaceId', 'syncStatus'], // Fast: find syncing/conflicted files
+  ],
 };
 
 // Workspace document stored in `workspaces` collection

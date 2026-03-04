@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { FileDoc } from '@/core/rxdb/schemas';
 import { SyncOp } from './types';
 import { CachedFile, WorkspaceType, FileType } from './types';
+import type { FileNode } from '@/shared/types';
 
 import { initializeRxDB as rxInitializeRxDB, getCacheDB as rxGetCacheDB, upsertDoc as rxUpsertDoc, getDoc as rxGetDoc, findDocs as rxFindDocs, atomicUpsert as rxAtomicUpsert, removeDoc as rxRemoveDoc, subscribeQuery as rxSubscribeQuery } from '@/core/rxdb/rxdb-client';
 import Collections from '@/core/rxdb/collections';
@@ -139,7 +140,7 @@ async function ensureParentFoldersForPath(path: string, workspaceType: Workspace
     const folderPath = parts.slice(0, i + 1).join('/');
     try {
       const existing = await getCachedFile(folderPath, workspaceId);
-      if (existing && existing.type === FileType.Dir) continue;
+      if (existing && existing.type === FileType.Directory) continue;
 
       const id = uuidv4();
       const name = folderPath.split('/').pop() || folderPath || 'untitled';
@@ -147,7 +148,7 @@ async function ensureParentFoldersForPath(path: string, workspaceType: Workspace
         id,
         name,
         path: folderPath,
-        type: FileType.Dir,
+        type: FileType.Directory,
         workspaceType: workspaceType,
         workspaceId: workspaceId,
         lastModified: Date.now(),
@@ -369,7 +370,7 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
   const cached = await getCachedFile(path, workspaceId);
   if (cached) {
     try {
-      if (cached.type === FileType.Dir) {
+      if (cached.type === FileType.Directory) {
         const norm = (cached.path || '').replace(/^\/*/, '').replace(/\/*$/, '');
         let selector: any;
         if (!norm) {
@@ -457,7 +458,7 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
   const storedPath = path && path.startsWith('/') ? path : `/${norm}`;
 
   const existing = await getCachedFile(norm, workspaceId);
-  if (existing && existing.type === FileType.Dir) {
+  if (existing && existing.type === FileType.Directory) {
     return {
       id: existing.id,
       name: existing.name,
@@ -552,7 +553,7 @@ export async function ensureFolderDocs(workspaceId?: string): Promise<void> {
     }
   }
   if (folderSet.size === 0) return;
-  const sel: any = { type: FileType.Dir };
+  const sel: any = { type: FileType.Directory };
   if (workspaceId) sel.workspaceId = workspaceId;
   const existingDirs = await findDocs((Collections as any).Files, { selector: sel }) as any[];
   const existingPaths = new Set(existingDirs.map((d: any) => normalizePath(d.path || '')));
@@ -566,7 +567,7 @@ export async function ensureFolderDocs(workspaceId?: string): Promise<void> {
       id,
       name,
       path: folderPath,
-      type: FileType.Dir,
+      type: FileType.Directory,
       workspaceType: wsType,
       workspaceId: workspaceId,
       lastModified: Date.now(),
@@ -701,6 +702,294 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
   } catch (error) {
     console.error('[FileOperations] Error loading sample files:', error);
     throw error;
+  }
+}
+
+// ==================== NEW UNIFIED FILENODE API ====================
+// These methods implement the unified FileNode type across all layers
+// (UI, stores, persistence, sync). They provide lazy-loaded content
+// and efficient queries with RxDB indexes.
+
+/**
+ * Get a FileNode by ID (metadata only, no content)
+ * @param id FileNode ID
+ * @returns FileNode without content, or null if not found
+ */
+export async function getFileNode(id: string): Promise<FileNode | null> {
+  await initializeRxDB();
+  try {
+    const doc = await getDoc((Collections as any).Files, id as any);
+    if (!doc) return null;
+    const { content, ...fileNode } = doc as any;
+    return fileNode as FileNode;
+  } catch (e) {
+    console.warn('[file-manager] getFileNode failed for id=%s', id, e);
+    return null;
+  }
+}
+
+/**
+ * Get a FileNode by ID with full content (lazy-load)
+ * @param id FileNode ID
+ * @returns FileNode with content, or null if not found
+ */
+export async function getFileNodeWithContent(id: string): Promise<FileNode | null> {
+  await initializeRxDB();
+  try {
+    const doc = await getDoc((Collections as any).Files, id as any);
+    return doc as FileNode | null;
+  } catch (e) {
+    console.warn('[file-manager] getFileNodeWithContent failed for id=%s', id, e);
+    return null;
+  }
+}
+
+/**
+ * Save a FileNode (metadata + optional content) with atomic upsert
+ * Handles conflict prevention via version increments
+ * @param file FileNode to save
+ * @returns Saved FileNode
+ */
+export async function saveFileNode(file: FileNode): Promise<FileNode> {
+  await initializeRxDB();
+  try {
+    // Normalize path and ensure parent folders exist
+    const norm = normalizePath(file.path);
+    if (norm && file.type === FileType.File) {
+      await ensureParentFoldersForPath(
+        norm,
+        file.workspaceType,
+        file.workspaceId
+      );
+    }
+
+    // Atomic upsert with version management
+    const savedDoc = await atomicUpsert(
+      (Collections as any).Files,
+      file.id as any,
+      (current?: any) => ({
+        ...current,
+        ...file,
+        version: ((current?.version ?? 0) + 1),
+        isSynced: current?.isSynced ?? false,
+      })
+    ) as any;
+
+    return savedDoc as FileNode;
+  } catch (e) {
+    console.error('[file-manager] saveFileNode failed for id=%s path=%s', file.id, file.path, e);
+    throw e;
+  }
+}
+
+/**
+ * Query files by path prefix (directory listing)
+ * @param workspaceId Workspace ID
+ * @param pathPrefix Path prefix to search (e.g., '/parent/')
+ * @returns Array of FileNodes matching prefix
+ */
+export async function queryByPath(
+  workspaceId: string,
+  pathPrefix: string
+): Promise<FileNode[]> {
+  await initializeRxDB();
+  try {
+    const norm = normalizePath(pathPrefix);
+    const selector: any = {
+      workspaceId,
+      path: { $regex: `^${norm}` },
+    };
+    const docs = await findDocs((Collections as any).Files, { selector }) as any[];
+    return (docs || []).map(doc => {
+      const { content, ...fileNode } = doc;
+      return fileNode as FileNode;
+    });
+  } catch (e) {
+    console.warn('[file-manager] queryByPath failed for prefix=%s workspaceId=%s', pathPrefix, workspaceId, e);
+    return [];
+  }
+}
+
+/**
+ * Query files by name pattern (fuzzy search)
+ * @param workspaceId Workspace ID
+ * @param namePattern Name pattern to search
+ * @returns Array of FileNodes matching pattern
+ */
+export async function queryByName(
+  workspaceId: string,
+  namePattern: string
+): Promise<FileNode[]> {
+  await initializeRxDB();
+  try {
+    const escapedPattern = namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const selector: any = {
+      workspaceId,
+      name: { $regex: escapedPattern },
+    };
+    const docs = await findDocs((Collections as any).Files, { selector }) as any[];
+    return (docs || []).map(doc => {
+      const { content, ...fileNode } = doc;
+      return fileNode as FileNode;
+    });
+  } catch (e) {
+    console.warn('[file-manager] queryByName failed for pattern=%s workspaceId=%s', namePattern, workspaceId, e);
+    return [];
+  }
+}
+
+/**
+ * Query all dirty files in a workspace (for sync operations)
+ * @param workspaceId Workspace ID
+ * @returns Array of dirty FileNodes
+ */
+export async function queryDirtyFiles(workspaceId: string): Promise<FileNode[]> {
+  await initializeRxDB();
+  try {
+    const selector = { workspaceId, dirty: true };
+    const docs = await findDocs((Collections as any).Files, { selector }) as any[];
+    return (docs || []).map(doc => {
+      const { content, ...fileNode } = doc;
+      return fileNode as FileNode;
+    });
+  } catch (e) {
+    console.warn('[file-manager] queryDirtyFiles failed for workspaceId=%s', workspaceId, e);
+    return [];
+  }
+}
+
+/**
+ * Build complete workspace file tree with nested children
+ * This is the primary method for UI tree rendering
+ * @param workspaceId Workspace ID
+ * @returns Root FileNode with recursively built children
+ */
+export async function getWorkspaceTree(workspaceId: string): Promise<FileNode> {
+  await initializeRxDB();
+  try {
+    const allFiles = await queryByPath(workspaceId, '');
+
+    // Build map for fast lookup
+    const fileMap = new Map<string, FileNode>();
+    const rootIds: string[] = [];
+
+    for (const file of allFiles) {
+      fileMap.set(file.id, { ...file, children: [] });
+      if (!file.parentId || file.parentId === '' || file.path === '') {
+        rootIds.push(file.id);
+      }
+    }
+
+    // Build hierarchy
+    for (const file of allFiles) {
+      if (file.parentId && fileMap.has(file.parentId)) {
+        const parent = fileMap.get(file.parentId)!;
+        if (!parent.children) parent.children = [];
+        const child = fileMap.get(file.id);
+        if (child) parent.children.push(child);
+      }
+    }
+
+    // Return synthetic root or first root file
+    const root: FileNode = {
+      id: `${workspaceId}-root`,
+      name: 'root',
+      path: '',
+      type: FileType.Directory,
+      workspaceId,
+      workspaceType: WorkspaceType.Browser, // Default, will be overridden by actual files
+      dirty: false,
+      isSynced: true,
+      syncStatus: 'idle',
+      version: 0,
+      children: rootIds.map(id => fileMap.get(id)!).filter(Boolean),
+    };
+
+    return root;
+  } catch (e) {
+    console.error('[file-manager] getWorkspaceTree failed for workspaceId=%s', workspaceId, e);
+    // Return synthetic root on error
+    return {
+      id: `${workspaceId}-root`,
+      name: 'root',
+      path: '',
+      type: FileType.Directory,
+      workspaceId,
+      workspaceType: WorkspaceType.Browser,
+      dirty: false,
+      isSynced: false,
+      syncStatus: 'error',
+      version: 0,
+      children: [],
+    };
+  }
+}
+
+/**
+ * Delete a FileNode (cascade delete for directories)
+ * @param id FileNode ID
+ */
+export async function deleteFileNode(id: string): Promise<void> {
+  await initializeRxDB();
+  try {
+    // Get the file to check if it's a directory
+    const file = await getFileNode(id);
+    if (!file) return;
+
+    // If directory, delete all children
+    if (file.type === FileType.Directory && file.path) {
+      const dirSelector: any = {
+        workspaceId: file.workspaceId,
+        path: { $regex: `^${file.path}(?:$|/)` },
+      };
+      const children = await findDocs((Collections as any).Files, { selector: dirSelector }) as any[];
+      for (const child of children) {
+        try {
+          await removeDoc((Collections as any).Files, child.id);
+        } catch (e) {
+          console.warn('[file-manager] Failed to delete child', child.id, e);
+        }
+      }
+    }
+
+    // Delete the file itself
+    await removeDoc((Collections as any).Files, id as any);
+    console.info('[file-manager] Deleted fileNode id=%s', id);
+  } catch (e) {
+    console.error('[file-manager] deleteFileNode failed for id=%s', id, e);
+    throw e;
+  }
+}
+
+/**
+ * Update sync status of a FileNode post-sync operation
+ * @param id FileNode ID
+ * @param status New sync status
+ * @param version New version number
+ * @returns Updated FileNode
+ */
+export async function updateSyncStatus(
+  id: string,
+  status: 'idle' | 'syncing' | 'conflict' | 'error',
+  version: number
+): Promise<FileNode> {
+  await initializeRxDB();
+  try {
+    const updated = await atomicUpsert(
+      (Collections as any).Files,
+      id as any,
+      (current?: any) => ({
+        ...(current || {}),
+        syncStatus: status,
+        version,
+        dirty: status === 'conflict' ? current?.dirty : false,
+        isSynced: status === 'idle' || status === 'error' ? true : current?.isSynced,
+      })
+    ) as any;
+    return updated as FileNode;
+  } catch (e) {
+    console.error('[file-manager] updateSyncStatus failed for id=%s', id, e);
+    throw e;
   }
 }
 

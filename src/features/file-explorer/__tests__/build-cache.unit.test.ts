@@ -17,7 +17,7 @@ describe('_buildFileTreeFromCache builder', () => {
     const wsId = 'unit-ws-1';
 
     // Insert a directory doc for 'folder'
-    await upsertCachedFile({ id: 'dir-folder', name: 'folder', path: 'folder', type: FileType.Dir, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);
+    await upsertCachedFile({ id: 'dir-folder', name: 'folder', path: 'folder', type: FileType.Directory, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);
 
     // Files: one in folder, one at root, and a nested file under folder/sub (no dir doc for folder/sub)
     await upsertCachedFile({ id: 'f1', name: 'a.md', path: 'folder/a.md', type: FileType.File, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);

@@ -24,7 +24,7 @@ describe('Integration: preserve tree on create', () => {
     useWorkspaceStore.setState({ workspaces: [{ id: wsId, name: 'Preserve WS', type: WorkspaceType.Browser, createdAt: new Date().toISOString(), lastAccessed: new Date().toISOString() }], activeWorkspaceId: wsId });
 
     // Create explicit folder doc with known id
-    await upsertCachedFile({ id: 'folder-a', name: 'a', path: 'a', type: FileType.Dir, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);
+    await upsertCachedFile({ id: 'folder-a', name: 'a', path: 'a', type: FileType.Directory, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);
 
     // Create two sibling files under 'a'
     await upsertCachedFile({ id: 'file-x', name: 'x.md', path: 'a/x.md', type: FileType.File, workspaceType: WorkspaceType.Browser, workspaceId: wsId, lastModified: Date.now(), dirty: false } as any);

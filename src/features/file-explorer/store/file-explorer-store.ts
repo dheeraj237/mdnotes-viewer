@@ -1,12 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { FileNode, FileNodeType } from "@/shared/types";
-import { WorkspaceType, FileType } from '@/core/cache/types';
+import { FileNode, FileType } from "@/shared/types";
+import { WorkspaceType } from '@/core/cache/types';
 import { buildSamplesFileTree } from "@/utils/demo-file-tree";
-import { getAllFiles, saveFile, createDirectory, renameFile, deleteFile, loadSampleFilesFromFolder } from '@/core/cache/file-manager';
-import { upsertCachedFile } from '@/core/cache/file-manager';
-import { CachedFile, FileType as CacheFileType } from '@/core/cache/types';
-import { subscribeToWorkspaceFiles } from '@/core/cache/file-manager';
+import {
+  getAllFiles,
+  saveFile,
+  createDirectory,
+  renameFile,
+  deleteFile,
+  loadSampleFilesFromFolder,
+  upsertCachedFile,
+  subscribeToWorkspaceFiles,
+  // NEW FileNode API
+  getWorkspaceTree,
+  saveFileNode,
+  deleteFileNode,
+  queryByPath,
+} from '@/core/cache/file-manager';
 import { getAllFolderIds } from "./helpers/file-tree-builder";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 
@@ -270,7 +281,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             // directory entries we create nodes for all segments.
             let accum = '';
             let parent: FileNode | null = null;
-            const isDir = f.type === FileType.Dir || (String(f.type).toLowerCase() === 'dir');
+            const isDir = f.type === FileType.Directory || (String(f.type).toLowerCase() === 'directory');
             const loopEnd = isDir ? parts.length : Math.max(0, parts.length - 1);
             for (let i = 0; i < loopEnd; i++) {
               accum = parts.slice(0, i + 1).join('/');

@@ -10,10 +10,10 @@
  * - Local and cloud file support
  */
 import { create } from "zustand";
-import { MarkdownFile, FileCategory } from "@/shared/types";
+import { FileNode, FileType } from "@/shared/types";
 import { useWorkspaceStore } from "@/core/store/workspace-store";
 import { WorkspaceType } from '@/core/cache/types';
-import { initializeFileOperations } from "@/core/cache/file-manager";
+import { initializeFileOperations, getFileNodeWithContent } from "@/core/cache/file-manager";
 import { fileRepo } from '@/core/cache/file-repo';
 import { isFeatureEnabled } from '@/core/config/features';
 import { getSyncManager } from '@/core/sync/sync-manager';
@@ -35,14 +35,14 @@ function getActiveWorkspaceType() {
 
 /** Editor Store State Interface */
 interface EditorStore {
-  openTabs: MarkdownFile[];
+  openTabs: FileNode[];
   activeTabId: string | null;
   editorViewKey: number;
   isLoading: boolean;
   isCodeViewMode: boolean;
   isSourceMode: boolean;
 
-  openFile: (file: MarkdownFile) => void;
+  openFile: (file: FileNode) => void;
   closeTab: (fileId: string) => void;
   closeAllTabs: () => void;
   setActiveTab: (fileId: string) => void;
@@ -246,16 +246,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       const workspaceId = workspace?.id;
       const fileData = await fileRepo.loadFile(path, workspaceType, workspaceId);
 
-      const markdownFile: MarkdownFile = {
+      const fileNode: FileNode = {
         id: fileData.id,
         path: fileData.path,
         name: fileData.name,
         content: fileData.content,
-        category: isLocal ? FileCategory.Local : FileCategory.Browser,
+        workspaceType: isLocal ? WorkspaceType.Local : WorkspaceType.Browser,
+        workspaceId: workspaceId || '',
+        type: FileType.File,
+        dirty: false,
+        isSynced: true,
+        syncStatus: 'idle',
+        version: 0,
         isLocal,
       };
 
-      get().openFile(markdownFile);
+      get().openFile(fileNode);
     } catch (error) {
       console.error("Failed to load file:", error);
       throw error;
@@ -334,7 +340,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
           path: fileNode.path,
           name: fileNode.name,
           content: fileData?.content || '',
-          category: FileCategory.Local,
+          workspaceType: WorkspaceType.Local,
+          workspaceId: activeWs.id,
+          type: FileType.File,
+          dirty: false,
+          isSynced: true,
+          syncStatus: 'idle',
+          version: 0,
           isLocal: true,
         });
       } else {
@@ -349,7 +361,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
           path: fileData.path,
           name: fileData.name,
           content: fileData.content,
-          category: FileCategory.Browser,
+          workspaceType: workspaceType,
+          workspaceId: workspaceId || '',
+          type: FileType.File,
+          dirty: false,
+          isSynced: true,
+          syncStatus: 'idle',
+          version: 0,
         });
       }
 

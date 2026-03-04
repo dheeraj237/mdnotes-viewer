@@ -1,15 +1,14 @@
-export enum WorkspaceType {
-  Browser = 'browser',
-  Local = 'local',
-  Drive = 'drive',
-  GDrive = 'gdrive',
-  S3 = 's3',
-}
+import type { FileNode as SharedFileNode } from '../../shared/types';
 
-export enum FileType {
-  File = 'file',
-  Dir = 'directory',
-}
+// Re-export enums from shared types location
+export { FileType, WorkspaceType } from '../../shared/types';
+
+/**
+ * DEPRECATED: Use FileNode from src/shared/types instead
+ * Kept for backward compatibility during transition
+ * Type is still compatible as it's an alias to the unified FileNode
+ */
+export type CachedFile = SharedFileNode;
 
 export enum SyncOp {
   Put = 'put',

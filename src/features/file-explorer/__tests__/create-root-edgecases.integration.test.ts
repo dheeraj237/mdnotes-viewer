@@ -45,7 +45,7 @@ describe('create in root edge cases across workspace types', () => {
       // Verify folder metadata exists in cache and is a directory
       const folderCached = await cache.getCachedFile('root-folder', wsId);
       expect(folderCached).toBeDefined();
-      expect(folderCached!.type).toBe(FileType.Dir);
+      expect(folderCached!.type).toBe(FileType.Directory);
     });
   }
 });
