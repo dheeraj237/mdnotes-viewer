@@ -30,14 +30,14 @@ export interface FileNode {
   modifiedAt?: string; // ISO 8601 timestamp (canonical, used everywhere)
 
   // ========== WORKSPACE CONTEXT ==========
-  workspaceId: string; // Which workspace this file belongs to
-  workspaceType: WorkspaceType; // 'browser' | 'local' | 'gdrive' | 's3'
+  workspaceId?: string; // Which workspace this file belongs to (may be inferred)
+  workspaceType?: WorkspaceType; // 'browser' | 'local' | 'gdrive' | 's3' (may be inferred)
 
   // ========== SYNC STATE ==========
-  dirty: boolean; // Has unsaved changes
-  isSynced: boolean; // Successfully synced to remote
-  syncStatus: 'idle' | 'syncing' | 'conflict' | 'error'; // Current sync state
-  version: number; // Conflict detection & merge tracking
+  dirty?: boolean; // Has unsaved changes (defaults to false)
+  isSynced?: boolean; // Successfully synced to remote (defaults to false)
+  syncStatus?: 'idle' | 'syncing' | 'conflict' | 'error'; // Current sync state (defaults to idle)
+  version?: number; // Conflict detection & merge tracking (defaults to 0)
 
   // ========== EDITOR SUPPORT ==========
   isLocal?: boolean; // Opened via File System Access API
@@ -64,43 +64,6 @@ export enum WorkspaceType {
   S3 = 's3',
 }
 
-/**
- * DEPRECATED: Use FileNode instead
- * Kept for backward compatibility during transition
- */
-export type FileDoc = FileNode;
-
-/**
- * DEPRECATED: Use FileNode instead
- * Kept for backward compatibility during transition
- */
-export type CachedFile = FileNode;
-
-/**
- * DEPRECATED: Use FileNode instead
- * Kept for backward compatibility during transition
- */
-export type MarkdownFile = FileNode;
-
-/**
- * DEPRECATED: Use FileType instead
- * Kept for backward compatibility
- */
-export enum FileNodeType {
-  File = 'file',
-  Folder = 'folder',
-}
-
-/**
- * DEPRECATED: Use WorkspaceType instead
- * Kept for backward compatibility
- */
-export enum FileCategory {
-  Browser = 'browser',
-  Local = 'local',
-  GDrive = 'gdrive',
-}
-
 export enum ViewMode {
   Code = 'code',
   Live = 'live',
@@ -108,7 +71,7 @@ export enum ViewMode {
 }
 
 export interface EditorState {
-  currentFile: MarkdownFile | null;
+  currentFile: FileNode | null;
   viewMode: ViewMode;
   isLoading: boolean;
 }

@@ -25,7 +25,7 @@ export async function buildFileTreeFromAdapter(
     const files = await getAllFiles(workspaceId);
 
     // Normalize workspace type for cache comparison (map 'drive' -> 'gdrive')
-    const normalizedWsType = (workspaceType === WorkspaceType.Drive || workspaceType === 'drive') ? WorkspaceType.GDrive : (workspaceType as WorkspaceType);
+    const normalizedWsType = (workspaceType === WorkspaceType.GDrive || workspaceType === 'drive') ? WorkspaceType.GDrive : (workspaceType as WorkspaceType);
 
     // Filter files belonging to the requested workspace type so multiple
     // workspaces (or sample files) don't mix together in the tree.

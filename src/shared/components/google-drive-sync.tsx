@@ -6,7 +6,8 @@ import { Cloud, Loader2 } from "lucide-react";
 import { ensureGisLoaded, requestDriveAccessToken } from "@/core/auth/google";
 import { toast } from "@/shared/utils/toast";
 import { useFileExplorerStore } from "@/features/file-explorer/store/file-explorer-store";
-import { FileNode } from "@/shared/types";
+import { FileNode, FileType } from "@/shared/types";
+import { FileNodeType } from "../types/file-node";
 
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 
@@ -113,11 +114,11 @@ export function GoogleDriveSync({ className }: GoogleDriveSyncProps) {
 
     for (const node of nodes) {
       try {
-        if (node.type === 'file') {
+        if (node.type === FileType.File) {
           // For local files, we'll show a message that full file sync requires additional development
           toast.info(`File "${node.name}" found`, "Full file content sync is not yet implemented");
           syncedCount++;
-        } else if (node.type === 'folder' && node.children) {
+        } else if (node.type === FileType.Directory && node.children) {
           // Create subfolder and sync its contents recursively
           const subFolderId = await createOrGetFolder(token, node.name);
           const childSynced = await syncFilesToDrive(token, subFolderId, node.children);

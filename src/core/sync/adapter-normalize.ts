@@ -1,15 +1,15 @@
-import type { CachedFile, WorkspaceType } from '@/core/cache/types';
+import type { FileNode, WorkspaceType } from '@/shared/types';
 import { FileType as _FileType } from '@/shared/types';
 
 /**
- * Normalize a remote adapter listing entry into the local CachedFile shape
+ * Normalize a remote adapter listing entry into the local FileNode shape
  * Attempts to preserve metadata and set canonical fields used by the cache.
  */
 export function adapterEntryToCachedFile(
   entry: { id?: string; path?: string; metadata?: Record<string, any> } | { fileId?: string },
   workspaceType: WorkspaceType | string,
   workspaceId?: string
-): CachedFile {
+): FileNode {
   const id = (entry as any).id ?? (entry as any).fileId ?? '';
   const path = (entry as any).path ?? id;
   const metadata = (entry as any).metadata ?? {};
@@ -20,7 +20,7 @@ export function adapterEntryToCachedFile(
 
   const name = metadata?.name ?? String(path).split('/').filter(Boolean).pop() ?? id;
 
-  const out: CachedFile = {
+  const out: FileNode = {
     id: String(id),
     name: String(name),
     path: String(path),
@@ -34,7 +34,7 @@ export function adapterEntryToCachedFile(
     createdAt: metadata?.createdTime ?? metadata?.createdAt ?? undefined,
     dirty: false,
     isSynced: true,
-  } as CachedFile;
+  } as FileNode;
 
   if (isDirectory) {
     out.children = Array.isArray((entry as any).children) ? (entry as any).children.map(String) : [];

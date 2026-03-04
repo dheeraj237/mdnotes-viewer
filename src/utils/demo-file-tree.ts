@@ -106,8 +106,8 @@ export async function buildSamplesFileTree(): Promise<FileNode[]> {
     // Sort nodes: directories first, then files, alphabetically within each type
     nodes.sort((a, b) => {
       // Directories before files
-      if (a.type === FileNodeType.Folder && b.type === FileNodeType.File) return -1;
-      if (a.type === FileNodeType.File && b.type === FileNodeType.Folder) return 1;
+      if (a.type === FileType.Directory && b.type === FileType.File) return -1;
+      if (a.type === FileType.File && b.type === FileType.Directory) return 1;
       
       // Alphabetically within same type
       return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });

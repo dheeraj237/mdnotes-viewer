@@ -1,8 +1,8 @@
-import type { CachedFile } from '@/core/cache/types';
+import type { FileNode } from '@/shared/types';
 import { upsertCachedFile, getCachedFile } from '@/core/cache/file-manager';
 
 export interface MergeStrategy {
-  handlePull(cached: CachedFile, remoteContent: string): Promise<'noop' | 'merged' | 'conflict'>;
+  handlePull(cached: FileNode, remoteContent: string): Promise<'noop' | 'merged' | 'conflict'>;
 }
 
 /**
@@ -10,7 +10,7 @@ export interface MergeStrategy {
  * cached file metadata for later inspection.
  */
 export class NoOpMergeStrategy implements MergeStrategy {
-  async handlePull(cached: CachedFile, remoteContent: string): Promise<'noop' | 'merged' | 'conflict'> {
+  async handlePull(cached: FileNode, remoteContent: string): Promise<'noop' | 'merged' | 'conflict'> {
     try {
       const existing = await getCachedFile(cached.id, cached.workspaceId);
       const meta = existing?.metadata || {};
@@ -30,7 +30,7 @@ export class NoOpMergeStrategy implements MergeStrategy {
  * Placeholder for a Three-Way merge strategy. Not implemented yet.
  */
 export class ThreeWayMergeStrategy implements MergeStrategy {
-  async handlePull(_cached: CachedFile, _remoteContent: string): Promise<'noop' | 'merged' | 'conflict'> {
+  async handlePull(_cached: FileNode, _remoteContent: string): Promise<'noop' | 'merged' | 'conflict'> {
     // TODO: implement real three-way merge using base/common/remote
     return 'conflict';
   }

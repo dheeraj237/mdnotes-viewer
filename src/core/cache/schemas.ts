@@ -1,11 +1,11 @@
 import { RxJsonSchema } from 'rxdb';
-import type { CachedFile } from './types';
+import type { FileNode } from '@/shared/types';
 
 /**
  * RxDB JSON schema for cached_files collection
  * Stores lightweight file/directory metadata and file content (SSoT)
  */
-export const cachedFileSchema: RxJsonSchema<CachedFile> = {
+export const cachedFileSchema: RxJsonSchema<FileNode> = {
   title: 'cached_files schema',
   version: 2,
   type: 'object',
@@ -21,8 +21,6 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
     size: { type: ['number', 'null'] },
     modifiedAt: { type: ['string', 'null'] },
     createdAt: { type: ['string', 'null'] },
-    // Legacy field used across the codebase for numeric timestamps
-    lastModified: { type: ['number', 'null'] },
     dirty: { type: 'boolean', default: false },
     isSynced: { type: 'boolean', default: true },
     version: { type: ['number', 'null'] },
@@ -31,7 +29,6 @@ export const cachedFileSchema: RxJsonSchema<CachedFile> = {
     workspaceType: { type: 'string', maxLength: 50, enum: ['browser', 'local', 'drive', 'gdrive', 's3'] },
     workspaceId: { type: 'string', maxLength: 255 },
     content: { type: ['string', 'null'] },
-    meta: { type: ['object', 'null'] },
     // Many modules use `metadata` (not `meta`) — accept both shapes
     metadata: { type: ['object', 'null'] }
   },

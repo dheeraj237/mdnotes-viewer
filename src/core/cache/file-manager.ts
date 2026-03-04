@@ -7,9 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { FileDoc } from '@/core/rxdb/schemas';
-import { SyncOp } from './types';
-import { CachedFile, WorkspaceType, FileType } from './types';
+import { SyncOp, WorkspaceType, FileType } from './types';
 import type { FileNode } from '@/shared/types';
 
 import { initializeRxDB as rxInitializeRxDB, getCacheDB as rxGetCacheDB, upsertDoc as rxUpsertDoc, getDoc as rxGetDoc, findDocs as rxFindDocs, atomicUpsert as rxAtomicUpsert, removeDoc as rxRemoveDoc, subscribeQuery as rxSubscribeQuery } from '@/core/rxdb/rxdb-client';
@@ -29,7 +27,7 @@ const subscribeQuery = rxSubscribeQuery;
 export async function initializeRxDB(): Promise<void> { return rxInitializeRxDB(); }
 export function getCacheDB(): any { return rxGetCacheDB(); }
 
-export async function upsertCachedFile(doc: CachedFile): Promise<void> {
+export async function upsertCachedFile(doc: FileNode): Promise<void> {
   await initializeRxDB();
   try {
     console.debug('[file-manager] upsertCachedFile id=%s path=%s', doc.id, doc.path);
@@ -37,7 +35,7 @@ export async function upsertCachedFile(doc: CachedFile): Promise<void> {
   return upsertDoc((Collections as any).Files, doc as any);
 }
 
-export async function getCachedFile(pathOrId: string, workspaceId?: string): Promise<CachedFile | null> {
+export async function getCachedFile(pathOrId: string, workspaceId?: string): Promise<FileNode | null> {
   // try by id first
   await initializeRxDB();
   try {
@@ -75,26 +73,26 @@ export async function getCachedFile(pathOrId: string, workspaceId?: string): Pro
   return null;
 }
 
-export async function getAllCachedFiles(workspaceId?: string): Promise<CachedFile[]> {
+export async function getAllCachedFiles(workspaceId?: string): Promise<FileNode[]> {
   await initializeRxDB();
   const selector = workspaceId ? { workspaceId } : {};
-  return findDocs((Collections as any).Files, { selector }) as Promise<CachedFile[]>;
+  return findDocs((Collections as any).Files, { selector }) as Promise<FileNode[]>;
 }
 
-export function observeCachedFiles(cb: (files: CachedFile[]) => void): { unsubscribe: () => void } {
+export function observeCachedFiles(cb: (files: FileNode[]) => void): { unsubscribe: () => void } {
   let unsubFn: (() => void) | null = null;
   (async () => {
     await initializeRxDB();
-    unsubFn = subscribeQuery((Collections as any).Files, { selector: {} }, (docs: any[]) => cb(docs as CachedFile[]));
+    unsubFn = subscribeQuery((Collections as any).Files, { selector: {} }, (docs: any[]) => cb(docs as FileNode[]));
   })();
   return { unsubscribe: () => { try { if (unsubFn) unsubFn(); } catch (_) { } } };
 }
 
-export async function getDirtyCachedFiles(workspaceId?: string): Promise<CachedFile[]> {
+export async function getDirtyCachedFiles(workspaceId?: string): Promise<FileNode[]> {
   await initializeRxDB();
   const selector: any = { dirty: true };
   if (workspaceId) selector.workspaceId = workspaceId;
-  return findDocs((Collections as any).Files, { selector }) as Promise<CachedFile[]>;
+  return findDocs((Collections as any).Files, { selector }) as Promise<FileNode[]>;
 }
 
 export async function markCachedFileAsSynced(fileId: string): Promise<void> {
@@ -144,7 +142,7 @@ async function ensureParentFoldersForPath(path: string, workspaceType: Workspace
 
       const id = uuidv4();
       const name = folderPath.split('/').pop() || folderPath || 'untitled';
-      const dir: CachedFile = {
+      const dir: FileNode = {
         id,
         name,
         path: folderPath,
@@ -214,7 +212,7 @@ export interface FileMetadata {
   type: FileType;
   size?: number;
   mimeType?: string;
-  lastModified?: number;
+  modifiedAt?: string;
   dirty?: boolean;
   workspaceType: WorkspaceType;
   workspaceId?: string;
@@ -260,7 +258,7 @@ async function loadFileSync(path: string, workspaceType: WorkspaceType = Workspa
   try { console.debug('[file-manager] loadFileSync cached=', JSON.stringify(cached)); } catch (_) { }
   if (cached) {
     // Prefer retrieving the canonical doc by id from rxdb-client
-    const doc = (await getDoc<FileDoc>('files', cached.id)) || (cached as unknown as FileDoc);
+    const doc = (await getDoc<FileNode>('files', cached.id)) || (cached as unknown as FileNode);
     try { console.debug('[file-manager] loadFileSync doc=', JSON.stringify(doc)); } catch (_) { }
     const content = doc.content || '';
     return {
@@ -330,7 +328,7 @@ async function saveSyncFile(
       isSynced: false,
       syncStatus: 'idle',
       version: nextVersion,
-    } as CachedFile;
+    } as FileNode;
   };
   try {
     const preview = typeof content === 'string' ? content.slice(0, 200) : '';
@@ -339,11 +337,11 @@ async function saveSyncFile(
     console.warn('[RxDB] saveFile logging failed', e);
   }
 
-  const saved = await atomicUpsert<FileDoc>('files', fileId, mutator as any);
+  const saved = await atomicUpsert<FileNode>('files', fileId, mutator as any);
   try { console.debug('[file-manager] saveSyncFile saved=', JSON.stringify(saved)); } catch (_) { }
   try {
     // Ensure final doc persisted (shim-safe)
-    await upsertDoc<FileDoc>('files', saved as any);
+    await upsertDoc<FileNode>('files', saved as any);
   } catch (e) {
     // Non-fatal: atomicUpsert already persisted via underlying helpers
   }
@@ -362,10 +360,10 @@ async function saveSyncFile(
  * Get the raw `FileDoc` for a path (or id) scoped to an optional workspace.
  * Returns `null` if not found.
  */
-export async function getFile(pathOrId: string, workspaceId?: string): Promise<FileDoc | null> {
+export async function getFile(pathOrId: string, workspaceId?: string): Promise<FileNode | null> {
   const cached = await getCachedFile(pathOrId, workspaceId);
   if (!cached) return null;
-  const doc = await getDoc<FileDoc>('files', cached.id);
+  const doc = await getDoc<FileNode>('files', cached.id);
   return doc;
 }
 
@@ -467,21 +465,21 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
       id: existing.id,
       name: existing.name,
       path: existing.path,
-      type: FileType.Dir,
+      type: FileType.Directory,
       workspaceType: existing.workspaceType,
       lastModified: existing.lastModified,
     };
   }
 
   const dirId = uuidv4();
-  const dir: CachedFile = {
+  const dir: FileNode = {
     id: dirId,
     name: dirName,
     path: storedPath,
-    type: FileType.Dir,
+    type: FileType.Directory,
     workspaceType,
     workspaceId: workspaceId,
-    lastModified: Date.now(),
+    modifiedAt: new Date().toISOString(),
     dirty: String(workspaceType) !== WorkspaceType.Browser,
   };
   try {
@@ -494,9 +492,9 @@ async function createDirectorySync(path: string, workspaceType: WorkspaceType = 
     id: dirId,
     name: dirName,
     path: storedPath,
-    type: FileType.Dir,
+    type: FileType.Directory,
     workspaceType,
-    lastModified: dir.lastModified,
+    modifiedAt: dir.modifiedAt,
   };
 }
 
@@ -522,7 +520,7 @@ export async function listFiles(dirPath: string = '', workspaceId?: string): Pro
     workspaceType: file.workspaceType,
     workspaceId: file.workspaceId,
     dirty: file.dirty,
-    lastModified: file.lastModified,
+    modifiedAt: file.modifiedAt,
   }));
 }
 
@@ -538,7 +536,7 @@ export async function getAllFiles(workspaceId?: string): Promise<FileMetadata[]>
     workspaceType: file.workspaceType,
     workspaceId: file.workspaceId,
     dirty: file.dirty,
-    lastModified: file.lastModified,
+    modifiedAt: file.modifiedAt,
   }));
 }
 
@@ -567,14 +565,14 @@ export async function ensureFolderDocs(workspaceId?: string): Promise<void> {
     if (existingPaths.has(folderPath)) continue;
     const id = uuidv4();
     const name = folderPath.split('/').pop() || folderPath || 'untitled';
-    const dir: CachedFile = {
+    const dir: FileNode = {
       id,
       name,
       path: folderPath,
       type: FileType.Directory,
       workspaceType: wsType,
       workspaceId: workspaceId,
-      lastModified: Date.now(),
+      modifiedAt: new Date().toISOString(),
       dirty: false,
     };
     try {
@@ -692,7 +690,7 @@ export async function loadSampleFilesFromFolder(): Promise<void> {
           workspaceType: WorkspaceType.Browser,
           workspaceId: 'verve-samples',
           content,
-          lastModified: Date.now(),
+          modifiedAt: new Date().toISOString(),
           dirty: false,
         });
 
@@ -1002,7 +1000,7 @@ export async function updateSyncStatus(
  * This returns an unsubscribe function.
  */
 export function subscribeToWorkspaceFiles(workspaceId: string | null, callback: (files: FileMetadata[]) => void): () => void {
-  const sub = observeCachedFiles((files: CachedFile[]) => {
+  const sub = observeCachedFiles((files: FileNode[]) => {
     try {
       const filtered = workspaceId ? files.filter(f => String(f.workspaceId) === String(workspaceId)) : files;
       callback(filtered as FileMetadata[]);

@@ -305,7 +305,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
     if (confirm(confirmMsg)) {
       const toastId = toast.loading(`Deleting ${node.type}...`, node.name);
       try {
-        await deleteNode(node.path, node.type === 'folder');
+        await deleteNode(node.path, node.type === FileType.Directory);
         toast.dismiss(toastId);
       } catch (error) {
         toast.dismiss(toastId);
@@ -382,7 +382,7 @@ export function FileTreeItem({ node, level, parentNode }: FileTreeItemProps) {
         onNewFolder={handleNewFolder}
         onRename={handleRename}
         onDelete={handleDelete}
-        isFolder={node.type === 'folder'}
+        isFolder={node.type === FileType.Directory}
       >
         <div
           className={cn(

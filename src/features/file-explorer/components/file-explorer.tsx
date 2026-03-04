@@ -143,7 +143,7 @@ export function FileExplorer() {
       // Top-level create from the explorer header should always create at
       // the workspace root. For Drive workspaces, use the configured
       // `driveFolder` as the root; otherwise use empty string.
-      if (currentWorkspace?.type === WorkspaceType.Drive && currentWorkspace.driveFolder) {
+      if (currentWorkspace?.type === WorkspaceType.GDrive && currentWorkspace.driveFolder) {
         rootPath = currentWorkspace.driveFolder;
       } else {
         rootPath = '';

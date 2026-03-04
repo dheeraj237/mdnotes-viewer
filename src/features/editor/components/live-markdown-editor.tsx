@@ -20,7 +20,7 @@ import {
   codeBlockField,
 } from "codemirror-live-markdown";
 import { useTheme } from "next-themes";
-import { MarkdownFile } from "@/shared/types";
+import { FileNode } from "@/shared/types";
 import { getAppTheme, appSyntaxHighlighting, appSyntaxHighlightingDark } from "./editor-theme";
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { listPlugin } from "../plugins/list-plugin";
@@ -37,7 +37,7 @@ import { useTableOfContents } from "@/features/editor/hooks/use-table-of-content
 import "katex/dist/katex.min.css";
 
 interface LiveMarkdownEditorProps {
-  file: MarkdownFile;
+  file: FileNode;
   onContentChange: (content: string) => void;
 }
 

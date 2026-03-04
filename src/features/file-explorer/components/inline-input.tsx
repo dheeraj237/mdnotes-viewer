@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { File, Folder } from "lucide-react";
 import { cn } from "@/shared/utils/cn";
 import { Input } from "@/shared/components/ui/input";
+import { FileType } from "@/shared/types";
 
 interface InlineInputProps {
-  type: "file" | "folder";
+  type: FileType;
   level: number;
   defaultValue: string;
   onConfirm: (name: string) => void;

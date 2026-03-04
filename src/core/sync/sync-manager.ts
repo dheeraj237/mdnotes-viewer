@@ -22,7 +22,8 @@ import { enqueueSyncEntry, processPendingQueueOnce } from './sync-queue-processo
 import { defaultRetryPolicy } from './retry-policy';
 import { v4 as uuidv4 } from 'uuid';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
-import { CachedFile, FileType, SyncOp, WorkspaceType } from '@/core/cache/types';
+import { FileType, SyncOp, WorkspaceType } from '@/core/cache/types';
+import type { FileNode } from '@/shared/types';
 import { toAdapterDescriptor } from './adapter-types';
 import { pushCachedFile } from './adapter-bridge';
 // NEW: FileNode Bridge for type conversions
@@ -216,7 +217,7 @@ export class SyncManager {
           const cached = await getCachedFile(fileId, workspaceId);
           if (cached) {
             // call private syncFile to perform push/pull for this file
-            await this.syncFile(cached as CachedFile);
+            await this.syncFile(cached as FileNode);
           }
         } catch (e) {
           console.warn('Immediate sync for saved file failed:', e);
@@ -285,7 +286,7 @@ export class SyncManager {
                 try {
                   if (String(f.workspaceId) !== String(newId)) continue;
                   if (f.dirty && String(f.workspaceType) !== WorkspaceType.Browser) {
-                    this.syncFile(f as CachedFile).catch((err) => {
+                    this.syncFile(f as FileNode).catch((err) => {
                       console.warn('Realtime sync failed for', f.id, err);
                     });
                   }
@@ -525,7 +526,7 @@ export class SyncManager {
   /**
    * Sync a single file: push local, pull remote, merge if needed
    */
-  private async syncFile(file: CachedFile): Promise<void> {
+  private async syncFile(file: FileNode): Promise<void> {
     const { id: fileId } = file;
 
     try {
@@ -606,7 +607,7 @@ export class SyncManager {
    */
   private async pushWithRetry(
     adapter: ISyncAdapter,
-    file: CachedFile,
+    file: FileNode,
     content: string
   ): Promise<boolean> {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {

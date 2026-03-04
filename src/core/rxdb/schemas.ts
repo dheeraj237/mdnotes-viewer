@@ -5,7 +5,6 @@ import Collections from './collections';
 
 // File document stored in `files` collection
 // Now uses unified FileNode type
-export type FileDoc = FileNode;
 
 export const fileSchema: RxJsonSchema<FileNode> = {
   title: 'files collection - unified FileNode schema',

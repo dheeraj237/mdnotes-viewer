@@ -4,7 +4,7 @@ import { useEditorStore } from "@/features/editor/store/editor-store";
 import { cn } from "@/shared/utils/cn";
 import { isMarkdownFile } from "@/shared/utils/file-type-detector";
 import { useEffect, useState } from 'react';
-import { getCachedFile } from '@/core/cache';
+import { getCachedFile } from '@/core/cache/file-manager';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 
 export function OpenedFilesSection() {

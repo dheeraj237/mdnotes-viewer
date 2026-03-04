@@ -5,7 +5,7 @@ import { toAdapterDescriptor } from './adapter-types';
 import { getCacheDB } from '@/core/cache/file-manager';
 import { SyncOp } from '@/core/cache/types';
 import { getCachedFile, markCachedFileAsSynced } from '@/core/cache/file-manager';
-import type { CachedFile } from '@/core/cache/types';
+import type { FileNode } from '@/shared/types';
 
 export type SyncQueueEntry = {
   id: string;
@@ -62,7 +62,7 @@ export async function processPendingQueueOnce(adapters: Map<string, ISyncAdapter
         }
 
         // Resolve cached file (may be missing for deletes)
-        const cached: CachedFile | null = await getCachedFile(entry.targetId);
+        const cached: FileNode | null = await getCachedFile(entry.targetId);
 
         // Build descriptor if available
         const descriptor: AdapterFileDescriptor | null = cached ? toAdapterDescriptor(cached) : null;

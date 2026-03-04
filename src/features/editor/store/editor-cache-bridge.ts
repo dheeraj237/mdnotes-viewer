@@ -8,7 +8,8 @@ import {
   loadFile,
 } from '../../../core/cache';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
-import { CachedFile, WorkspaceType, FileType } from '../../../core/cache/types';
+import { WorkspaceType, FileType } from '../../../core/cache/types';
+import type { FileNode } from '@/shared/types';
 
 // CRDT/Yjs-specific state handling removed here. Use `loadFile`/`saveFile`
 // as the single source of truth (RxDB) and keep future CRDT conversion as a
@@ -18,7 +19,7 @@ export interface EditorCacheContextType {
   initialized: boolean;
   currentFileId: string | null;
   content: string;
-  fileMetadata: CachedFile | null;
+  fileMetadata: FileNode | null;
   isDirty: boolean;
   error: Error | null;
 }
@@ -58,7 +59,7 @@ export function useOpenFileForEditing(
   workspaceType: WorkspaceType = WorkspaceType.Browser
 ) {
   const [content, setContent] = useState<string>('');
-  const [fileMetadata, setFileMetadata] = useState<CachedFile | null>(null);
+  const [fileMetadata, setFileMetadata] = useState<FileNode | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -176,7 +177,7 @@ async function markFileAsDirty(fileId: string): Promise<void> {
  * Hook to monitor all cached files for UI updates (e.g., file tree)
  */
 export function useCachedFilesList(pathPrefix?: string) {
-  const [files, setFiles] = useState<CachedFile[]>([]);
+  const [files, setFiles] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -216,7 +217,7 @@ export function useCachedFilesList(pathPrefix?: string) {
  * Hook to get uncommitted changes (dirty files) in cache
  */
 export function useDirtyFiles() {
-  const [dirtyFiles, setDirtyFiles] = useState<CachedFile[]>([]);
+  const [dirtyFiles, setDirtyFiles] = useState<FileNode[]>([]);
 
   useEffect(() => {
     const workspace = useWorkspaceStore.getState().activeWorkspace?.();

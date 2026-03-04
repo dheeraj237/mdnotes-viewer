@@ -2,7 +2,7 @@
  * Adapter capability interfaces and canonical file descriptor
  * Purpose: smaller, focused interfaces for adapter capabilities.
  */
-import type { CachedFile } from "@/core/cache/types";
+import type { FileNode } from "@/shared/types";
 
 export type AdapterFileDescriptor = {
   id: string;
@@ -49,7 +49,7 @@ export interface IAvailability {
  */
 export type ISyncAdapter = IPushAdapter & IPullAdapter & Partial<IWatchableAdapter & IWorkspaceAdapter & IRemoteOps & IAvailability> & { name: string };
 
-// Helper to adapt a CachedFile to AdapterFileDescriptor
-export function toAdapterDescriptor(cached: CachedFile): AdapterFileDescriptor {
-  return { id: cached.id, path: cached.path, metadata: cached.metadata };
+// Helper to adapt a FileNode to AdapterFileDescriptor
+export function toAdapterDescriptor(file: FileNode): AdapterFileDescriptor {
+  return { id: file.id, path: file.path, metadata: {} };
 }

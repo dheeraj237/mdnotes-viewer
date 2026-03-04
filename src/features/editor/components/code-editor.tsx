@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { MarkdownFile } from "@/shared/types";
+import { FileNode } from "@/shared/types";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
@@ -17,7 +17,7 @@ import { EditorView } from "@codemirror/view";
 import { getLanguageExtension } from "@/shared/utils/file-type-detector";
 
 interface CodeEditorProps {
-  file: MarkdownFile;
+  file: FileNode;
   onContentChange: (content: string) => void;
 }
 

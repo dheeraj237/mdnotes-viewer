@@ -299,7 +299,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             }
 
             // If file is a directory, ensure it exists
-            if (f.type === FileType.Dir) {
+            if (f.type === FileType.Directory) {
               const dirPath = normalized;
               if (!map[dirPath]) {
                 const dirNode = ensureNode(parts.length ? parts : [''], dirPath);
@@ -473,10 +473,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
                   id: filePath,
                   name: fileName,
                   path: filePath,
-                  type: CacheFileType.File,
+                  type: FileType.File,
                   workspaceType: WorkspaceType.Local,
                   workspaceId: workspaceId,
-                } as CachedFile;
+                } as FileNode;
                 try {
                   await (localAdapter as any).push(fileMeta, '');
                 } catch (pe) {

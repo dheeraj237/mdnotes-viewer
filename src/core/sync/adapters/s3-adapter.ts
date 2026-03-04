@@ -1,6 +1,6 @@
 import { Observable } from 'rxjs';
 import { ISyncAdapter } from '../sync-manager';
-import type { CachedFile } from '../../cache/types';
+import type { FileNode } from '@/shared/types';
 
 /**
  * S3 storage adapter (future implementation)
@@ -17,7 +17,7 @@ export class S3Adapter implements ISyncAdapter {
     private credentials?: any // AWS credentials or pre-signed URLs
   ) {}
 
-  async push(file: CachedFile, content: string): Promise<boolean> {
+  async push(file: FileNode, content: string): Promise<boolean> {
     try {
       // TODO: Implement S3 PutObject
       // Use AWS SDK or presigned URL to upload file content as UTF-8 text or binary

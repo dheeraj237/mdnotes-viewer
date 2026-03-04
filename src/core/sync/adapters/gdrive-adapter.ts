@@ -1,5 +1,5 @@
 import { Observable, Subject, timer } from 'rxjs';
-import type { CachedFile } from '@/core/cache/types';
+import type { FileNode } from '@/shared/types';
 import type { AdapterFileDescriptor, IPushAdapter, IPullAdapter } from '@/core/sync/adapter-types';
 import { toAdapterDescriptor } from '@/core/sync/adapter-types';
 
@@ -22,9 +22,9 @@ export class GDriveAdapter implements IPushAdapter, IPullAdapter {
   /**
    * Push local changes to Google Drive
    */
-  async push(file: AdapterFileDescriptor | CachedFile, content: string): Promise<boolean> {
-    // Accept both the new AdapterFileDescriptor and legacy CachedFile for compatibility
-    const descriptor: AdapterFileDescriptor = (('path' in file && 'id' in file) ? (file as AdapterFileDescriptor) : toAdapterDescriptor(file as CachedFile));
+  async push(file: AdapterFileDescriptor | FileNode, content: string): Promise<boolean> {
+    // Accept both the new AdapterFileDescriptor and legacy FileNode for compatibility
+    const descriptor: AdapterFileDescriptor = (('path' in file && 'id' in file) ? (file as AdapterFileDescriptor) : toAdapterDescriptor(file as FileNode));
     const context = `${this.name}::push(${descriptor.id})`;
     try {
       if (!this.driveClient) {

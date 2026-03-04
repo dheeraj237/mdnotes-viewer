@@ -13,7 +13,7 @@ describe('create in root edge cases across workspace types', () => {
     await destroyCacheDB();
   });
 
-  const workspaceTypes = [WorkspaceType.Browser, WorkspaceType.Local, WorkspaceType.Drive];
+  const workspaceTypes = [WorkspaceType.Browser, WorkspaceType.Local, WorkspaceType.GDrive];
 
   for (const wsType of workspaceTypes) {
     it(`creates file and folder in root for workspace type=${wsType}`, async () => {
