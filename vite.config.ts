@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import pkg from './package.json';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -15,6 +16,9 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
       },
+    },
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
     },
   // For GitHub Pages: set to '/repo-name/' for project pages, or '/' for user/org pages
     // Defaults to '/' for local development. Provide VITE_BASE_PATH to override.

@@ -11,9 +11,17 @@ import { GDriveAdapter } from '@/core/sync/adapters/gdrive-adapter';
 import { S3Adapter } from '@/core/sync/adapters/s3-adapter';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { WorkspaceType } from '@/core/cache/types';
+import { checkAndHandleDeployment } from '@/core/init/deployment-version-manager';
 
 // Exported for testing: performs app initialization and pulls active workspace
 export async function initializeApp(adapters?: any[]) {
+  // Check for new deployment and wipe IndexedDB if needed BEFORE initializing RxDB
+  const deploymentOccurred = await checkAndHandleDeployment();
+
+  if (deploymentOccurred) {
+    console.log('[initializeApp] New deployment detected - IndexedDB was cleared');
+  }
+
   // Initialize RxDB cache as single source of truth
   await initializeFileOperations();
 
