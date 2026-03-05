@@ -5,7 +5,7 @@ import {
   getCacheDB,
   getCachedFile,
   markCachedFileAsSynced,
-  observeCachedFiles,
+  subscribeToDirtyWorkspaceFiles,
   upsertCachedFile,
   loadFile,
   saveFile,
@@ -197,62 +197,88 @@ export class SyncManager {
    */
   start(): void {
     if (this.isRunning) {
-      console.warn('SyncManager already running');
+      console.warn('[SyncManager] Already running, skipping start');
       return;
     }
 
     this.isRunning = true;
     this.statusSubject.next(SyncStatus.IDLE);
+    console.log('[SyncManager] ✓ Status set to IDLE');
 
-    // Subscribe to active workspace changes and listen to cached file updates
+    // Subscribe to active workspace changes and listen to dirty files for that workspace
     try {
+      console.log('[SyncManager] Setting up workspace change subscription...');
+
       this.workspaceSub = (useWorkspaceStore.subscribe as any)(
         (s) => s.activeWorkspaceId,
-        (newId: string | null, oldId: string | null) => {
-          try {
-            // Teardown previous cachedFiles subscription
-            if (this.cachedFilesSub) {
-              try {
-                if (typeof this.cachedFilesSub.unsubscribe === 'function') this.cachedFilesSub.unsubscribe();
-                else if (typeof this.cachedFilesSub === 'function') this.cachedFilesSub();
-              } catch (u) {
-                // ignore
-              }
-              this.cachedFilesSub = null;
-            }
-
-            this.activeWorkspaceId = newId;
-
-            // If there's no active workspace, don't subscribe to realtime pushes
-            if (!newId) return;
-
-            // Observe all cached files and push dirty files for the active workspace
-            this.cachedFilesSub = observeCachedFiles((files) => {
-              for (const f of files) {
-                try {
-                  if (String(f.workspaceId) !== String(newId)) continue;
-                  // Skip browser-only workspaces and non-dirty files
-                  if (f.dirty && String(f.workspaceType) !== WorkspaceType.Browser) {
-                    // Push dirty file directly to adapter with retry on failure
-                    this.pushDirtyFile(f as FileNode).catch((err) => {
-                      console.warn('Realtime push failed for', f.id, err);
-                    });
-                  }
-                } catch (err) {
-                  console.warn('Error processing cached file change for active workspace:', err);
-                }
-              }
-            });
-          } catch (err) {
-            console.warn('Failed to subscribe to cached file changes for active workspace:', err);
-          }
+        (newId: string | null) => {
+          console.log(`[SyncManager] 📋 Workspace changed to: "${newId}"`);
+          this.setupDirtyFilesSubscription(newId);
         }
       );
+
+      // Initialize subscription with current active workspace
+      const currentWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+      console.log(`[SyncManager] Initializing with current workspace: "${currentWorkspaceId}"`);
+      this.setupDirtyFilesSubscription(currentWorkspaceId);
+
+      console.log('[SyncManager] ✓ Workspace subscription registered');
     } catch (err) {
-      console.warn('Failed to subscribe to workspace store changes:', err);
+      console.error('[SyncManager] ❌ Failed to subscribe to workspace changes:', err);
     }
 
-    console.log('SyncManager started');
+    console.log('[SyncManager] ✅ SyncManager started successfully (isRunning=true)');
+  }
+
+  /**
+   * Setup dirty files subscription for a specific workspace
+   * Tears down previous subscription and creates a new one for the given workspace
+   */
+  private setupDirtyFilesSubscription(workspaceId: string | null): void {
+    try {
+      // Teardown previous dirty files subscription
+      if (this.cachedFilesSub) {
+        console.log('[SyncManager] Tearing down previous dirty files subscription...');
+        try {
+          if (typeof this.cachedFilesSub === 'function') {
+            this.cachedFilesSub(); // Call the unsubscribe function
+          } else if (typeof this.cachedFilesSub.unsubscribe === 'function') {
+            this.cachedFilesSub.unsubscribe();
+          }
+        } catch (u) {
+          console.warn('[SyncManager] Error during teardown:', u);
+        }
+        this.cachedFilesSub = null;
+        console.log('[SyncManager] ✓ Previous subscription torn down');
+      }
+
+      this.activeWorkspaceId = workspaceId;
+
+      // If there's no active workspace, don't subscribe to dirty files
+      if (!workspaceId) {
+        console.log('[SyncManager] No active workspace, skipping dirty file subscription');
+        return;
+      }
+
+      // Subscribe ONLY to dirty files in the active workspace
+      // Query-level filtering at RxDB prevents unnecessary processing
+      console.log(`[SyncManager] 👁️ Subscribing to DIRTY files for workspace: "${workspaceId}"`);
+      this.cachedFilesSub = subscribeToDirtyWorkspaceFiles(workspaceId, (dirtyFiles) => {
+        console.log(`[SyncManager] 📊 Dirty files subscription fired: ${dirtyFiles.length} dirty file(s) in workspace "${workspaceId}"`);
+        if (dirtyFiles.length > 0) {
+          console.log(`[SyncManager] 📤 Queuing ${dirtyFiles.length} dirty file(s) for sync:`, dirtyFiles.map(f => `${f.id}(${f.path})`).join(', '));
+          for (const f of dirtyFiles) {
+            console.log(`[SyncManager]   → Pushing file: ${f.id} (path: ${f.path})`);
+            this.pushDirtyFile(f as FileNode).catch((err) => {
+              console.warn(`[SyncManager] ❌ Push failed for ${f.id}:`, err);
+            });
+          }
+        }
+      });
+      console.log('[SyncManager] ✓ Dirty files subscription established (only active workspace, no filtering needed)');
+    } catch (err) {
+      console.error('[SyncManager] ❌ Failed to set up dirty file subscription:', err);
+    }
   }
 
   /**
@@ -275,12 +301,11 @@ export class SyncManager {
       clearInterval(this.pullInterval);
       this.pullInterval = null;
     }
-    // Unsubscribe from observed cached file changes
+    // Unsubscribe from dirty files subscription
     try {
       if (this.cachedFilesSub && typeof this.cachedFilesSub.unsubscribe === 'function') {
         this.cachedFilesSub.unsubscribe();
       } else if (this.cachedFilesSub && typeof this.cachedFilesSub === 'function') {
-        // observeCachedFiles may return an unsubscribe function
         this.cachedFilesSub();
       }
       // Unsubscribe from workspace store subscription
@@ -392,7 +417,7 @@ export class SyncManager {
       }
 
       // Check adapter readiness (optional)
-      const isReady = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady() : true;
+      const isReady = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady(file.workspaceId) : true;
       if (!isReady) {
         console.info(`[SyncManager] Adapter ${adapterName} not ready, will retry on next edit`);
         return;
@@ -418,13 +443,13 @@ export class SyncManager {
         stats.totalSynced++;
         this.statsSubject.next(stats);
 
-        console.debug(`[SyncManager] Successfully pushed ${fileId} to ${adapterName}`);
+        console.debug(`[SyncManager] Synced ${fileId} → ${adapterName}`);
       } else {
         // Push failed - schedule retry with backoff
         this.scheduleRetry(file as FileNode, adapterName);
       }
     } catch (error) {
-      console.error(`[SyncManager] pushDirtyFile error for ${fileId}:`, error);
+      console.error(`[SyncManager] Push error for ${fileId}:`, error);
 
       // Schedule retry on error
       this.scheduleRetry(file as FileNode, 'unknown');
@@ -453,7 +478,7 @@ export class SyncManager {
 
     // Check if we've exceeded max retries
     if (retry.attempts >= this.maxRetries) {
-      console.warn(`[SyncManager] Max retries exceeded for ${fileId} (adapter: ${adapterName})`);
+      console.warn(`[SyncManager] Max retries (${this.maxRetries}) exceeded for ${fileId}`);
       this.retryMap.delete(fileId);
       return;
     }
@@ -461,7 +486,7 @@ export class SyncManager {
     // Calculate delay for this attempt (1s, 3s, 5s)
     const delayMs = this.retryDelays[retry.attempts - 1] || this.retryDelays[this.retryDelays.length - 1];
 
-    console.info(`[SyncManager] Scheduling retry for ${fileId} in ${delayMs}ms (attempt ${retry.attempts}/${this.maxRetries})`);
+    console.info(`[SyncManager] Retrying ${fileId} in ${delayMs}ms (attempt ${retry.attempts}/${this.maxRetries})`);
 
     // Cancel previous timer if any
     if (retry.timer) {
@@ -473,11 +498,11 @@ export class SyncManager {
       try {
         const latestFile = await getCachedFile(fileId, file.workspaceId);
         if (latestFile && latestFile.dirty) {
-          console.info(`[SyncManager] Retrying push for ${fileId}`);
+          console.log(`[SyncManager] Retrying push for ${fileId}`);
           await this.pushDirtyFile(latestFile as FileNode);
         }
       } catch (err) {
-        console.error(`[SyncManager] Retry attempt failed for ${fileId}:`, err);
+        console.error(`[SyncManager] Retry failed for ${fileId}:`, err);
       }
     }, delayMs);
   }
@@ -528,6 +553,7 @@ export class SyncManager {
    */
   async pullWorkspace(workspace: { id: string; type: WorkspaceType | string; path?: string }): Promise<void> {
     if (!workspace) return;
+
     const adapterName = (String(workspace.type) === 'drive' || workspace.type === WorkspaceType.GDrive) ? 'gdrive' : String(workspace.type);
     const adapter = this.adapters.get(adapterName);
     if (!adapter) {
@@ -539,8 +565,6 @@ export class SyncManager {
 
     try {
       // If adapter provides an optimized workspace pull, use it
-
-
       if (typeof adapter.pullWorkspace === 'function') {
         const items = await adapter.pullWorkspace(workspace.id, workspace.path);
         for (const item of items || []) {
@@ -552,7 +576,8 @@ export class SyncManager {
             // Normalize minimal info into canonical cached file and upsert
             const normalized = adapterEntryToCachedFile({ fileId: id }, workspace.type as any, workspace.id);
             await upsertCachedFile({ ...normalized, dirty: false });
-            await saveFile(normalized.path || id, content, workspace.type as any, undefined, workspace.id);
+            // Don't mark files as dirty during initial workspace load
+            await saveFile(normalized.path || id, content, workspace.type as any, undefined, workspace.id, { markDirty: false });
           } catch (err) {
             console.warn('Failed to upsert remote item during pullWorkspace:', err);
           }
@@ -566,7 +591,8 @@ export class SyncManager {
             const normalized = adapterEntryToCachedFile(entry as any, workspace.type as any, workspace.id);
             await upsertCachedFile({ ...normalized, dirty: false });
             if (typeof remoteContent === 'string' && remoteContent.length > 0) {
-              await saveFile(normalized.path || entry.path || entry.id, remoteContent, workspace.type as any, undefined, workspace.id);
+              // Don't mark files as dirty during initial workspace load
+              await saveFile(normalized.path || entry.path || entry.id, remoteContent, workspace.type as any, undefined, workspace.id, { markDirty: false });
             }
           } catch (err) {
             console.warn('Failed to pull remote file during pullWorkspace:', err);

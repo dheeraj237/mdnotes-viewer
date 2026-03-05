@@ -76,19 +76,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           autoSaveId="main-layout"
           onLayout={(sizes: any) => {
             // sizes is an array of fractions summing to 1. Map to percentages.
-            if (Array.isArray(sizes) && sizes.length) {
-              const leftPct = Math.round((sizes[0] || 0) * 100);
-              const rightPct = Math.round((sizes[sizes.length - 1] || 0) * 100);
-              setLeftSize(leftPct);
-              setRightSize(rightPct);
-            }
+            // if (Array.isArray(sizes) && sizes.length) {
+            //   const leftPct = Math.round((sizes[0] || 0) * 100);
+            //   const rightPct = Math.round((sizes[sizes.length - 1] || 0) * 100);
+            //   setLeftSize(leftPct);
+            //   setRightSize(rightPct);
+            // }
           }}
         >
           <Panel
             ref={leftPanelRef}
             id="left-panel"
             defaultSize={isMobile ? 50 : leftSize}
-            minSize={isMobile ? 0 : 15}
+            minSize={10}
             maxSize={isMobile ? 80 : 40}
             collapsible
             className="bg-sidebar-background border-r border-sidebar-border"

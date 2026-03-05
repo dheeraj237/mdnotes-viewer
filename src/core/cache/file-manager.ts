@@ -14,6 +14,7 @@ import { initializeRxDB as rxInitializeRxDB, getCacheDB as rxGetCacheDB, upsertD
 import Collections from '@/core/rxdb/collections';
 import { normalizePath } from '@/shared/utils/file-path-resolver';
 import { SyncStatus } from '../sync';
+import { useWorkspaceStore } from '@/core/store/workspace-store';
 
 // Local aliases to keep calls concise and avoid indirect circular-init problems.
 const upsertDoc = rxUpsertDoc;
@@ -83,8 +84,32 @@ export async function getAllCachedFiles(workspaceId?: string): Promise<FileNode[
 export function observeCachedFiles(cb: (files: FileNode[]) => void): { unsubscribe: () => void } {
   let unsubFn: (() => void) | null = null;
   (async () => {
-    await initializeRxDB();
-    unsubFn = subscribeQuery((Collections as any).Files, { selector: {} }, (docs: any[]) => cb(docs as FileNode[]));
+    try {
+      await initializeRxDB();
+
+      // Get active workspace for filtering
+      const workspace = useWorkspaceStore.getState().activeWorkspace?.();
+      const workspaceId = workspace?.id;
+
+      if (!workspaceId) {
+        console.log('[observeCachedFiles] No active workspace, returning empty subscription');
+        cb([]);
+        return;
+      }
+
+      // Subscribe to files in ACTIVE WORKSPACE ONLY
+      unsubFn = subscribeQuery(
+        (Collections as any).Files,
+        { selector: { workspaceId } },
+        (docs: any[]) => {
+          console.log(`[observeCachedFiles] Subscription fired for active workspace="${workspaceId}": ${docs.length} file(s)`);
+          cb(docs as FileNode[]);
+        }
+      );
+    } catch (err) {
+      console.warn('[observeCachedFiles] Setup failed:', err);
+      cb([]);
+    }
   })();
   return { unsubscribe: () => { try { if (unsubFn) unsubFn(); } catch (_) { } } };
 }
@@ -296,10 +321,11 @@ export function saveFile(
   content: string,
   workspaceType: WorkspaceType | string = 'browser',
   metadata?: Record<string, any>,
-  workspaceId?: string
+  workspaceId?: string,
+  options?: { markDirty?: boolean }
 ): Promise<FileData> {
   const cacheType = toCacheWorkspaceType(workspaceType as any);
-  return saveSyncFile(path, content, cacheType, metadata, workspaceId);
+  return saveSyncFile(path, content, cacheType, metadata, workspaceId, options);
 }
 
 async function saveSyncFile(
@@ -307,7 +333,8 @@ async function saveSyncFile(
   content: string,
   workspaceType: WorkspaceType = 'browser' as WorkspaceType,
   metadata?: Record<string, any>,
-  workspaceId?: string
+  workspaceId?: string,
+  options?: { markDirty?: boolean }
 ): Promise<FileData> {
   const db = await getCacheDB();
   let fileId: string;
@@ -324,6 +351,7 @@ async function saveSyncFile(
   }
   // Use atomicUpsert to safely increment version and avoid races
   const name = path.split('/').pop() || 'untitled';
+  const shouldMarkDirty = options?.markDirty !== false && String(workspaceType) !== WorkspaceType.Browser;
   const mutator = (current?: any) => {
     const nextVersion = (current && current.version ? current.version : 0) + 1;
     return {
@@ -337,7 +365,7 @@ async function saveSyncFile(
       content,
       meta: metadata || { mimeType: 'text/markdown' },
       modifiedAt: new Date().toISOString(),
-      dirty: String(workspaceType) !== WorkspaceType.Browser,
+      dirty: shouldMarkDirty,
       isSynced: false,
       syncStatus: 'idle',
       version: nextVersion,
@@ -1022,20 +1050,39 @@ export async function updateSyncStatus(
 
 /**
  * Workspace-scoped subscription helper for the UI.
+ * Uses optimized RxDB query-level filtering for workspace files.
  * This returns an unsubscribe function.
+ * 
+ * Used by file-explorer and file-tree UI to keep display in sync with workspace changes.
  */
-export function subscribeToWorkspaceFiles(workspaceId: string | null, callback: (files: FileMetadata[]) => void): () => void {
-  const sub = observeCachedFiles((files: FileNode[]) => {
+export function subscribeToWorkspaceFiles(
+  workspaceId: string | null,
+  callback: (files: FileMetadata[]) => void
+): () => void {
+  if (!workspaceId) {
+    // No workspace, return no-op unsubscribe
+    callback([]);
+    return () => { /* no-op */ };
+  }
+
+  // Use generic subscribeQuery with workspace selector
+  return subscribeQuery(Collections.Files, { selector: { workspaceId } }, (docs: any[]) => {
     try {
-      const filtered = workspaceId ? files.filter(f => String(f.workspaceId) === String(workspaceId)) : files;
-      callback(filtered as FileMetadata[]);
+      const metadata = docs.map(doc => ({
+        id: doc.id,
+        name: doc.name,
+        path: doc.path,
+        type: doc.type,
+        workspaceType: doc.workspaceType,
+        workspaceId: doc.workspaceId,
+        dirty: doc.dirty,
+        modifiedAt: doc.modifiedAt,
+      })) as FileMetadata[];
+      callback(metadata);
     } catch (e) {
       console.warn('[file-manager] Error in subscribeToWorkspaceFiles callback', e);
     }
   });
-  return () => {
-    try { sub.unsubscribe(); } catch (e) { /* ignore */ }
-  };
 }
 
 export function observeWorkspaceFiles(workspaceId: string | null) {
@@ -1047,3 +1094,38 @@ export function observeWorkspaceFiles(workspaceId: string | null) {
   };
 }
 
+/**
+ * OPTIMIZED: Subscribe directly to dirty files in a specific workspace only.
+ * This is designed for SyncManager to efficiently track only files that need syncing.
+ * Query-level filtering happens at RxDB level, not in application code.
+ * 
+ * Uses generic subscribeQuery with selector that filters by:
+ * - workspaceId (only active workspace)
+ * - dirty: true (only files with unsaved changes)
+ * - workspaceType !== 'browser' (skip browser-only workspaces)
+ * 
+ * @param workspaceId Workspace ID to track
+ * @param callback Called immediately when dirty files change
+ * @returns Unsubscribe function
+ */
+export function subscribeToDirtyWorkspaceFiles(
+  workspaceId: string,
+  callback: (files: FileNode[]) => void
+): () => void {
+  // Use generic subscription with dirty file selector
+  return subscribeQuery(
+    Collections.Files,
+    {
+      selector: {
+        workspaceId,
+        dirty: true,
+        // Browser workspaces don't need syncing (purely local IndexedDB)
+        workspaceType: { $ne: 'browser' }
+      }
+    },
+    (docs: any[]) => {
+      console.log(`[file-manager] subscribeToDirtyWorkspaceFiles callback: ${docs.length} dirty file(s) for workspace="${workspaceId}"`);
+      callback(docs as FileNode[]);
+    }
+  );
+}
