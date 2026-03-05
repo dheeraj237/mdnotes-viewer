@@ -118,8 +118,6 @@ export async function closeCacheDB(): Promise<void> {
     for (const f of files) {
       try { await removeDoc((Collections as any).Files, f.id); } catch (_) { }
     }
-    const queue = await findDocs((Collections as any).SyncQueue, { selector: {} });
-    for (const q of queue) { try { await removeDoc((Collections as any).SyncQueue, q.id); } catch (_) { } }
     if (typeof indexedDB !== 'undefined' && (indexedDB as any).deleteDatabase) {
       try { (indexedDB as any).deleteDatabase('verve'); } catch (_) { }
     }

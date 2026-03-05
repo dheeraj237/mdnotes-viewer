@@ -69,8 +69,7 @@ export async function createRxDB(): Promise<void> {
         [Collections.Workspaces]: { schema: (schemaCollections.workspaces as any).schema as any, autoMigrate: false },
         [Collections.Files]: { schema: (schemaCollections.files as any).schema as any, autoMigrate: false },
         [Collections.Settings]: { schema: (schemaCollections.settings as any).schema as any, autoMigrate: false },
-        [Collections.DirectoryHandlesMeta]: { schema: (schemaCollections.directory_handles_meta as any).schema as any, autoMigrate: false },
-        [Collections.SyncQueue]: { schema: (schemaCollections.sync_queue as any).schema as any, autoMigrate: false }
+        [Collections.DirectoryHandlesMeta]: { schema: (schemaCollections.directory_handles_meta as any).schema as any, autoMigrate: false }
       });
       return;
     } catch (errInner) {
@@ -84,8 +83,7 @@ export async function createRxDB(): Promise<void> {
           [Collections.Workspaces]: { schema: (schemaCollections.workspaces as any).schema as any, autoMigrate: false },
           [Collections.Files]: { schema: (schemaCollections.files as any).schema as any, autoMigrate: false },
           [Collections.Settings]: { schema: (schemaCollections.settings as any).schema as any, autoMigrate: false },
-          [Collections.DirectoryHandlesMeta]: { schema: (schemaCollections.directory_handles_meta as any).schema as any, autoMigrate: false },
-          [Collections.SyncQueue]: { schema: (schemaCollections.sync_queue as any).schema as any, autoMigrate: false }
+          [Collections.DirectoryHandlesMeta]: { schema: (schemaCollections.directory_handles_meta as any).schema as any, autoMigrate: false }
         });
         return;
       } catch (errFallback) {
@@ -230,8 +228,7 @@ export function observeCollectionChanges(collection: Collections, handler: (chan
 export function getCacheDB(): any {
   // Return the real RxDB collections so callers can use native query APIs.
   return {
-    cached_files: getCollection(Collections.Files),
-    sync_queue: getCollection(Collections.SyncQueue)
+    cached_files: getCollection(Collections.Files)
   } as any;
 }
 

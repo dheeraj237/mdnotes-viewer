@@ -1,10 +1,9 @@
-import { BehaviorSubject, Observable, interval } from 'rxjs';
+import { BehaviorSubject, Observable } from 'rxjs';
 import { throttleTime, distinctUntilChanged } from 'rxjs/operators';
 // Yjs disabled: CRDT merging turned off for now
 import {
   getCacheDB,
   getCachedFile,
-  getDirtyCachedFiles,
   markCachedFileAsSynced,
   observeCachedFiles,
   upsertCachedFile,
@@ -18,11 +17,10 @@ import {
 } from '../cache';
 import type { ISyncAdapter as AdapterISyncAdapter } from './adapter-types';
 import { MergeStrategy, NoOpMergeStrategy } from './merge-strategies';
-import { enqueueSyncEntry, processPendingQueueOnce } from './sync-queue-processor';
 import { defaultRetryPolicy } from './retry-policy';
 import { v4 as uuidv4 } from 'uuid';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
-import { FileType, SyncOp, WorkspaceType } from '@/core/cache/types';
+import { WorkspaceType, FileType } from '@/core/cache/types';
 import type { FileNode } from '@/shared/types';
 import { toAdapterDescriptor } from './adapter-types';
 import { pushCachedFile } from './adapter-bridge';
@@ -74,21 +72,17 @@ export class SyncManager {
     upcomingSyncFiles: []
   });
 
-  private syncInterval = 5000; // 5 seconds
   private mergeStrategy: MergeStrategy = new NoOpMergeStrategy();
   private remoteWatcherSubs: Map<string, any> = new Map();
   private isRunning = false;
-  private pollInterval: ReturnType<typeof setInterval> | null = null;
   private maxRetries = 3;
-  private retryDelays = [1000, 3000, 5000]; // exponential backoff
-  private usePersistentQueue = false;
+  private retryDelays = [1000, 3000, 5000]; // exponential backoff: 1s, 3s, 5s
+  private retryMap: Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }> = new Map();
   private cachedFilesSub: any = null;
   private workspaceSub: any = null;
   private activeWorkspaceId: string | null = null;
-  private syncQueueSub: any = null;
   private pullInterval: ReturnType<typeof setInterval> | null = null;
   private periodicPullIntervalMs = 60000; // 1 minute
-  private queueProcessInterval: ReturnType<typeof setInterval> | null = null;
   // Temporary safety switch: when false, skip pulling remote content after a successful push.
   // This hard-coded flag addresses the immediate issue where any file update triggered pulls
   // across all adapters/workspaces. Set to `true` to re-enable pull-after-push behavior.
@@ -167,62 +161,16 @@ export class SyncManager {
   }
 
   /**
-   * Enable persistent queue processing. When enabled, dirty files are enqueued
-   * into the durable `sync_queue` and processed by the queue processor.
-   */
-  enablePersistentQueue(processIntervalMs: number = 5000) {
-    this.usePersistentQueue = true;
-    // Start periodic queue processing
-    if (!this.queueProcessInterval) {
-      this.queueProcessInterval = setInterval(() => {
-        try {
-          processPendingQueueOnce(this.adapters).catch((err) => console.error('Queue processing failed:', err));
-        } catch (err) {
-          console.error('Queue processing scheduling failed:', err);
-        }
-      }, processIntervalMs);
-    }
-  }
-
-  disablePersistentQueue() {
-    this.usePersistentQueue = false;
-    if (this.queueProcessInterval) {
-      clearInterval(this.queueProcessInterval);
-      this.queueProcessInterval = null;
-    }
-  }
-
-  /**
-   * Enqueue a saved file for durable processing (when persistent queue enabled)
-   * or attempt an immediate sync for the single file when queue is disabled.
+   * Enqueue a saved file for direct push processing (bypasses persistent queue).
    * This is intended to be called for saves originating from the active workspace
    * so that authorship is authoritative and pushes happen with minimal latency.
    */
   public async enqueueAndProcess(fileId: string, path: string, workspaceType: string, workspaceId?: string): Promise<void> {
     try {
-      if (this.usePersistentQueue) {
-        try {
-          await enqueueSyncEntry({ op: SyncOp.Put, target: 'file', targetId: fileId, payload: { path, workspaceType, workspaceId } });
-        } catch (e) {
-          console.error('Failed to enqueue sync entry for saved file:', fileId, e);
-        }
-
-        try {
-          await processPendingQueueOnce(this.adapters);
-        } catch (e) {
-          console.error('Failed to process sync queue immediately after enqueue:', e);
-        }
-      } else {
-        // Attempt immediate one-off sync for this specific file
-        try {
-          const cached = await getCachedFile(fileId, workspaceId);
-          if (cached) {
-            // call private syncFile to perform push/pull for this file
-            await this.syncFile(cached as FileNode);
-          }
-        } catch (e) {
-          console.warn('Immediate sync for saved file failed:', e);
-        }
+      const cached = await getCachedFile(fileId, workspaceId);
+      if (cached) {
+        // Push directly to adapter without queue
+        await this.pushDirtyFile(cached as FileNode);
       }
     } catch (err) {
       console.error('enqueueAndProcess error for', fileId, err);
@@ -256,9 +204,6 @@ export class SyncManager {
     this.isRunning = true;
     this.statusSubject.next(SyncStatus.IDLE);
 
-    // Background polling and remote watchers are disabled by default.
-    // Enable via `enablePeriodicPull` or `enableRemoteWatching` when desired.
-
     // Subscribe to active workspace changes and listen to cached file updates
     try {
       this.workspaceSub = (useWorkspaceStore.subscribe as any)(
@@ -281,14 +226,16 @@ export class SyncManager {
             // If there's no active workspace, don't subscribe to realtime pushes
             if (!newId) return;
 
-      // Observe all cached files but filter for the active workspace in the handler
+            // Observe all cached files and push dirty files for the active workspace
             this.cachedFilesSub = observeCachedFiles((files) => {
               for (const f of files) {
                 try {
                   if (String(f.workspaceId) !== String(newId)) continue;
+                  // Skip browser-only workspaces and non-dirty files
                   if (f.dirty && String(f.workspaceType) !== WorkspaceType.Browser) {
-                    this.syncFile(f as FileNode).catch((err) => {
-                      console.warn('Realtime sync failed for', f.id, err);
+                    // Push dirty file directly to adapter with retry on failure
+                    this.pushDirtyFile(f as FileNode).catch((err) => {
+                      console.warn('Realtime push failed for', f.id, err);
                     });
                   }
                 } catch (err) {
@@ -305,85 +252,9 @@ export class SyncManager {
       console.warn('Failed to subscribe to workspace store changes:', err);
     }
 
-    // Setup queue subscription for immediate processing of certain entries
-    try {
-      this.setupQueueSubscription();
-    } catch (err) {
-      // non-fatal
-    }
-
     console.log('SyncManager started');
   }
 
-  /**
-   * Subscribe to `sync_queue` and attempt best-effort immediate processing
-   * for UX-sensitive operations (local deletes and puts targeting the active workspace).
-   */
-  private setupQueueSubscription(): void {
-    try {
-      const db = getCacheDB();
-      if (!db || !db.sync_queue || typeof db.sync_queue.find !== 'function') return;
-
-      const query = db.sync_queue.find().sort({ createdAt: 'asc' });
-      if (!query || !query.$ || typeof query.$.subscribe !== 'function') return;
-
-      this.syncQueueSub = query.$.subscribe((docs: any[]) => {
-        try {
-          for (const doc of docs || []) {
-            const entry = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
-            try {
-              // Immediate-delete optimization for local workspaces
-              if (entry.op === SyncOp.Delete && entry.payload && String(entry.payload.workspaceType) === WorkspaceType.Local) {
-                const localAdapter = this.adapters.get('local');
-                if (localAdapter) {
-                  console.info('[SyncManager] Immediate local delete detected, processing now');
-                  processPendingQueueOnce(new Map([[localAdapter.name, localAdapter]])).catch((e) => {
-                    console.warn('Immediate local delete processing failed:', e);
-                  });
-                  break;
-                }
-              }
-
-              // Immediate-Put optimization for active workspace (only if adapter ready)
-              if (entry.op === SyncOp.Put && entry.payload && entry.payload.workspaceId) {
-                try {
-                  const active = useWorkspaceStore.getState().activeWorkspace?.();
-                  if (active && String(active.id) === String(entry.payload.workspaceId)) {
-                    const adapterName = (String(entry.payload.workspaceType) === 'drive' || entry.payload.workspaceType === WorkspaceType.GDrive) ? 'gdrive' : String(entry.payload.workspaceType);
-                    const targetAdapter = this.adapters.get(adapterName);
-                    if (targetAdapter) {
-                      try {
-                        const ready = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady() : true;
-                        if (ready) {
-                          console.info('[SyncManager] Immediate Put detected for active workspace, processing now via adapter:', adapterName);
-                          processPendingQueueOnce(new Map([[targetAdapter.name, targetAdapter]])).catch((e) => {
-                            console.warn('Immediate put processing failed:', e);
-                          });
-                          break;
-                        } else {
-                          console.info('[SyncManager] Adapter not ready for immediate Put:', adapterName);
-                        }
-                      } catch (chk) {
-                        console.warn('Failed to check adapter readiness:', chk);
-                      }
-                    }
-                  }
-                } catch (innerPut) {
-                  // ignore per-entry Put errors
-                }
-              }
-            } catch (inner) {
-              // ignore per-entry errors
-            }
-          }
-        } catch (e) {
-          // ignore subscription handler errors
-        }
-      });
-    } catch (e) {
-      // non-fatal
-    }
-  }
   /**
    * Stop the sync manager
    */
@@ -391,14 +262,15 @@ export class SyncManager {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+
+    // Clean up retry timers
+    for (const [fileId, retry] of this.retryMap.entries()) {
+      if (retry.timer) {
+        clearTimeout(retry.timer);
+      }
     }
-    if (this.queueProcessInterval) {
-      clearInterval(this.queueProcessInterval);
-      this.queueProcessInterval = null;
-    }
+    this.retryMap.clear();
+
     if (this.pullInterval) {
       clearInterval(this.pullInterval);
       this.pullInterval = null;
@@ -424,11 +296,6 @@ export class SyncManager {
         } catch (e) {
           // ignore
         }
-      }
-      if (this.syncQueueSub && typeof this.syncQueueSub.unsubscribe === 'function') {
-        this.syncQueueSub.unsubscribe();
-      } else if (this.syncQueueSub && typeof this.syncQueueSub === 'function') {
-        this.syncQueueSub();
       }
     } catch (err) {
       console.warn('Error unsubscribing cachedFilesSub:', err);
@@ -456,7 +323,7 @@ export class SyncManager {
   }
 
   /**
-   * Manually trigger a sync cycle
+   * Manually trigger a sync cycle - finds all dirty files and pushes them
    */
   async syncNow(): Promise<void> {
     if (!this.isRunning) {
@@ -466,7 +333,25 @@ export class SyncManager {
 
     this.statusSubject.next(SyncStatus.SYNCING);
     try {
-      await this.performSync();
+      // Get all dirty files from active workspace
+      const workspace = useWorkspaceStore.getState().activeWorkspace?.();
+      if (!workspace) {
+        this.statusSubject.next(SyncStatus.IDLE);
+        return;
+      }
+
+      const dirtyFiles = await queryDirtyFiles(workspace.id);
+      if (dirtyFiles.length === 0) {
+        this.statusSubject.next(SyncStatus.ONLINE);
+        return;
+      }
+
+      // Push all dirty files
+      await Promise.allSettled(dirtyFiles.map((file) => this.pushDirtyFile(file as FileNode)));
+
+      const stats = this.statsSubject.value;
+      stats.lastSyncTime = Date.now();
+      this.statsSubject.next(stats);
       this.statusSubject.next(SyncStatus.ONLINE);
     } catch (error) {
       console.error('Sync failed:', error);
@@ -475,127 +360,74 @@ export class SyncManager {
   }
 
   /**
-   * Start polling for dirty files and sync them
+   * Push a single dirty file to its adapter with in-memory retry backoff
+   * - On success: mark file as synced (dirty = false)
+   * - On failure: schedule retry with exponential backoff
    */
-  private startPolling(): void {
-    // Run sync immediately, then periodically
-    this.performSync().catch((error) => {
-      console.error('Initial sync failed:', error);
-    });
-
-    this.pollInterval = setInterval(() => {
-      if (this.isRunning) {
-        this.performSync().catch((error) => {
-          console.error('Periodic sync failed:', error);
-        });
-      }
-    }, this.syncInterval);
-  }
-
-  /**
-   * Core sync logic: find dirty files, push to adapters, pull remote changes
-   */
-  private async performSync(): Promise<void> {
-    try {
-      const dirtyFiles = await getDirtyCachedFiles();
-
-      if (dirtyFiles.length === 0) {
-        return; // Nothing to sync
-      }
-
-      // Filter out browser-only workspaces (they don't need sync)
-      const filesToSync = dirtyFiles.filter((file) => String(file.workspaceType) !== WorkspaceType.Browser);
-
-      if (filesToSync.length === 0) {
-        return; // Only browser files, nothing to sync
-      }
-
-      // Process in batches
-      for (let i = 0; i < filesToSync.length; i += this.batchSize) {
-        const batch = filesToSync.slice(i, i + this.batchSize);
-        await Promise.allSettled(batch.map((file) => this.syncFile(file)));
-      }
-
-      const stats = this.statsSubject.value;
-      stats.lastSyncTime = Date.now();
-      this.statsSubject.next(stats);
-    } catch (error) {
-      console.error('performSync error:', error);
-    }
-  }
-
-  /**
-   * Sync a single file: push local, pull remote, merge if needed
-   */
-  private async syncFile(file: FileNode): Promise<void> {
+  private async pushDirtyFile(file: FileNode): Promise<void> {
     const { id: fileId } = file;
 
     try {
+      // Skip browser workspaces (no sync needed)
+      if (String(file.workspaceType) === WorkspaceType.Browser) {
+        return;
+      }
+
+      // Skip if already synced
+      if (!file.dirty) {
+        return;
+      }
+
       // Load the latest content from cache (RxDB) as a plain string
       const fileData = await loadFile(file.path, file.workspaceType as any, file.workspaceId);
       const content = fileData?.content ?? '';
 
-      // If persistent queue is enabled, enqueue durable work and return
-      if (this.usePersistentQueue) {
-        try {
-          await enqueueSyncEntry({ op: SyncOp.Put, target: 'file', targetId: fileId, payload: { path: file.path, workspaceType: file.workspaceType, workspaceId: file.workspaceId } });
-        } catch (e) {
-          console.error('Failed to enqueue sync entry for', fileId, e);
-        }
+      // Get the adapter for this file's workspace type
+      const adapterName = (String(file.workspaceType) === 'drive' || file.workspaceType === WorkspaceType.GDrive) ? 'gdrive' : String(file.workspaceType);
+      const targetAdapter = this.adapters.get(adapterName);
+
+      if (!targetAdapter) {
+        console.warn(`[SyncManager] No adapter registered for workspace type: ${file.workspaceType}`);
         return;
       }
 
-      // Try to push to the adapter matching the file's workspace type only.
-      // Adapter naming convention: WorkspaceType.Drive -> 'gdrive', otherwise string(workspaceType)
-      let pushed = false;
-      try {
-        const adapterName = (String(file.workspaceType) === 'drive' || file.workspaceType === WorkspaceType.GDrive) ? 'gdrive' : String(file.workspaceType);
-        const targetAdapter = this.adapters.get(adapterName);
-        if (targetAdapter) {
-          pushed = await this.pushWithRetry(targetAdapter, file, content);
-        } else {
-          console.warn(`No adapter registered for file workspace type: ${file.workspaceType}`);
-        }
-      } catch (err) {
-        console.warn('Error while attempting push to matching adapter:', err);
+      // Check adapter readiness (optional)
+      const isReady = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady() : true;
+      if (!isReady) {
+        console.info(`[SyncManager] Adapter ${adapterName} not ready, will retry on next edit`);
+        return;
       }
 
-      if (pushed) {
-        // Mark as synced
+      // Try to push to adapter
+      const descriptor = toAdapterDescriptor(file);
+      const success = await targetAdapter.push(descriptor, content);
+
+      if (success) {
+      // Mark as synced (dirty = false)
         await markCachedFileAsSynced(fileId);
 
+        // Clear any pending retry for this file
+        const retry = this.retryMap.get(fileId);
+        if (retry && retry.timer) {
+          clearTimeout(retry.timer);
+        }
+        this.retryMap.delete(fileId);
+
+        // Update stats
         const stats = this.statsSubject.value;
         stats.totalSynced++;
         this.statsSubject.next(stats);
-      }
 
-      // Try to pull from each adapter (overwrite local content for now)
-      // Controlled by `pullAfterPush` flag: when false, skip pulls to avoid
-      // indiscriminately pulling workspaces/adapters on every file update.
-      if (this.pullAfterPush) {
-        try {
-          const activeWorkspace = useWorkspaceStore.getState().activeWorkspace?.();
-          // Only pull if the file belongs to the active workspace
-          if (activeWorkspace && String(activeWorkspace.id) === String(file.workspaceId)) {
-            const adapterName = (String(activeWorkspace.type) === 'drive' || activeWorkspace.type === WorkspaceType.GDrive) ? 'gdrive' : String(activeWorkspace.type);
-            const targetAdapter = this.adapters.get(adapterName);
-            if (targetAdapter && typeof targetAdapter.pull === 'function') {
-              try {
-                const remoteContent = await targetAdapter.pull(fileId);
-                if (remoteContent) {
-                  await this.mergeStrategy.handlePull(file, remoteContent);
-                }
-              } catch (error) {
-                console.warn(`Failed to pull from ${targetAdapter.name}:`, error);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Error during conditional pull-after-push:', err);
-        }
+        console.debug(`[SyncManager] Successfully pushed ${fileId} to ${adapterName}`);
+      } else {
+        // Push failed - schedule retry with backoff
+        this.scheduleRetry(file as FileNode, adapterName);
       }
     } catch (error) {
-      console.error(`syncFile error for ${fileId}:`, error);
+      console.error(`[SyncManager] pushDirtyFile error for ${fileId}:`, error);
+
+      // Schedule retry on error
+      this.scheduleRetry(file as FileNode, 'unknown');
 
       const stats = this.statsSubject.value;
       stats.totalFailed++;
@@ -604,29 +436,55 @@ export class SyncManager {
   }
 
   /**
-   * Push file to adapter with retries
+   * Schedule a retry for a file push with exponential backoff
    */
-  private async pushWithRetry(
-    adapter: ISyncAdapter,
-    file: FileNode,
-    content: string
-  ): Promise<boolean> {
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      try {
-        const success = await pushCachedFile(adapter, file as any, content as any);
-        if (success) return true;
-      } catch (error) {
-        console.warn(`Push attempt ${attempt + 1} failed:`, error);
+  private scheduleRetry(file: FileNode, adapterName: string): void {
+    const fileId = file.id;
 
-        if (attempt < this.maxRetries - 1) {
-          const delay = this.retryDelays[attempt] || defaultRetryPolicy.getDelay(attempt + 1);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
+    // Get or create retry record
+    let retry = this.retryMap.get(fileId);
+    if (!retry) {
+      retry = { attempts: 0, timer: null };
+      this.retryMap.set(fileId, retry);
     }
-    return false;
+
+    // Increment attempts
+    retry.attempts++;
+
+    // Check if we've exceeded max retries
+    if (retry.attempts >= this.maxRetries) {
+      console.warn(`[SyncManager] Max retries exceeded for ${fileId} (adapter: ${adapterName})`);
+      this.retryMap.delete(fileId);
+      return;
+    }
+
+    // Calculate delay for this attempt (1s, 3s, 5s)
+    const delayMs = this.retryDelays[retry.attempts - 1] || this.retryDelays[this.retryDelays.length - 1];
+
+    console.info(`[SyncManager] Scheduling retry for ${fileId} in ${delayMs}ms (attempt ${retry.attempts}/${this.maxRetries})`);
+
+    // Cancel previous timer if any
+    if (retry.timer) {
+      clearTimeout(retry.timer);
+    }
+
+    // Schedule retry
+    retry.timer = setTimeout(async () => {
+      try {
+        const latestFile = await getCachedFile(fileId, file.workspaceId);
+        if (latestFile && latestFile.dirty) {
+          console.info(`[SyncManager] Retrying push for ${fileId}`);
+          await this.pushDirtyFile(latestFile as FileNode);
+        }
+      } catch (err) {
+        console.error(`[SyncManager] Retry attempt failed for ${fileId}:`, err);
+      }
+    }, delayMs);
   }
 
+  /**
+   * Sync a single file: push local, pull remote, merge if needed
+   */
   /**
    * Merge remote content with local cache (CRDT merging currently disabled)
    * This method is a no-op; future CRDT behavior should be implemented in the cache layer.
@@ -910,7 +768,11 @@ export function getSyncManager(): SyncManager {
 /**
  * Initialize and start the SyncManager
  */
-export async function initializeSyncManager(adapters: ISyncAdapter[], options?: { usePersistentQueue?: boolean; queueProcessIntervalMs?: number }): Promise<SyncManager> {
+/**
+ * Initialize and start the SyncManager with direct subscription-driven sync
+ * Removes persistent queue complexity in favor of simple in-memory retry with backoff
+ */
+export async function initializeSyncManager(adapters: ISyncAdapter[]): Promise<SyncManager> {
   const manager = getSyncManager();
   for (const adapter of adapters) {
     manager.registerAdapter(adapter);
@@ -939,9 +801,6 @@ export async function initializeSyncManager(adapters: ISyncAdapter[], options?: 
     }
   } catch (e) {
     // ignore errors during best-effort adapter restore
-  }
-  if (options?.usePersistentQueue) {
-    manager.enablePersistentQueue(options.queueProcessIntervalMs);
   }
   manager.start();
   return manager;

@@ -1,5 +1,5 @@
 import type { RxJsonSchema } from 'rxdb';
-import { SyncOp, WorkspaceType } from '../cache/types';
+import { WorkspaceType } from '../cache/types';
 import type { FileNode } from '../../shared/types';
 import Collections from './collections';
 
@@ -160,40 +160,11 @@ export const directoryHandleSchema: RxJsonSchema<DirectoryHandleMeta> = {
   }
 };
 
-// sync_queue collection
-export interface SyncQueueDoc {
-  id: string;
-  op: SyncOp;
-  target: string; // e.g., 'file'
-  targetId: string;
-  payload?: any;
-  createdAt: number;
-  attempts?: number;
-}
-
-export const syncQueueSchema: RxJsonSchema<SyncQueueDoc> = {
-  title: 'sync queue schema',
-  type: 'object',
-  primaryKey: 'id',
-  version: 0,
-  required: ['id', 'op', 'target', 'targetId', 'createdAt'],
-  properties: {
-    id: { type: 'string', maxLength: 1024 },
-    op: { type: 'string' },
-    target: { type: 'string' },
-    targetId: { type: 'string' },
-    payload: { type: ['object', 'array', 'string', 'number', 'boolean', 'null'] },
-    createdAt: { type: 'number' },
-    attempts: { type: 'number' }
-  }
-};
-
 export const collections = {
   files: { name: Collections.Files, schema: fileSchema },
   workspaces: { name: Collections.Workspaces, schema: workspaceSchema },
   settings: { name: Collections.Settings, schema: settingsSchema },
-  directory_handles_meta: { name: Collections.DirectoryHandlesMeta, schema: directoryHandleSchema },
-  sync_queue: { name: Collections.SyncQueue, schema: syncQueueSchema }
+  directory_handles_meta: { name: Collections.DirectoryHandlesMeta, schema: directoryHandleSchema }
 } as const;
 
 export type CollectionsMap = typeof collections;

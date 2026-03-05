@@ -26,7 +26,13 @@ describe('SyncManager push targeting', () => {
     manager.registerAdapter(adapterG);
     manager.registerAdapter(adapterLocal);
 
-    (getCachedFile as Mock).mockResolvedValue({ id: 'f1', path: '/f1.md', workspaceType: 'gdrive', workspaceId: 'ws1' });
+    (getCachedFile as Mock).mockResolvedValue({
+      id: 'f1',
+      path: '/f1.md',
+      workspaceType: 'gdrive',
+      workspaceId: 'ws1',
+      dirty: true
+    });
     (loadFile as Mock).mockResolvedValue({ content: 'local content' });
 
     await manager.enqueueAndProcess('f1', '/f1.md', 'gdrive', 'ws1');
