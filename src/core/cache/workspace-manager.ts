@@ -6,9 +6,9 @@
  */
 
 import { initializeRxDB } from '@/core/rxdb/rxdb-client';
-import type { WorkspaceType } from './types';
-import { loadSamplesIntoWorkspace } from './sample-loader';
-import { saveFile } from './file-manager';
+import { WorkspaceType } from './types';
+import { loadSamplesIntoWorkspace } from '@/core/cache/sample-loader';
+import { saveFile } from '@/core/cache/file-manager';
 import { storeHandleForWorkspace, getHandleMeta, ensureHandleForWorkspace } from '@/core/rxdb/handle-sync';
 import { findDocs, removeDoc } from '@/core/rxdb/rxdb-client';
 
@@ -30,8 +30,8 @@ export async function createWorkspace(name: string, type: WorkspaceType, id?: st
     lastAccessed: new Date().toISOString(),
   };
 
-  // For any new workspace, create a default verve.md file
-  if (workspaceId !== 'verve-samples') {
+  // Only create a default `verve.md` for browser workspaces (skip samples and non-browser types)
+  if (type === WorkspaceType.Browser && workspaceId !== 'verve-samples') {
     try {
       await initializeRxDB();
     } catch (e) {
@@ -84,7 +84,7 @@ export async function createSampleWorkspaceIfMissing(): Promise<WorkspaceRecord>
   const workspace: WorkspaceRecord = {
     id: workspaceId,
     name: 'Verve Samples',
-    type: ('browser' as WorkspaceType),
+    type: WorkspaceType.Browser,
     createdAt: new Date().toISOString(),
     lastAccessed: new Date().toISOString(),
   };
