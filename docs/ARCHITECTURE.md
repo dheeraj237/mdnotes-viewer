@@ -387,6 +387,127 @@ DocumentCollection.find().$.subscribe(changes => {
 updateEditor(content, { preserveScroll: true });
 ```
 
+## Workspace & File CRUD with RxDB
+
+This section shows the detailed interactions between the editor/workspace, the File Manager, `RxDB`, and sync adapters that push changes to the actual remote or target storage. It highlights autosave/patch flows, version checks, replication, and how dirty files are detected and resolved.
+
+### High-level component interaction
+
+```mermaid
+graph TB
+    Editor[Editor / CodeMirror]
+    Autosave[Autosave Timer (2s)]
+    Store[Editor Store / Workspace]
+    FileManager[File Manager]
+    RxDB[RxDB Collection]
+    Sync[Sync Adapters / Replication]
+    Remote[Remote Target (S3, Server, FS)]
+
+    Editor --> Autosave
+    Autosave --> Store
+    Store --> FileManager
+    FileManager --> RxDB
+    RxDB --> Sync
+    Sync --> Remote
+    Remote --> Sync
+    Sync --> RxDB
+    RxDB --> FileManager
+    FileManager --> Store
+    Store --> Editor
+```
+
+### Sequence: Create / Update / Delete (CRUD) + Conflict check
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant E as Editor
+    participant S as Store
+    participant FM as FileManager
+    participant DB as RxDB
+    participant SY as SyncAdapters
+    participant R as RemoteTarget
+
+    U->>E: Edit or create file
+    E->>S: setContent(fileId, content)
+    S->>S: start/debounce 2s autosave
+    Note over S,FM: Autosave timer fires
+    S->>FM: applyPatch(fileId, newContent, clientVersion)
+    FM->>DB: fetch doc by fileId
+    DB-->>FM: currentDoc (serverVersion)
+    alt versions match
+        FM->>DB: put(updatedDoc with incremented version)
+        DB-->>FM: writeAck
+        FM->>SY: pushReplication(updatedDoc)
+        SY->>R: replicate
+        R-->>SY: ack
+        SY-->>DB: replicationAck (confirms write)
+        FM-->>S: markSaved(fileId)
+        S-->>E: showSavedIndicator
+    else conflict (serverVersion != clientVersion)
+        FM->>DB: fetchLatest
+        DB-->>FM: latestDoc
+        FM-->>S: publishConflict(fileId, latestDoc)
+        S-->>E: notifyUserConflict
+    end
+
+    %% Delete flow
+    E->>S: deleteFile(fileId)
+    S->>FM: delete(fileId)
+    FM->>DB: remove(fileId)
+    DB-->>FM: removedAck
+    FM->>SY: replicateDelete(fileId)
+    SY->>R: propagate delete
+```
+
+### Flow: Dirty file detection & resolution
+
+```mermaid
+flowchart TD
+    A[User Edits] --> B[Store: markDirty(fileId)]
+    B --> C[Autosave triggers applyPatch]
+    C --> D[FileManager writes to RxDB (optimistic write)]
+    D --> E{Replication result}
+    E -->|Success| F[Sync adapters acknowledge]
+    F --> G[FileManager marks file clean]
+    G --> H[Editor shows saved]
+    E -->|Failure / Conflict| I[FileManager fetches latest]
+    I --> J[Merge / Show conflict to user]
+    J --> K[User resolves -> applyPatch]
+    K --> D
+```
+
+Notes:
+- The File Manager makes an optimistic local write to `RxDB` (fast UI feedback) and then relies on the replication adapters to push changes to the remote target.
+- If replication confirms the write, the file is marked clean and the UI clears the dirty flag.
+- If replication or version checks detect a conflict, the File Manager fetches the latest document and emits a conflict event to the store; the editor can either attempt an automatic merge or present a resolution UI to the user.
+
+### RxDB replication and event hooks (concept)
+
+```ts
+// Pseudocode: replication lifecycle hooks
+const replicationState = collection.sync({ remote: endpoint, options });
+replicationState.transmitted$.subscribe(info => {
+  // successful push to remote; mark file(s) as clean
+  handleReplicationSuccess(info.docs);
+});
+replicationState.errors$.subscribe(err => {
+  // network or server error; leave file dirty and retry
+  handleReplicationError(err);
+});
+collection.find().$.subscribe(changes => {
+  // external changes (pull from remote) arrive here
+  handleExternalUpdate(changes);
+});
+```
+
+### Practical behaviour in Verve
+- Autosave is debounced and calls `applyPatch()` on the File Manager.
+- File Manager performs a version check using the document metadata stored in `RxDB`.
+- Replication to the remote target is handled by sync adapters; successful replication clears dirty flags, failures surface as conflicts or retries.
+
+---
+
 ## Performance Considerations
 
 ### Bundle Size Optimization
