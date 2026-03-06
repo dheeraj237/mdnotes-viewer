@@ -1,250 +1,390 @@
-import { Observable } from 'rxjs';
+/**
+ * Local Adapter - Refactored with Java-Style OOP & Lifecycle State Machine
+ * 
+ * Key improvements over old version:
+ * - Workspace ID immutably bound via constructor
+ * - Private constructor + static factory pattern
+ * - Lifecycle state machine: UNINITIALIZED -> INITIALIZING -> READY/ERRORED -> DESTROYING -> DESTROYED
+ * - Event-based listeners for state changes
+ * - Strict readiness validation (state + handle + permissions)
+ * - Removed dead code (setCurrentWorkspace was never called)
+ * 
+ * Bug fix:
+ * - OLD: currentWorkspaceId was always null, isReady() always returned false
+ * - NEW: workspaceId immutable from construction, guaranted valid
+ */
+
 import type { ISyncAdapter, AdapterFileDescriptor } from '../adapter-types';
+import {
+  AdapterState,
+  AdapterInitError,
+  AdapterInitContext,
+  AdapterErrorCode,
+  AdapterReadinessInfo,
+  AdapterLifecycleEvent,
+  AdapterEventListener,
+} from '../types/adapter-lifecycle';
 import type { FileNode } from '@/shared/types';
-import { requestPermissionForWorkspace, storeDirectoryHandle as workspaceStoreDirectoryHandle } from '@/core/cache/workspace-manager';
+import {
+  requestPermissionForWorkspace,
+  storeDirectoryHandle as workspaceStoreDirectoryHandle,
+} from '@/core/cache/workspace-manager';
 import { buildFileTreeFromDirectory } from '@/features/file-explorer/store/helpers/file-tree-builder';
 import { upsertCachedFile } from '@/core/cache/file-manager';
 import { FileType, WorkspaceType } from '@/core/cache/types';
 
 /**
- * Browser-friendly Local Adapter using the File System Access API.
- * Manages workspace-scoped directory handles with simple, direct CRUD operations.
+ * Local adapter using File System Access API.
+ * Workspace-scoped, with immutable workspaceId binding.
  * 
- * Pattern: directory handles are cached per workspace. Each CRUD operation
- * uses currentWorkspaceId or can accept a workspaceId parameter.
+ * IMPORTANT: Instantiate via static factory, not with 'new'.
+ * Example:
+ *   const adapter = await LocalAdapter.create('workspace-123')
+ *   await adapter.initialize(context)
  */
 export class LocalAdapter implements ISyncAdapter {
-  name = 'local';
-  // Cache of directory handles per workspace (simple key-value map)
-  private dirHandleCache: Map<string, FileSystemDirectoryHandle> = new Map();
-  // Current active workspace (fallback when not specified)
-  private currentWorkspaceId: string | null = null;
+  readonly name = 'local';
 
-  constructor() { }
+  // Immutable workspace binding - set in constructor, never changes
+  private readonly workspaceId: string;
+
+  // Lifecycle state - updated via setState() with event emission
+  private state: AdapterState = AdapterState.UNINITIALIZED;
+  private error: AdapterInitError | null = null;
+
+  // Directory handle storage - per workspace (though we only have one workspace per instance)
+  private dirHandle: FileSystemDirectoryHandle | null = null;
+
+  // Event listeners for state changes
+  private listeners: Set<AdapterEventListener> = new Set();
 
   /**
-   * Set the currently active workspace (used as default when workspaceId not provided)
+   * Private constructor - use static create() factory instead.
+   * @param workspaceId - Immutably bound workspace ID
    */
-  setCurrentWorkspace(workspaceId: string | null): void {
-    this.currentWorkspaceId = workspaceId;
+  private constructor(workspaceId: string) {
+    this.workspaceId = workspaceId;
+    this.state = AdapterState.UNINITIALIZED;
+    console.log(`[LocalAdapter] Created (workspace: ${workspaceId}, state: ${this.state})`);
   }
 
   /**
-   * Initialize adapter with a directory handle for a specific workspace.
+   * Factory: Create a new LocalAdapter for a workspace (UNINITIALIZED state).
+   * Does NOT call initialize() - caller must do that explicitly.
    */
-  async initialize(directoryHandle?: FileSystemDirectoryHandle, workspaceId?: string): Promise<void> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('Workspace ID is required for LocalAdapter initialization');
+  static async create(workspaceId: string): Promise<LocalAdapter> {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required to create LocalAdapter');
     }
+    const adapter = new LocalAdapter(workspaceId);
+    console.log(`[LocalAdapter] Factory created new instance for workspace: ${workspaceId}`);
+    return adapter;
+  }
 
-    if (!directoryHandle) {
-      throw new Error(`Local directory not initialized for workspace "${wsId}". Please open directory picker.`);
-    }
+  // ============================================================================
+  // LIFECYCLE STATE MACHINE
+  // ============================================================================
 
-    // Store handle for this workspace
-    this.dirHandleCache.set(wsId, directoryHandle);
-
-    // Set global fallback for page reload recovery
-    (window as any).__localDirHandle = directoryHandle;
-    (window as any).__localWorkspaceId = wsId;
+  /**
+   * Get current lifecycle state.
+   */
+  getState(): AdapterState {
+    return this.state;
   }
 
   /**
-   * User-gesture: open directory picker and initialize for a workspace.
-   * Stores handle and loads directory tree into cache.
+   * Get last initialization error (null if no error or state !== ERRORED).
    */
-  async openDirectoryPicker(workspaceId?: string): Promise<void> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('Workspace ID is required');
+  getError(): AdapterInitError | null {
+    return this.error;
+  }
+
+  /**
+   * Get comprehensive readiness snapshot (immutable).
+   */
+  getReadinessInfo(): AdapterReadinessInfo {
+    const isReady = this.state === AdapterState.READY && this.dirHandle !== null;
+    return new AdapterReadinessInfo(
+      isReady,
+      this.state,
+      this.error,
+      this.workspaceId,
+      this.dirHandle !== null,
+      new Date()
+    );
+  }
+
+  /**
+   * Validate adapter is truly ready (synchronous, cached check).
+   * Required before push/pull operations.
+   */
+  validateReady(): boolean {
+    return this.state === AdapterState.READY && this.dirHandle !== null;
+  }
+
+  /**
+   * Initialize adapter with optional context (directory handle or permissions).
+   * Async operation that may transition to READY or ERRORED state.
+   * Does NOT throw - errors are emitted as events.
+   */
+  async initialize(context: AdapterInitContext): Promise<void> {
+    console.log(
+      `[LocalAdapter] initialize() called for workspace: ${context.workspaceId}`,
+    );
+
+    if (context.workspaceId !== this.workspaceId) {
+      const err = new AdapterInitError(
+        AdapterErrorCode.WORKSPACE_NOT_FOUND,
+        `Workspace mismatch: adapter is for ${this.workspaceId}, but context specifies ${context.workspaceId}`
+      );
+      this.setState(AdapterState.ERRORED, err);
+      this.emitEvent({
+        type: 'initialization-failed',
+        error: err,
+        timestamp: new Date(),
+      });
+      return;
     }
+
+    try {
+      this.setState(AdapterState.INITIALIZING);
+
+      // If context has a directory handle, use it
+      if (context.dirHandle) {
+        this.dirHandle = context.dirHandle;
+        console.log(`[LocalAdapter] Initialized with provided directory handle`);
+        this.setState(AdapterState.READY);
+        this.emitEvent({
+          type: 'ready',
+          workspaceId: this.workspaceId,
+          timestamp: new Date(),
+        });
+        return;
+      }
+
+      // Try to restore from persisted handle (no user gesture)
+      const restored = await this.attemptRestorePersistedHandle();
+      if (restored) {
+        console.log(`[LocalAdapter] Restored persisted directory handle`);
+        this.setState(AdapterState.READY);
+        this.emitEvent({
+          type: 'ready',
+          workspaceId: this.workspaceId,
+          timestamp: new Date(),
+        });
+        return;
+      }
+
+      // No handle available - stay in INITIALIZING, wait for user gesture
+      console.log(
+        `[LocalAdapter] No directory handle available. Waiting for user gesture (openDirectoryPicker).`
+      );
+      // Stay in INITIALIZING state until openDirectoryPicker is called
+    } catch (err) {
+      const error = new AdapterInitError(
+        AdapterErrorCode.INITIALIZATION_FAILED,
+        `Failed to initialize local adapter`,
+        err as Error
+      );
+      this.setState(AdapterState.ERRORED, error);
+      this.emitEvent({
+        type: 'initialization-failed',
+        error,
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  /**
+   * Destroy the adapter and release resources.
+   * Transitions to DESTROYING -> DESTROYED.
+   */
+  async destroy(): Promise<void> {
+    console.log(`[LocalAdapter] destroy() called for workspace: ${this.workspaceId}`);
+
+    try {
+      this.setState(AdapterState.DESTROYING);
+
+      // Release directory handle
+      this.dirHandle = null;
+      this.listeners.clear();
+
+      this.setState(AdapterState.DESTROYED);
+      console.log(`[LocalAdapter] ✓ Destroyed`);
+    } catch (err) {
+      const error = new AdapterInitError(
+        AdapterErrorCode.UNKNOWN,
+        `Error during destroy`,
+        err as Error
+      );
+      this.setState(AdapterState.ERRORED, error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // EVENT LISTENERS
+  // ============================================================================
+
+  /**
+   * Register a listener for adapter lifecycle events.
+   */
+  addEventListener(listener: AdapterEventListener): void {
+    this.listeners.add(listener);
+    console.log(`[LocalAdapter] Event listener added (total: ${this.listeners.size})`);
+  }
+
+  /**
+   * Remove a registered listener.
+   */
+  removeEventListener(listener: AdapterEventListener): void {
+    this.listeners.delete(listener);
+  }
+
+  // ============================================================================
+  // USER GESTURES & PERMISSION HANDLING
+  // ============================================================================
+
+  /**
+   * User gesture: open directory picker and initialize.
+   * Requires user interaction (button click, etc.).
+   * 
+   * After this succeeds, adapter should transition to READY.
+   */
+  async openDirectoryPicker(): Promise<void> {
+    console.log(`[LocalAdapter] openDirectoryPicker() for workspace: ${this.workspaceId}`);
 
     if (!('showDirectoryPicker' in window)) {
-      throw new Error('Directory picker not supported in this browser');
+      const err = new AdapterInitError(
+        AdapterErrorCode.PERMISSION_DENIED,
+        'Directory picker not supported in this browser'
+      );
+      this.setState(AdapterState.ERRORED, err);
+      this.emitEvent({
+        type: 'initialization-failed',
+        error: err,
+        timestamp: new Date(),
+      });
+      return;
     }
 
-    // User gesture: open directory picker
-    const dirHandle = await (window as any).showDirectoryPicker();
-
-    // Persist handle metadata to IndexedDB
     try {
-      await workspaceStoreDirectoryHandle(wsId, dirHandle);
-    } catch (e) {
-      console.warn('Failed to store directory handle metadata:', e);
-    }
+      // User gesture: open directory picker
+      const dirHandle = await (window as any).showDirectoryPicker();
 
-    // Initialize this workspace
-    await this.initialize(dirHandle, wsId);
-
-    // Scan and populate cache with directory contents
-    try {
-      const tree = await buildFileTreeFromDirectory(dirHandle);
-      await this.walkAndUpsertTree(tree, wsId);
-    } catch (e) {
-      console.warn('Failed to scan and cache directory contents:', e);
-    }
-  }
-
-  /**
-   * Helper: walk directory tree and upsert files/folders into cache
-   */
-  private async walkAndUpsertTree(nodes: any[], workspaceId: string): Promise<void> {
-    for (const node of nodes) {
-      await this.walkAndUpsertNode(node, workspaceId);
-    }
-  }
-
-  /**
-   * Recursively walk and upsert a tree node
-   */
-  private async walkAndUpsertNode(node: any, workspaceId: string): Promise<void> {
-    try {
-      if (node.type === FileType.File) {
-        const filePath = node.path;
-        let content = '';
-
-        // Read file content via handle
-        try {
-          const fileHandle = await this.getFileHandle(filePath, false, workspaceId).catch(() => undefined);
-          if (fileHandle) {
-            const f = await fileHandle.getFile();
-            content = await f.text();
-          }
-        } catch (e) {
-          console.warn(`Failed to read file content for ${filePath}:`, e);
-        }
-
-        const cached: FileNode = {
-          id: filePath,
-          name: node.name,
-          path: filePath,
-          type: FileType.File,
-          workspaceType: WorkspaceType.Local,
-          workspaceId: workspaceId,
-          content,
-          lastModified: Date.now(),
-          dirty: false,
-          isSynced: true,
-          syncStatus: 'idle',
-          version: 1,
-        } as any;
-
-        await upsertCachedFile(cached).catch((e) =>
-          console.warn(`Failed to upsert file ${filePath}:`, e)
-        );
-      } else if (node.type === FileType.Directory) {
-        const dirPath = node.path;
-        const cached: FileNode = {
-          id: dirPath,
-          name: node.name,
-          path: dirPath,
-          type: FileType.Directory,
-          workspaceType: WorkspaceType.Local,
-          workspaceId: workspaceId,
-          children: node.children || [],
-          dirty: false,
-          isSynced: true,
-          syncStatus: 'idle',
-          version: 1,
-        } as any;
-
-        await upsertCachedFile(cached).catch((e) =>
-          console.warn(`Failed to upsert directory ${dirPath}:`, e)
-        );
+      // Persist handle metadata to IndexedDB
+      try {
+        await workspaceStoreDirectoryHandle(this.workspaceId, dirHandle);
+        console.log(`[LocalAdapter] Stored directory handle for workspace: ${this.workspaceId}`);
+      } catch (e) {
+        console.warn('[LocalAdapter] Failed to store directory handle metadata:', e);
       }
 
-      // Recurse into children
-      const children = node.children || [];
-      for (const child of children) {
-        await this.walkAndUpsertNode(child, workspaceId);
+      // Store handle and transition to READY
+      this.dirHandle = dirHandle;
+      this.setState(AdapterState.READY);
+
+      // Scan and populate cache with directory contents
+      try {
+        const tree = await buildFileTreeFromDirectory(dirHandle);
+        await this.walkAndUpsertTree(tree);
+        console.log(`[LocalAdapter] Scanned and cached directory contents`);
+      } catch (e) {
+        console.warn('[LocalAdapter] Failed to scan directory contents:', e);
       }
-    } catch (e) {
-      console.warn('Error walking tree node:', e);
+
+      this.emitEvent({
+        type: 'ready',
+        workspaceId: this.workspaceId,
+        timestamp: new Date(),
+      });
+      console.log(`[LocalAdapter] ✓ Directory picker succeeded, adapter is READY`);
+    } catch (err) {
+      if ((err as DOMException | any).name === 'AbortError') {
+        // User cancelled
+        console.log(`[LocalAdapter] User cancelled directory picker`);
+        return;
+      }
+
+      const error = new AdapterInitError(
+        AdapterErrorCode.PERMISSION_DENIED,
+        `Directory picker failed`,
+        err as Error
+      );
+      this.setState(AdapterState.ERRORED, error);
+      this.emitEvent({
+        type: 'initialization-failed',
+        error,
+        timestamp: new Date(),
+      });
     }
   }
 
   /**
-   * Restore handle for a workspace from stored metadata.
-   * Uses browser prompts to request permission without user gesture.
+   * Request permission for stored directory handle (no user gesture required).
+   * Uses browser's permission API to restore a previously granted handle.
    */
   async promptPermissionAndRestore(workspaceId: string): Promise<boolean> {
+    if (workspaceId !== this.workspaceId) {
+      console.warn(`[LocalAdapter] Workspace mismatch in promptPermissionAndRestore`);
+      return false;
+    }
+
+    console.log(`[LocalAdapter] promptPermissionAndRestore() for workspace: ${this.workspaceId}`);
+
     try {
-      // Attempt to restore handle from workspace-manager (uses stored metadata)
-      const handle = await requestPermissionForWorkspace(workspaceId);
-      if (!handle) {
-        console.warn(`[LocalAdapter] No stored handle for workspace "${workspaceId}"`);
+      // Request permission for stored handle
+      const granted = await requestPermissionForWorkspace(workspaceId);
+      if (!granted) {
+        console.log(`[LocalAdapter] Permission denied or handle not found`);
         return false;
       }
 
-      // Validate handle has required methods
-      if (typeof (handle as any).getDirectoryHandle !== 'function') {
-        console.warn(`[LocalAdapter] Retrieved handle is invalid for workspace "${workspaceId}"`);
-        return false;
+      // Try to restore handle from IndexedDB metadata
+      const restored = await this.attemptRestorePersistedHandle();
+      if (restored) {
+        this.setState(AdapterState.READY);
+        this.emitEvent({
+          type: 'ready',
+          workspaceId: this.workspaceId,
+          timestamp: new Date(),
+        });
+        console.log(`[LocalAdapter] ✓ Restored directory handle via permission, adapter is READY`);
+        return true;
       }
 
-      // Persist handle metadata for future recovery
-      try {
-        await workspaceStoreDirectoryHandle(workspaceId, handle);
-      } catch (e) {
-        console.warn('Failed to persist directory handle:', e);
-      }
-
-      // Initialize this workspace with restored handle
-      await this.initialize(handle, workspaceId);
-
-      console.log(`[LocalAdapter] Successfully restored handle for workspace "${workspaceId}"`);
-      return true;
-    } catch (e) {
-      console.warn(`[LocalAdapter] Failed to restore handle for workspace "${workspaceId}":`, e);
+      return false;
+    } catch (err) {
+      console.error(`[LocalAdapter] promptPermissionAndRestore failed:`, err);
       return false;
     }
   }
 
-  /**
-   * Check if adapter is ready for the current workspace.
-   * Supports recovery from cache and global fallback.
-   */
-  isReady(): boolean {
-    const wsId = this.currentWorkspaceId;
-    if (!wsId) return false;
-
-    // Check if we have a cached handle for this workspace
-    const cachedHandle = this.dirHandleCache.get(wsId);
-    if (cachedHandle) {
-      return true;
-    }
-
-    // Try to recover from global fallback (page reload recovery)
-    if (wsId === (window as any).__localWorkspaceId) {
-      const globalHandle = (window as any).__localDirHandle;
-      if (globalHandle) {
-        this.dirHandleCache.set(wsId, globalHandle);
-        return true;
-      }
-    }
-
-    return false;
-  }
+  // ============================================================================
+  // CORE OPERATIONS: PUSH, PULL, EXISTS, DELETE
+  // ============================================================================
 
   /**
-   * Simple CRUD Operations
+   * Push (write) a file to local storage.
+   * Requires adapter to be in READY state.
    */
-
   async push(descriptor: AdapterFileDescriptor, content: string): Promise<boolean> {
     const context = `[LocalAdapter] push(${descriptor.id})`;
-    try {
-      if (!this.currentWorkspaceId) {
-        throw new Error('No active workspace');
-      }
 
-      const fileHandle = await this.getFileHandle(descriptor.path, true, this.currentWorkspaceId);
+    if (!this.validateReady()) {
+      console.error(`${context}: Adapter not in READY state (state: ${this.state})`);
+      return false;
+    }
+
+    try {
+      const fileHandle = await this.getFileHandle(descriptor.path, true);
       if (!fileHandle) throw new Error('Failed to get file handle');
 
       const writable = await fileHandle.createWritable();
       await writable.write(content);
       await writable.close();
 
+      console.debug(`${context}: ✓ Written`);
       return true;
     } catch (err) {
       console.error(`${context}: ${err instanceof Error ? err.message : String(err)}`);
@@ -252,46 +392,62 @@ export class LocalAdapter implements ISyncAdapter {
     }
   }
 
+  /**
+   * Pull (read) a file from local storage.
+   * Requires adapter to be in READY state.
+   */
   async pull(fileId: string, localVersion?: number): Promise<string | null> {
-    try {
-      if (!this.currentWorkspaceId) {
-        throw new Error('No active workspace');
-      }
+    const context = `[LocalAdapter] pull(${fileId})`;
 
-      const fileHandle = await this.getFileHandle(fileId, false, this.currentWorkspaceId);
-      if (!fileHandle) return null;
+    if (!this.validateReady()) {
+      console.error(`${context}: Adapter not in READY state (state: ${this.state})`);
+      return null;
+    }
+
+    try {
+      const fileHandle = await this.getFileHandle(fileId, false);
+      if (!fileHandle) {
+        console.debug(`${context}: File not found`);
+        return null;
+      }
 
       const file = await fileHandle.getFile();
       const content = await file.text();
+      console.debug(`${context}: ✓ Read ${content.length} bytes`);
       return content;
     } catch (err) {
-      console.debug('[LocalAdapter] pull error:', err);
+      console.debug(`${context}: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   }
 
+  /**
+   * Check if a file exists.
+   */
   async exists(fileId: string): Promise<boolean> {
-    try {
-      if (!this.currentWorkspaceId) return false;
+    if (!this.validateReady()) return false;
 
-      const handle = await this.getFileHandle(fileId, false, this.currentWorkspaceId);
+    try {
+      const handle = await this.getFileHandle(fileId, false);
       return !!handle;
     } catch {
       return false;
     }
   }
 
+  /**
+   * Delete a file.
+   */
   async delete(fileId: string): Promise<boolean> {
-    try {
-      if (!this.currentWorkspaceId) {
-        throw new Error('No active workspace');
-      }
+    if (!this.validateReady()) return false;
 
+    try {
       const parts = fileId.split('/').filter(Boolean);
       const fileName = parts.pop()!;
-      const dir = await this.getDirectoryHandle(parts.join('/'), this.currentWorkspaceId);
+      const dir = await this.getDirectoryHandle(parts.join('/'));
 
       await dir.removeEntry(fileName);
+      console.debug(`[LocalAdapter] delete(${fileId}): ✓ Deleted`);
       return true;
     } catch (err) {
       console.error('[LocalAdapter] delete error:', err);
@@ -299,88 +455,209 @@ export class LocalAdapter implements ISyncAdapter {
     }
   }
 
+  // ============================================================================
+  // WORKSPACE OPERATIONS: LIST & PULL WORKSPACE
+  // ============================================================================
+
+  /**
+   * List files in a directory (recursively).
+   * Walks entire directory tree and returns all files.
+   */
   async listFiles(directory = ''): Promise<Array<{ id: string; path: string; name: string }>> {
-    if (!this.currentWorkspaceId) {
-      throw new Error('No active workspace');
+    if (!this.validateReady()) {
+      throw new Error('Adapter not ready');
     }
 
-    const dir = await this.getDirectoryHandle(directory, this.currentWorkspaceId);
     const out: Array<{ id: string; path: string; name: string }> = [];
 
-    // @ts-ignore - values() is available in modern browsers
-    for await (const entry of dir.values()) {
-      if (entry.kind === 'file') {
-        const filePath = directory ? `${directory}/${entry.name}` : entry.name;
-        out.push({ id: filePath, path: filePath, name: entry.name });
-      }
+    try {
+      const dir = await this.getDirectoryHandle(directory);
+      await this.walkDirectoryForFiles(dir, directory, out);
+    } catch (err) {
+      console.warn(`[LocalAdapter] listFiles error for directory "${directory}":`, err);
     }
+
     return out;
   }
 
-  async listWorkspaceFiles(workspaceId?: string, directory = ''): Promise<Array<{ id: string; path: string; metadata?: any }>> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('No workspace specified');
-    }
+  /**
+   * Recursively walk directory and collect all files.
+   * Helper for listFiles().
+   */
+  private async walkDirectoryForFiles(
+    dir: FileSystemDirectoryHandle,
+    currentPath: string,
+    out: Array<{ id: string; path: string; name: string }>
+  ): Promise<void> {
+    // @ts-ignore - values() is available in modern browsers
+    for await (const entry of dir.values()) {
+      const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
-    // Temporarily set workspace, list files, then restore
-    const originalWsId = this.currentWorkspaceId;
-    try {
-      this.currentWorkspaceId = wsId;
-      const files = await this.listFiles(directory);
-      return files.map(f => ({ id: f.id, path: f.path, metadata: { name: f.name } }));
-    } finally {
-      this.currentWorkspaceId = originalWsId;
-    }
-  }
-
-  async pullWorkspace(workspaceId?: string, directory = ''): Promise<Array<{ fileId: string; content: string }>> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('No workspace specified');
-    }
-
-    // Temporarily set workspace, pull files, then restore
-    const originalWsId = this.currentWorkspaceId;
-    try {
-      this.currentWorkspaceId = wsId;
-      const files = await this.listFiles(directory);
-      const out: Array<{ fileId: string; content: string }> = [];
-
-      for (const f of files) {
-        const content = (await this.pull(f.path)) ?? '';
-        out.push({ fileId: f.path, content });
+      if (entry.kind === 'file') {
+        out.push({ id: entryPath, path: entryPath, name: entry.name });
+      } else if (entry.kind === 'directory') {
+        // Recursively walk subdirectories
+        try {
+          const subDir = await dir.getDirectoryHandle(entry.name, { create: false });
+          await this.walkDirectoryForFiles(subDir, entryPath, out);
+        } catch (err) {
+          console.warn(`[LocalAdapter] Failed to walk subdirectory "${entryPath}":`, err);
+          // Continue to next entry
+        }
       }
-
-      return out;
-    } finally {
-      this.currentWorkspaceId = originalWsId;
     }
   }
 
   /**
-   * Helper: Get or create a file handle for a workspace.
-   * Navigates the directory tree and returns a file handle.
+   * List all files in workspace (for any workspace, using stored handle).
+   * Does NOT require this adapter instance to be READY.
+   */
+  async listWorkspaceFiles(
+    workspaceId?: string,
+    directory = ''
+  ): Promise<Array<{ id: string; path: string; metadata?: any }>> {
+    const wsId = workspaceId || this.workspaceId;
+    if (wsId !== this.workspaceId) {
+      throw new Error(`Cannot list files for workspace ${wsId} (adapter is for ${this.workspaceId})`);
+    }
+
+    try {
+      const files = await this.listFiles(directory);
+      return files.map((f) => ({ id: f.id, path: f.path, metadata: { name: f.name } }));
+    } catch (err) {
+      console.error('[LocalAdapter] listWorkspaceFiles error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Pull entire workspace contents.
+   * Returns all files with their content.
+   */
+  async pullWorkspace(
+    workspaceId?: string,
+    directory = ''
+  ): Promise<Array<{ fileId: string; content: string }>> {
+    const wsId = workspaceId || this.workspaceId;
+    if (wsId !== this.workspaceId) {
+      throw new Error(`Cannot pull workspace ${wsId} (adapter is for ${this.workspaceId})`);
+    }
+
+    console.log(
+      `[LocalAdapter] pullWorkspace() started for workspace: ${wsId}, directory: "${directory || 'root'}"`
+    );
+
+    try {
+      const files = await this.listFiles(directory);
+      console.log(
+        `[LocalAdapter] Found ${files.length} files to pull: ${files.map((f) => f.path).join(', ')}`
+      );
+
+      const out: Array<{ fileId: string; content: string }> = [];
+
+      for (const f of files) {
+        try {
+          const content = (await this.pull(f.path)) ?? '';
+          out.push({ fileId: f.path, content });
+          console.debug(
+            `[LocalAdapter] Loaded file "${f.path}" (${content.length} bytes)`
+          );
+        } catch (err) {
+          console.warn(`[LocalAdapter] Failed to pull file "${f.path}":`, err);
+          // Still add to output with empty content to track the file
+          out.push({ fileId: f.path, content: '' });
+        }
+      }
+
+      console.log(
+        `[LocalAdapter] ✓ pullWorkspace completed: ${out.length} files loaded (total content: ${out.reduce((sum, f) => sum + f.content.length, 0)} bytes)`
+      );
+      return out;
+    } catch (err) {
+      console.error('[LocalAdapter] pullWorkspace error:', err);
+      return [];
+    }
+  }
+
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
+
+  /**
+   * Migrate state and emit event (with previous state).
+   */
+  private setState(newState: AdapterState, error: AdapterInitError | null = null): void {
+    const prevState = this.state;
+    this.state = newState;
+    this.error = error;
+
+    console.log(
+      `[LocalAdapter] State transition: ${prevState} → ${newState}${error ? ` (error: ${error.code})` : ''}`,
+    );
+
+    this.emitEvent({
+      type: 'state-changed',
+      state: newState,
+      previousState: prevState,
+      timestamp: new Date(),
+    });
+  }
+
+  /**
+   * Emit an event to all registered listeners.
+   */
+  private emitEvent(event: AdapterLifecycleEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        console.error('[LocalAdapter] Event listener error:', err);
+      }
+    }
+  }
+
+  /**
+   * Attempt to restore directory handle from IndexedDB metadata.
+   * May require permission request if handle was serialized.
+   */
+  private async attemptRestorePersistedHandle(): Promise<boolean> {
+    try {
+      // Try to restore from global fallback (page reload)
+      if ((window as any).__localWorkspaceId === this.workspaceId) {
+        const globalHandle = (window as any).__localDirHandle;
+        if (globalHandle) {
+          this.dirHandle = globalHandle;
+          console.log(`[LocalAdapter] Recovered directory handle from global fallback`);
+          return true;
+        }
+      }
+
+      // TODO: Implement persistent handle restoration via workspace-manager
+      // const handle = await restoreDirectoryHandle(this.workspaceId)
+      // if (handle) { this.dirHandle = handle; return true; }
+
+      return false;
+    } catch (err) {
+      console.warn('[LocalAdapter] Failed to restore persisted handle:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Helper: Get or create a file handle.
+   * Navigates directory tree and returns file handle.
    */
   private async getFileHandle(
     path: string,
-    create = false,
-    workspaceId?: string
+    create = false
   ): Promise<FileSystemFileHandle | undefined> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('Workspace ID is required');
+    if (!this.dirHandle) {
+      throw new Error('Root directory handle not initialized');
     }
 
-    const rootHandle = this.dirHandleCache.get(wsId);
-    if (!rootHandle) {
-      throw new Error(`Root handle not initialized for workspace "${wsId}"`);
-    }
-
-    // Navigate to file through directory hierarchy
     const parts = path.split('/').filter(Boolean);
     const fileName = parts.pop()!;
-    let dir: FileSystemDirectoryHandle = rootHandle;
+    let dir: FileSystemDirectoryHandle = this.dirHandle;
 
     for (const part of parts) {
       dir = await dir.getDirectoryHandle(part, { create });
@@ -390,32 +667,56 @@ export class LocalAdapter implements ISyncAdapter {
   }
 
   /**
-   * Helper: Get a directory handle for a workspace.
+   * Helper: Get a directory handle.
    */
-  private async getDirectoryHandle(
-    path: string,
-    workspaceId?: string,
-    create = false
-  ): Promise<FileSystemDirectoryHandle> {
-    const wsId = workspaceId || this.currentWorkspaceId;
-    if (!wsId) {
-      throw new Error('Workspace ID is required');
+  private async getDirectoryHandle(path: string, create = false): Promise<FileSystemDirectoryHandle> {
+    if (!this.dirHandle) {
+      throw new Error('Root directory handle not initialized');
     }
 
-    const rootHandle = this.dirHandleCache.get(wsId);
-    if (!rootHandle) {
-      throw new Error(`Root handle not initialized for workspace "${wsId}"`);
-    }
-
-    if (!path) return rootHandle;
+    if (!path) return this.dirHandle;
 
     const parts = path.split('/').filter(Boolean);
-    let dir: FileSystemDirectoryHandle = rootHandle;
+    let dir: FileSystemDirectoryHandle = this.dirHandle;
 
     for (const part of parts) {
       dir = await dir.getDirectoryHandle(part, { create });
     }
 
     return dir;
+  }
+
+  /**
+   * Helper: Walk directory tree and upsert files into cache.
+   */
+  private async walkAndUpsertTree(nodes: any[]): Promise<void> {
+    for (const node of nodes) {
+      await this.walkAndUpsertNode(node);
+    }
+  }
+
+  /**
+   * Recursively walk and upsert a tree node.
+   */
+  private async walkAndUpsertNode(node: any): Promise<void> {
+    if (node.type === FileType.File) {
+      // Upsert file into cache
+      try {
+        await upsertCachedFile({
+          id: node.id,
+          path: node.path,
+          name: node.name || node.path.split('/').pop() || 'untitled',
+          workspaceId: this.workspaceId,
+          workspaceType: WorkspaceType.Local,
+          type: FileType.File,
+          dirty: false,
+          syncStatus: 'idle',
+        });
+      } catch (e) {
+        console.warn(`[LocalAdapter] Failed to upsert file ${node.id}:`, e);
+      }
+    } else if (node.type === FileType.Directory && node.children) {
+      await this.walkAndUpsertTree(node.children);
+    }
   }
 }

@@ -1,6 +1,24 @@
+/**
+ * Sync Manager - Refactored with Java-Style OOP
+ * 
+ * Key improvements:
+ * - Private singleton constructor (enforce getInstance pattern)
+ * - Adapters are destroyed/recreated per workspace (not global singletons)
+ * - Immutable adapter configuration objects
+ * - Lifecycle state machine for adapters (UNINITIALIZED -> READY/ERRORED)
+ * - Event-driven retry logic (instead of polling isReady())
+ * - Immutable file sync queue (preserved across workspace switches)
+ * - Explicit workspace binding: adapter.workspaceId never null or changed
+ * 
+ * The root issue being fixed:
+ * - Old: LocalAdapter.setCurrentWorkspace() was defined but NEVER called
+ *   Result: adapter.currentWorkspaceId always null, isReady() always false
+ * - New: Adapter bound to workspace in constructor, immutable, guaranteed valid
+ */
+
 import { BehaviorSubject, Observable } from 'rxjs';
 import { throttleTime, distinctUntilChanged } from 'rxjs/operators';
-// Yjs disabled: CRDT merging turned off for now
+
 import {
   getCacheDB,
   getCachedFile,
@@ -9,45 +27,39 @@ import {
   upsertCachedFile,
   loadFile,
   saveFile,
-  // NEW FileNode API
   queryDirtyFiles,
   getFileNodeWithContent,
   saveFileNode,
   updateSyncStatus,
 } from '../cache';
-import type { ISyncAdapter as AdapterISyncAdapter } from './adapter-types';
+
+import type { ISyncAdapter } from './adapter-types';
+import {
+  AdapterState,
+  AdapterInitError,
+  AdapterInitContext,
+  AdapterErrorCode,
+  AdapterReadinessInfo,
+  AdapterLifecycleEvent,
+} from './types/adapter-lifecycle';
+import { FileSyncQueue, FileSyncQueueEntry } from './file-sync-queue';
+import { AdapterRegistry } from './adapter-registry';
 import { MergeStrategy, NoOpMergeStrategy } from './merge-strategies';
-import { defaultRetryPolicy } from './retry-policy';
 import { v4 as uuidv4 } from 'uuid';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { WorkspaceType, FileType } from '@/core/cache/types';
 import type { FileNode } from '@/shared/types';
 import { toAdapterDescriptor } from './adapter-types';
 import { pushCachedFile } from './adapter-bridge';
-// NEW: FileNode Bridge for type conversions
 import { fileNodeBridge } from './file-node-bridge';
 import { adapterEntryToCachedFile } from './adapter-normalize';
-
-// CRDT/Yjs handling removed from SyncManager. SyncManager now operates
-// on plain file content strings. Adapters should accept/return string
-// content. CRDT merging can be reintroduced later as a cache-layer
-// responsibility and via adapter contracts.
-
-/**
- * Sync adapter interface for pushing/pulling changes from remote sources
- * Adapters are only used for non-browser workspaces (local, gdrive, s3, etc.)
- * Browser workspaces have no sync adapter (purely local IndexedDB)
- * 
- * Implementations: LocalAdapter, GDriveAdapter, (future) S3Adapter
- */
-export type ISyncAdapter = AdapterISyncAdapter;
 
 export enum SyncStatus {
   IDLE = 'idle',
   SYNCING = 'syncing',
   ONLINE = 'online',
   OFFLINE = 'offline',
-  ERROR = 'error'
+  ERROR = 'error',
 }
 
 export interface SyncStats {
@@ -58,54 +70,611 @@ export interface SyncStats {
 }
 
 /**
- * Central SyncManager orchestrates multi-adapter sync
- * Watches RxDB for dirty files, coordinates with adapters,
- * and applies remote content into the cache (CRDT merging disabled)
+ * Java-style Singleton SyncManager with strict initialization patterns.
+ * 
+ * Private constructor ensures only one instance exists.
+ * Workspace-aware adapter lifecycle management.
+ * Event-driven sync retry logic.
  */
 export class SyncManager {
-  private adapters: Map<string, ISyncAdapter> = new Map();
-  private statusSubject = new BehaviorSubject<SyncStatus>(SyncStatus.IDLE);
-  private statsSubject = new BehaviorSubject<SyncStats>({
+  // Singleton instance holder
+  private static instance: SyncManager | null = null;
+
+  // Core state - immutable references with observable properties
+  private readonly adapters: Map<string, ISyncAdapter> = new Map();
+  private readonly adaptersByWorkspace: Map<string, ISyncAdapter> = new Map();
+  private readonly adapterEventListeners: Map<string, Set<(event: AdapterLifecycleEvent) => void>> =
+    new Map();
+
+  // Queue preserved across workspace switches
+  private readonly fileQueue: FileSyncQueue;
+
+  // Observable state
+  private readonly statusSubject = new BehaviorSubject<SyncStatus>(SyncStatus.IDLE);
+  private readonly statsSubject = new BehaviorSubject<SyncStats>({
     totalSynced: 0,
     totalFailed: 0,
     lastSyncTime: 0,
-    upcomingSyncFiles: []
+    upcomingSyncFiles: [],
   });
 
-  private mergeStrategy: MergeStrategy = new NoOpMergeStrategy();
-  private remoteWatcherSubs: Map<string, any> = new Map();
+  // Lifecycle
   private isRunning = false;
-  private maxRetries = 3;
-  private retryDelays = [1000, 3000, 5000]; // exponential backoff: 1s, 3s, 5s
-  private retryMap: Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }> = new Map();
+  private readonly maxRetries = 3;
+  private readonly retryDelays = [1000, 3000, 5000]; // 1s, 3s, 5s
+  private readonly retryMap: Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }> =
+    new Map();
   private cachedFilesSub: any = null;
   private workspaceSub: any = null;
   private activeWorkspaceId: string | null = null;
-  private pullInterval: ReturnType<typeof setInterval> | null = null;
-  private periodicPullIntervalMs = 60000; // 1 minute
-  // Temporary safety switch: when false, skip pulling remote content after a successful push.
-  // This hard-coded flag addresses the immediate issue where any file update triggered pulls
-  // across all adapters/workspaces. Set to `true` to re-enable pull-after-push behavior.
-  private pullAfterPush = false;
-
-  constructor(private batchSize = 5) {}
+  private mergeStrategy: MergeStrategy = new NoOpMergeStrategy();
+  private pullAfterPush = false; // Safety switch: disabled for now
+  private readonly registry: AdapterRegistry;
 
   /**
-   * Facade: request user to open a local directory (must be called from a user gesture).
-   * Delegates to the registered `local` adapter if it supports `openDirectoryPicker`.
+   * Private constructor - enforces singleton pattern.
+   * Use getInstance() to get the single instance.
+   */
+  private constructor(batchSize: number = 5, maxQueueRetries: number = 3) {
+    this.fileQueue = new FileSyncQueue(maxQueueRetries);
+    this.registry = AdapterRegistry.getInstance();
+    console.log('[SyncManager] ✓ Singleton instance created (private constructor)');
+  }
+
+  /**
+   * Get or create the global SyncManager singleton.
+   * Java-style: thread-safe (JavaScript is single-threaded, pattern applies).
+   */
+  static getInstance(): SyncManager {
+    if (!SyncManager.instance) {
+      SyncManager.instance = new SyncManager();
+    }
+    return SyncManager.instance;
+  }
+
+  // ============================================================================
+  // PUBLIC API: Initialization & Lifecycle
+  // ============================================================================
+
+  /**
+   * Start the SyncManager and subscribe to workspace changes.
+   * Sets up dirty file monitoring for the active workspace.
+   */
+  start(): void {
+    if (this.isRunning) {
+      console.warn('[SyncManager] Already running, skipping start');
+      return;
+    }
+
+    this.isRunning = true;
+    this.statusSubject.next(SyncStatus.IDLE);
+    console.log('[SyncManager] ✓ Status set to IDLE');
+
+    try {
+      console.log('[SyncManager] Setting up workspace change subscription...');
+
+      this.workspaceSub = (useWorkspaceStore.subscribe as any)(
+        (s) => s.activeWorkspaceId,
+        async (newId: string | null) => {
+          console.log(`[SyncManager] 📋 Workspace changed to: "${newId}"`);
+          await this.setupDirtyFilesSubscription(newId);
+        }
+      );
+
+      const currentWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+      console.log(`[SyncManager] Initializing with current workspace: "${currentWorkspaceId}"`);
+      this.setupDirtyFilesSubscription(currentWorkspaceId);
+
+      console.log('[SyncManager] ✓ Workspace subscription registered');
+    } catch (err) {
+      console.error('[SyncManager] ❌ Failed to subscribe to workspace changes:', err);
+    }
+
+    console.log('[SyncManager] ✅ SyncManager started successfully (isRunning=true)');
+  }
+
+  /**
+   * Stop the SyncManager - clean up subscriptions and destroy all adapters.
+   */
+  async stop(): Promise<void> {
+    if (!this.isRunning) {
+      console.warn('[SyncManager] Not running, skipping stop');
+      return;
+    }
+
+    console.log('[SyncManager] ⏹️  Stopping SyncManager...');
+    this.isRunning = false;
+
+    // Teardown subscriptions
+    if (this.cachedFilesSub) {
+      try {
+        if (typeof this.cachedFilesSub === 'function') {
+          this.cachedFilesSub();
+        } else if (typeof this.cachedFilesSub.unsubscribe === 'function') {
+          this.cachedFilesSub.unsubscribe();
+        }
+      } catch (e) {
+        console.warn('[SyncManager] Error unsubscribing from dirty files:', e);
+      }
+    }
+
+    if (this.workspaceSub) {
+      try {
+        if (typeof this.workspaceSub === 'function') {
+          this.workspaceSub();
+        }
+      } catch (e) {
+        console.warn('[SyncManager] Error unsubscribing from workspace changes:', e);
+      }
+    }
+
+    // Clear retry timers
+    for (const retry of this.retryMap.values()) {
+      if (retry.timer) {
+        clearTimeout(retry.timer);
+      }
+    }
+    this.retryMap.clear();
+
+    // Destroy all adapters
+    for (const [workspaceId, adapter] of this.adaptersByWorkspace.entries()) {
+      try {
+        console.log(`[SyncManager] Destroying adapter for workspace ${workspaceId}...`);
+        await adapter.destroy();
+      } catch (e) {
+        console.error(`[SyncManager] Error destroying adapter for ${workspaceId}:`, e);
+      }
+    }
+
+    this.adaptersByWorkspace.clear();
+    this.statusSubject.next(SyncStatus.IDLE);
+    console.log('[SyncManager] ✅ SyncManager stopped');
+  }
+
+  /**
+   * Initialize adapter for a specific workspace.
+   * 
+   * Lifecycle:
+   * 1. Destroy existing adapter for this workspace (if any)
+   * 2. Get workspace details and adapter type
+   * 3. Create new adapter via registry
+   * 4. Call adapter.initialize() - async, may prompt for permissions
+   * 5. Listen to adapter state changes (subscribe to ready/error events)
+   * 6. Update dirty files subscription for this workspace
+   * 
+   * This is called on workspace creation and on workspace switch.
+   */
+  async initializeForWorkspace(workspaceId: string): Promise<void> {
+    console.log(`[SyncManager] Initializing adapter for workspace: ${workspaceId}`);
+
+    try {
+      // 1. Destroy existing adapter for this workspace
+      const existingAdapter = this.adaptersByWorkspace.get(workspaceId);
+      if (existingAdapter) {
+        console.log(`[SyncManager] Destroying previous adapter for workspace ${workspaceId}...`);
+        try {
+          await existingAdapter.destroy();
+        } catch (e) {
+          console.error(`[SyncManager] Error destroying previous adapter:`, e);
+        }
+        this.adaptersByWorkspace.delete(workspaceId);
+      }
+
+      // 2. Get workspace and resolve adapter type
+      const workspace = useWorkspaceStore
+        .getState()
+        .workspaces?.find((ws) => ws.id === workspaceId);
+
+      if (!workspace) {
+        console.warn(`[SyncManager] Workspace not found: ${workspaceId}`);
+        return;
+      }
+
+      const workspaceType = String(workspace.type || 'browser');
+
+      // Browser workspaces don't need adapters (pure IndexedDB)
+      if (workspaceType === 'browser' || workspaceType === WorkspaceType.Browser) {
+        console.log(`[SyncManager] Workspace ${workspaceId} is browser type - no adapter needed`);
+        return;
+      }
+
+      // 3. Check registry and create adapter
+      if (!this.registry.has(workspaceType)) {
+        console.warn(
+          `[SyncManager] No adapter factory registered for workspace type: ${workspaceType}`
+        );
+        return;
+      }
+
+      // Create a config for this workspace
+      const adapterConfig = {
+        name: workspaceType,
+        workspaceType: workspaceType as any,
+        capabilities: {
+          canPush: true,
+          canPull: true,
+          canWatch: false,
+          canDelete: true,
+          requiresAuth: workspaceType !== 'local',
+        },
+      };
+
+      // Create new adapter instance
+      const adapter = await this.registry.createAdapter(
+        workspaceType,
+        adapterConfig,
+        { workspaceId }
+      );
+
+      // 4. Subscribe to adapter events before calling initialize
+      this.subscribeToAdapterEvents(adapter, workspaceId);
+
+      // 5. Call initialize (may be async, may emit initialization-failed event)
+      console.log(`[SyncManager] Calling adapter.initialize() for workspace ${workspaceId}...`);
+      await adapter.initialize({
+        workspaceId,
+        isUserGesture: false,
+        createdAt: new Date(),
+      });
+
+      // Store adapter per workspace
+      this.adaptersByWorkspace.set(workspaceId, adapter);
+      console.log(
+        `[SyncManager] ✓ Adapter initialized for workspace ${workspaceId}, state: ${adapter.getState()}`
+      );
+
+      // 6. Re-subscribe to dirty files for this workspace (triggers sync)
+      if (this.activeWorkspaceId === workspaceId) {
+        await this.setupDirtyFilesSubscription(workspaceId);
+      }
+    } catch (error) {
+      console.error(`[SyncManager] Failed to initialize adapter for workspace ${workspaceId}:`, error);
+      // Emit event for UI to show error state
+      this.emitGlobalEvent({
+        type: 'initialization-failed',
+        error: new AdapterInitError(
+          AdapterErrorCode.INITIALIZATION_FAILED,
+          `Failed to initialize adapter for workspace ${workspaceId}`,
+          error as Error
+        ),
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  /**
+   * Clean up adapter for a workspace before switch.
+   * Pauses dirty file sync, may call adapter.destroy().
+   * Does NOT remove from queue - syncs will resume when adapter is ready again.
+   */
+  async cleanupForWorkspace(workspaceId: string): Promise<void> {
+    console.log(`[SyncManager] Cleaning up adapter for workspace: ${workspaceId}`);
+
+    // Pause dirty files subscription for this workspace
+    if (this.cachedFilesSub) {
+      try {
+        if (typeof this.cachedFilesSub === 'function') {
+          this.cachedFilesSub();
+        }
+      } catch (e) {
+        console.warn('[SyncManager] Error pausing dirty files:', e);
+      }
+      this.cachedFilesSub = null;
+    }
+
+    // Don't destroy the adapter here - keep it alive for later reinit
+    // This allows recovery if workspace is switched back
+    console.log(`[SyncManager] ✓ Cleaned up workspace ${workspaceId}`);
+  }
+
+  // ============================================================================
+  // ADAPTER MANAGEMENT
+  // ============================================================================
+
+  /**
+   * Get adapter for a workspace.
+   */
+  getAdapterForWorkspace(workspaceId: string): ISyncAdapter | undefined {
+    return this.adaptersByWorkspace.get(workspaceId);
+  }
+
+  /**
+   * Get adapter by registry name (backward compat).
+   */
+  getAdapter(name: string): ISyncAdapter | undefined {
+    return this.adapters.get(name);
+  }
+
+  /**
+   * Register a pre-created adapter (backward compat for old initialization).
+   * Deprecated - prefer createAdapter() via registry.
+   */
+  registerAdapter(adapter: ISyncAdapter): void {
+    this.adapters.set(adapter.name, adapter);
+    console.log(`[SyncManager] Registered sync adapter: ${adapter.name}`);
+  }
+
+  // ============================================================================
+  // SUBSCRIPTION & SYNC LOGIC
+  // ============================================================================
+
+  /**
+   * Setup dirty files subscription for a specific workspace.
+   * Tears down previous, creates new.
+   * 
+   * Listens to dirty files and initiates push for each one,
+   * respecting adapter readiness.
+   */
+  private async setupDirtyFilesSubscription(workspaceId: string | null): Promise<void> {
+    try {
+      // Tear down previous
+      if (this.cachedFilesSub) {
+        console.log('[SyncManager] Tearing down previous dirty files subscription...');
+        try {
+          if (typeof this.cachedFilesSub === 'function') {
+            this.cachedFilesSub();
+          } else if (typeof this.cachedFilesSub.unsubscribe === 'function') {
+            this.cachedFilesSub.unsubscribe();
+          }
+        } catch (u) {
+          console.warn('[SyncManager] Error during teardown:', u);
+        }
+      }
+
+      this.activeWorkspaceId = workspaceId;
+
+      if (!workspaceId) {
+        console.log('[SyncManager] No active workspace, skipping dirty files subscription');
+        this.cachedFilesSub = null;
+        return;
+      }
+
+      console.log(`[SyncManager] Setting up dirty files subscription for workspace: ${workspaceId}`);
+
+      // Subscribe to dirty files for this workspace
+      // Note: callback receives an array of FileNode[] (all dirty files), not individual files
+      this.cachedFilesSub = subscribeToDirtyWorkspaceFiles(workspaceId, async (files: FileNode[]) => {
+        // Process all dirty files
+        for (const file of files) {
+          if (!file.dirty) continue;
+
+          try {
+            await this.pushDirtyFile(file);
+          } catch (error) {
+            console.error(`[SyncManager] Error pushing file ${file.id}:`, error);
+          }
+        }
+      });
+
+      console.log(`[SyncManager] ✓ Dirty files subscription active for ${workspaceId}`);
+    } catch (err) {
+      console.error('[SyncManager] Failed to setup dirty files subscription:', err);
+    }
+  }
+
+  /**
+   * Push a single file to its adapter.
+   * Respects adapter readiness - if not ready, enqueues for retry on state change.
+   */
+  private async pushDirtyFile(file: FileNode): Promise<void> {
+    const fileId = file.id;
+
+    try {
+      // Skip if already synced
+      if (!file.dirty) {
+        return;
+      }
+
+      const fileData = await loadFile(file.path, file.workspaceType as any, file.workspaceId);
+      const content = fileData?.content ?? '';
+
+      // Get adapter for this workspace
+      const adapter = this.adaptersByWorkspace.get(file.workspaceId!);
+      if (!adapter) {
+        console.warn(
+          `[SyncManager] No adapter for workspace: ${file.workspaceId}, enqueuing retry`
+        );
+        this.fileQueue.enqueue(fileId, file.workspaceId!);
+        return;
+      }
+
+      // Check adapter readiness
+      if (!adapter.validateReady()) {
+        const info = adapter.getReadinessInfo();
+        console.info(
+          `[SyncManager] Adapter not ready for ${file.workspaceId} (state: ${info.state}), enqueuing retry`
+        );
+        this.fileQueue.enqueue(fileId, file.workspaceId!);
+        return;
+      }
+
+      // Push to adapter
+      const descriptor = toAdapterDescriptor(file);
+      const success = await adapter.push(descriptor, content);
+
+      if (success) {
+        // Mark as synced
+        await markCachedFileAsSynced(fileId);
+        this.fileQueue.dequeue(fileId);
+
+        // Clear any pending retry
+        const retry = this.retryMap.get(fileId);
+        if (retry && retry.timer) {
+          clearTimeout(retry.timer);
+        }
+        this.retryMap.delete(fileId);
+
+        // Update stats
+        const stats = this.statsSubject.value;
+        stats.totalSynced++;
+        this.statsSubject.next(stats);
+
+        console.debug(`[SyncManager] Synced ${fileId}`);
+      } else {
+        // Push failed - schedule retry
+        this.scheduleRetry(file, adapter.name);
+      }
+    } catch (error) {
+      console.error(`[SyncManager] Error pushing ${fileId}:`, error);
+      this.scheduleRetry(file, 'unknown');
+
+      const stats = this.statsSubject.value;
+      stats.totalFailed++;
+      this.statsSubject.next(stats);
+    }
+  }
+
+  /**
+   * Schedule a retry with exponential backoff.
+   */
+  private scheduleRetry(file: FileNode, adapterName: string): void {
+    const fileId = file.id;
+
+    let retry = this.retryMap.get(fileId);
+    if (!retry) {
+      retry = { attempts: 0, timer: null };
+      this.retryMap.set(fileId, retry);
+    }
+
+    retry.attempts++;
+
+    if (retry.attempts >= this.maxRetries) {
+      console.warn(
+        `[SyncManager] Max retries (${this.maxRetries}) exceeded for ${fileId}`
+      );
+      this.retryMap.delete(fileId);
+      return;
+    }
+
+    const delayMs = this.retryDelays[retry.attempts - 1] || this.retryDelays[this.retryDelays.length - 1];
+    console.info(
+      `[SyncManager] Retrying ${fileId} in ${delayMs}ms (attempt ${retry.attempts}/${this.maxRetries})`
+    );
+
+    if (retry.timer) {
+      clearTimeout(retry.timer);
+    }
+
+    retry.timer = setTimeout(async () => {
+      try {
+        const latestFile = await getCachedFile(fileId, file.workspaceId);
+        if (latestFile && latestFile.dirty) {
+          console.log(`[SyncManager] Executing scheduled retry for ${fileId}`);
+          await this.pushDirtyFile(latestFile as FileNode);
+        }
+      } catch (err) {
+        console.error(`[SyncManager] Retry failed for ${fileId}:`, err);
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Trigger sync for all dirty files in current workspace.
+   */
+  async syncNow(): Promise<void> {
+    if (!this.activeWorkspaceId) {
+      console.warn('[SyncManager] No active workspace, syncNow is no-op');
+      return;
+    }
+
+    console.log(`[SyncManager] syncNow for workspace: ${this.activeWorkspaceId}`);
+    this.statusSubject.next(SyncStatus.SYNCING);
+
+    try {
+      const dirtyFiles = await queryDirtyFiles(this.activeWorkspaceId);
+      console.log(`[SyncManager] Found ${dirtyFiles.length} dirty files`);
+
+      for (const file of dirtyFiles) {
+        if (file.dirty) {
+          await this.pushDirtyFile(file as FileNode);
+        }
+      }
+
+      this.statusSubject.next(SyncStatus.IDLE);
+      console.log('[SyncManager] ✓ syncNow complete');
+    } catch (err) {
+      console.error('[SyncManager] syncNow failed:', err);
+      this.statusSubject.next(SyncStatus.ERROR);
+    }
+  }
+
+  // ============================================================================
+  // WORKSPACE PULL & OPERATIONS
+  // ============================================================================
+
+  /**
+   * Pull entire workspace from adapter (during workspace switch).
+   */
+  async pullWorkspace(workspace: { id: string; type: WorkspaceType | string }): Promise<void> {
+    console.log(`[SyncManager] Pulling workspace: ${workspace.id} (type: ${workspace.type})`);
+
+    try {
+      const workspaceType = String(workspace.type);
+      const adapter = this.adaptersByWorkspace.get(workspace.id);
+
+      if (!adapter) {
+        console.warn(`[SyncManager] No adapter for workspace ${workspace.id}`);
+        return;
+      }
+
+      if (!adapter.validateReady()) {
+        console.info(`[SyncManager] Adapter not ready for pull, skipping`);
+        return;
+      }
+
+      if (typeof (adapter as any).pullWorkspace === 'function') {
+        const entries = await (adapter as any).pullWorkspace(workspace.id);
+        const fileNodes = fileNodeBridge.adapterResponseToFileNode(
+          entries,
+          adapter.name as any,
+          workspace.id
+        );
+
+        for (const fileNode of fileNodes) {
+          try {
+            await saveFileNode(fileNode);
+          } catch (e) {
+            console.warn(`[SyncManager] Failed to save FileNode ${fileNode.id}`, e);
+          }
+        }
+
+        console.info(
+          `[SyncManager] Pulled ${fileNodes.length} files from ${adapter.name} for workspace ${workspace.id}`
+        );
+      }
+    } catch (e) {
+      console.error(`[SyncManager] pullWorkspace failed:`, e);
+    }
+  }
+
+  /**
+   * Facade: request user to open a local directory.
+   * Delegates to local adapter.
+   * 
+   * If workspace adapter hasn't been initialized yet, initializes it first.
    */
   async requestOpenLocalDirectory(workspaceId?: string): Promise<void> {
-    const adapter = this.adapters.get('local');
-    if (!adapter) throw new Error('Local adapter not registered');
+    // Ensure workspace adapter is initialized before trying to use it
+    if (workspaceId) {
+      try {
+        await this.initializeForWorkspace(workspaceId);
+      } catch (e) {
+        console.warn(`[SyncManager] Failed to initialize workspace ${workspaceId} before opening directory:`, e);
+        // Continue anyway - adapter might be available from registry or global map
+      }
+    }
+
+    const adapter = this.adaptersByWorkspace.get(workspaceId || '') ||
+      this.adapters.get('local');
+    if (!adapter) throw new Error(`Local adapter not registered or initialized for workspace: ${workspaceId}`);
+
     const impl: any = adapter as any;
     if (typeof impl.openDirectoryPicker === 'function') {
       await impl.openDirectoryPicker(workspaceId);
-      // If a workspace id was provided, attempt to populate cache from the adapter
       if (workspaceId) {
         try {
           await this.pullWorkspace({ id: workspaceId, type: WorkspaceType.Local });
         } catch (e) {
-          // Non-fatal - UI should continue even if full pull fails
           console.warn('pullWorkspace after openLocalDirectory failed:', e);
         }
       }
@@ -115,12 +684,13 @@ export class SyncManager {
   }
 
   /**
-   * Facade: prompt for permission and restore a stored local directory handle.
-   * Delegates to the local adapter if available.
+   * Facade: request permission and restore local directory handle.
    */
   async requestPermissionForLocalWorkspace(workspaceId: string): Promise<boolean> {
-    const adapter = this.adapters.get('local');
+    const adapter = this.adaptersByWorkspace.get(workspaceId) ||
+      this.adapters.get('local');
     if (!adapter) return false;
+
     const impl: any = adapter as any;
     if (typeof impl.promptPermissionAndRestore === 'function') {
       const res = await impl.promptPermissionAndRestore(workspaceId);
@@ -137,19 +707,20 @@ export class SyncManager {
   }
 
   /**
-   * Facade: pull a single file from the adapter into RxDB cache.
-   * Adapter must implement `pull(fileId)` which returns string content.
+   * Pull a single file from adapter to cache.
    */
   async pullFileToCache(fileId: string, workspaceType: WorkspaceType | string, workspaceId?: string): Promise<void> {
     try {
-      const adapterName = (String(workspaceType) === 'drive' || workspaceType === WorkspaceType.GDrive) ? 'gdrive' : String(workspaceType);
-      const adapter = this.adapters.get(adapterName);
+      const adapterName = String(workspaceType) === 'drive' ? 'gdrive' : String(workspaceType);
+      const adapter = this.adaptersByWorkspace.get(workspaceId || '') ||
+        this.adapters.get(adapterName);
+
       if (!adapter || typeof (adapter as any).pull !== 'function') {
         throw new Error(`Adapter not available for ${adapterName}`);
       }
+
       const content = await (adapter as any).pull(fileId);
       if (typeof content === 'string') {
-        // Normalize into cached file and upsert
         const normalized = adapterEntryToCachedFile({ fileId }, workspaceType as any, workspaceId);
         await upsertCachedFile({ ...normalized, dirty: false });
         await saveFile(normalized.path || fileId, content, workspaceType as any, undefined, workspaceId);
@@ -161,15 +732,12 @@ export class SyncManager {
   }
 
   /**
-   * Enqueue a saved file for direct push processing (bypasses persistent queue).
-   * This is intended to be called for saves originating from the active workspace
-   * so that authorship is authoritative and pushes happen with minimal latency.
+   * Enqueue a file for direct processing.
    */
-  public async enqueueAndProcess(fileId: string, path: string, workspaceType: string, workspaceId?: string): Promise<void> {
+  async enqueueAndProcess(fileId: string, path: string, workspaceType: string, workspaceId?: string): Promise<void> {
     try {
       const cached = await getCachedFile(fileId, workspaceId);
       if (cached) {
-        // Push directly to adapter without queue
         await this.pushDirtyFile(cached as FileNode);
       }
     } catch (err) {
@@ -177,666 +745,154 @@ export class SyncManager {
     }
   }
 
-  /**
-   * Register a sync adapter (e.g., local, GDrive, browser storage)
-   */
-  registerAdapter(adapter: ISyncAdapter): void {
-    this.adapters.set(adapter.name, adapter);
-    console.log(`Registered sync adapter: ${adapter.name}`);
-  }
+  // ============================================================================
+  // OBSERVABLES
+  // ============================================================================
 
-  /**
-   * Get a registered adapter by name
-   */
-  getAdapter(name: string): ISyncAdapter | undefined {
-    return this.adapters.get(name);
-  }
-
-  /**
-   * Start the sync manager (begins polling)
-   */
-  start(): void {
-    if (this.isRunning) {
-      console.warn('[SyncManager] Already running, skipping start');
-      return;
-    }
-
-    this.isRunning = true;
-    this.statusSubject.next(SyncStatus.IDLE);
-    console.log('[SyncManager] ✓ Status set to IDLE');
-
-    // Subscribe to active workspace changes and listen to dirty files for that workspace
-    try {
-      console.log('[SyncManager] Setting up workspace change subscription...');
-
-      this.workspaceSub = (useWorkspaceStore.subscribe as any)(
-        (s) => s.activeWorkspaceId,
-        (newId: string | null) => {
-          console.log(`[SyncManager] 📋 Workspace changed to: "${newId}"`);
-          this.setupDirtyFilesSubscription(newId);
-        }
-      );
-
-      // Initialize subscription with current active workspace
-      const currentWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
-      console.log(`[SyncManager] Initializing with current workspace: "${currentWorkspaceId}"`);
-      this.setupDirtyFilesSubscription(currentWorkspaceId);
-
-      console.log('[SyncManager] ✓ Workspace subscription registered');
-    } catch (err) {
-      console.error('[SyncManager] ❌ Failed to subscribe to workspace changes:', err);
-    }
-
-    console.log('[SyncManager] ✅ SyncManager started successfully (isRunning=true)');
-  }
-
-  /**
-   * Setup dirty files subscription for a specific workspace
-   * Tears down previous subscription and creates a new one for the given workspace
-   */
-  private setupDirtyFilesSubscription(workspaceId: string | null): void {
-    try {
-      // Teardown previous dirty files subscription
-      if (this.cachedFilesSub) {
-        console.log('[SyncManager] Tearing down previous dirty files subscription...');
-        try {
-          if (typeof this.cachedFilesSub === 'function') {
-            this.cachedFilesSub(); // Call the unsubscribe function
-          } else if (typeof this.cachedFilesSub.unsubscribe === 'function') {
-            this.cachedFilesSub.unsubscribe();
-          }
-        } catch (u) {
-          console.warn('[SyncManager] Error during teardown:', u);
-        }
-        this.cachedFilesSub = null;
-        console.log('[SyncManager] ✓ Previous subscription torn down');
-      }
-
-      this.activeWorkspaceId = workspaceId;
-
-      // If there's no active workspace, don't subscribe to dirty files
-      if (!workspaceId) {
-        console.log('[SyncManager] No active workspace, skipping dirty file subscription');
-        return;
-      }
-
-      // Subscribe ONLY to dirty files in the active workspace
-      // Query-level filtering at RxDB prevents unnecessary processing
-      console.log(`[SyncManager] 👁️ Subscribing to DIRTY files for workspace: "${workspaceId}"`);
-      this.cachedFilesSub = subscribeToDirtyWorkspaceFiles(workspaceId, (dirtyFiles) => {
-        console.log(`[SyncManager] 📊 Dirty files subscription fired: ${dirtyFiles.length} dirty file(s) in workspace "${workspaceId}"`);
-        if (dirtyFiles.length > 0) {
-          console.log(`[SyncManager] 📤 Queuing ${dirtyFiles.length} dirty file(s) for sync:`, dirtyFiles.map(f => `${f.id}(${f.path})`).join(', '));
-          for (const f of dirtyFiles) {
-            console.log(`[SyncManager]   → Pushing file: ${f.id} (path: ${f.path})`);
-            this.pushDirtyFile(f as FileNode).catch((err) => {
-              console.warn(`[SyncManager] ❌ Push failed for ${f.id}:`, err);
-            });
-          }
-        }
-      });
-      console.log('[SyncManager] ✓ Dirty files subscription established (only active workspace, no filtering needed)');
-    } catch (err) {
-      console.error('[SyncManager] ❌ Failed to set up dirty file subscription:', err);
-    }
-  }
-
-  /**
-   * Stop the sync manager
-   */
-  stop(): void {
-    if (!this.isRunning) return;
-
-    this.isRunning = false;
-
-    // Clean up retry timers
-    for (const [fileId, retry] of this.retryMap.entries()) {
-      if (retry.timer) {
-        clearTimeout(retry.timer);
-      }
-    }
-    this.retryMap.clear();
-
-    if (this.pullInterval) {
-      clearInterval(this.pullInterval);
-      this.pullInterval = null;
-    }
-    // Unsubscribe from dirty files subscription
-    try {
-      if (this.cachedFilesSub && typeof this.cachedFilesSub.unsubscribe === 'function') {
-        this.cachedFilesSub.unsubscribe();
-      } else if (this.cachedFilesSub && typeof this.cachedFilesSub === 'function') {
-        this.cachedFilesSub();
-      }
-      // Unsubscribe from workspace store subscription
-      if (this.workspaceSub && typeof this.workspaceSub === 'function') {
-        try {
-          this.workspaceSub();
-        } catch (e) {
-          // ignore
-        }
-      } else if (this.workspaceSub && typeof this.workspaceSub.unsubscribe === 'function') {
-        try {
-          this.workspaceSub.unsubscribe();
-        } catch (e) {
-          // ignore
-        }
-      }
-    } catch (err) {
-      console.warn('Error unsubscribing cachedFilesSub:', err);
-    }
-
-    this.statusSubject.next(SyncStatus.IDLE);
-    console.log('SyncManager stopped');
-  }
-
-  /**
-   * Observable for sync status changes
-   */
-  status$(): Observable<SyncStatus> {
-    return this.statusSubject.asObservable();
-  }
-
-  /**
-   * Observable for sync statistics
-   */
-  stats$(): Observable<SyncStats> {
-    return this.statsSubject.asObservable().pipe(
-      throttleTime(1000),
-      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr))
+  getStatusObservable(): Observable<SyncStatus> {
+    return this.statusSubject.asObservable().pipe(
+      distinctUntilChanged(),
+      throttleTime(500, undefined, { leading: true, trailing: true })
     );
   }
 
   /**
-   * Manually trigger a sync cycle - finds all dirty files and pushes them
+   * Backward compat: old API used status$()
+   * @deprecated Use getStatusObservable() instead
    */
-  async syncNow(): Promise<void> {
-    if (!this.isRunning) {
-      console.warn('SyncManager not running');
-      return;
-    }
-
-    this.statusSubject.next(SyncStatus.SYNCING);
-    try {
-      // Get all dirty files from active workspace
-      const workspace = useWorkspaceStore.getState().activeWorkspace?.();
-      if (!workspace) {
-        this.statusSubject.next(SyncStatus.IDLE);
-        return;
-      }
-
-      const dirtyFiles = await queryDirtyFiles(workspace.id);
-      if (dirtyFiles.length === 0) {
-        this.statusSubject.next(SyncStatus.ONLINE);
-        return;
-      }
-
-      // Push all dirty files
-      await Promise.allSettled(dirtyFiles.map((file) => this.pushDirtyFile(file as FileNode)));
-
-      const stats = this.statsSubject.value;
-      stats.lastSyncTime = Date.now();
-      this.statsSubject.next(stats);
-      this.statusSubject.next(SyncStatus.ONLINE);
-    } catch (error) {
-      console.error('Sync failed:', error);
-      this.statusSubject.next(SyncStatus.ERROR);
-    }
+  status$(): Observable<SyncStatus> {
+    return this.getStatusObservable();
   }
 
-  /**
-   * Push a single dirty file to its adapter with in-memory retry backoff
-   * - On success: mark file as synced (dirty = false)
-   * - On failure: schedule retry with exponential backoff
-   */
-  private async pushDirtyFile(file: FileNode): Promise<void> {
-    const { id: fileId } = file;
-
-    try {
-      // Skip browser workspaces (no sync needed)
-      if (String(file.workspaceType) === WorkspaceType.Browser) {
-        return;
-      }
-
-      // Skip if already synced
-      if (!file.dirty) {
-        return;
-      }
-
-      // Load the latest content from cache (RxDB) as a plain string
-      const fileData = await loadFile(file.path, file.workspaceType as any, file.workspaceId);
-      const content = fileData?.content ?? '';
-
-      // Get the adapter for this file's workspace type
-      const adapterName = (String(file.workspaceType) === 'drive' || file.workspaceType === WorkspaceType.GDrive) ? 'gdrive' : String(file.workspaceType);
-      const targetAdapter = this.adapters.get(adapterName);
-
-      if (!targetAdapter) {
-        console.warn(`[SyncManager] No adapter registered for workspace type: ${file.workspaceType}`);
-        return;
-      }
-
-      // Check adapter readiness (optional)
-      const isReady = typeof (targetAdapter as any).isReady === 'function' ? (targetAdapter as any).isReady(file.workspaceId) : true;
-      if (!isReady) {
-        console.info(`[SyncManager] Adapter ${adapterName} not ready, will retry on next edit`);
-        return;
-      }
-
-      // Try to push to adapter
-      const descriptor = toAdapterDescriptor(file);
-      const success = await targetAdapter.push(descriptor, content);
-
-      if (success) {
-      // Mark as synced (dirty = false)
-        await markCachedFileAsSynced(fileId);
-
-        // Clear any pending retry for this file
-        const retry = this.retryMap.get(fileId);
-        if (retry && retry.timer) {
-          clearTimeout(retry.timer);
-        }
-        this.retryMap.delete(fileId);
-
-        // Update stats
-        const stats = this.statsSubject.value;
-        stats.totalSynced++;
-        this.statsSubject.next(stats);
-
-        console.debug(`[SyncManager] Synced ${fileId} → ${adapterName}`);
-      } else {
-        // Push failed - schedule retry with backoff
-        this.scheduleRetry(file as FileNode, adapterName);
-      }
-    } catch (error) {
-      console.error(`[SyncManager] Push error for ${fileId}:`, error);
-
-      // Schedule retry on error
-      this.scheduleRetry(file as FileNode, 'unknown');
-
-      const stats = this.statsSubject.value;
-      stats.totalFailed++;
-      this.statsSubject.next(stats);
-    }
+  getStatsObservable(): Observable<SyncStats> {
+    return this.statsSubject.asObservable().pipe(
+      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr))
+    );
   }
 
-  /**
-   * Schedule a retry for a file push with exponential backoff
-   */
-  private scheduleRetry(file: FileNode, adapterName: string): void {
-    const fileId = file.id;
-
-    // Get or create retry record
-    let retry = this.retryMap.get(fileId);
-    if (!retry) {
-      retry = { attempts: 0, timer: null };
-      this.retryMap.set(fileId, retry);
-    }
-
-    // Increment attempts
-    retry.attempts++;
-
-    // Check if we've exceeded max retries
-    if (retry.attempts >= this.maxRetries) {
-      console.warn(`[SyncManager] Max retries (${this.maxRetries}) exceeded for ${fileId}`);
-      this.retryMap.delete(fileId);
-      return;
-    }
-
-    // Calculate delay for this attempt (1s, 3s, 5s)
-    const delayMs = this.retryDelays[retry.attempts - 1] || this.retryDelays[this.retryDelays.length - 1];
-
-    console.info(`[SyncManager] Retrying ${fileId} in ${delayMs}ms (attempt ${retry.attempts}/${this.maxRetries})`);
-
-    // Cancel previous timer if any
-    if (retry.timer) {
-      clearTimeout(retry.timer);
-    }
-
-    // Schedule retry
-    retry.timer = setTimeout(async () => {
-      try {
-        const latestFile = await getCachedFile(fileId, file.workspaceId);
-        if (latestFile && latestFile.dirty) {
-          console.log(`[SyncManager] Retrying push for ${fileId}`);
-          await this.pushDirtyFile(latestFile as FileNode);
-        }
-      } catch (err) {
-        console.error(`[SyncManager] Retry failed for ${fileId}:`, err);
-      }
-    }, delayMs);
-  }
+  // ============================================================================
+  // ADAPTER EVENT HANDLING
+  // ============================================================================
 
   /**
-   * Sync a single file: push local, pull remote, merge if needed
+   * Subscribe to lifecycle events from an adapter.
+   * Handles state transitions, ready events, and errors.
    */
-  /**
-   * Merge remote content with local cache (CRDT merging currently disabled)
-   * This method is a no-op; future CRDT behavior should be implemented in the cache layer.
-   */
-  private async mergeRemoteChanges(docId: string, remoteContent: string): Promise<void> {
-    return Promise.resolve();
-  }
+  private subscribeToAdapterEvents(adapter: ISyncAdapter, workspaceId: string): void {
+    const listener = (event: AdapterLifecycleEvent) => {
+      console.log(
+        `[SyncManager] Adapter event (${workspaceId}):`,
+        event.type,
+        event
+      );
 
-  /**
-   * Setup watchers for remote changes
-   * Adapters can emit change notifications via their watch() observable
-   */
-  private setupRemoteWatchers(): void {
-    for (const adapter of this.adapters.values()) {
-      if (adapter.watch) {
-        try {
-          const watcher = adapter.watch();
-          watcher.subscribe(
-            (changedFileId) => {
-              console.log(`Remote change detected in ${adapter.name}: ${changedFileId}`);
-              // Trigger pull for this file
-              this.pullFileFromAdapter(changedFileId, adapter).catch((error) => {
-                console.error(`Failed to pull ${changedFileId} from ${adapter.name}:`, error);
-              });
-            },
-            (error) => {
-              console.error(`Watch error in ${adapter.name}:`, error);
-            }
+      if (event.type === 'state-changed') {
+        const { state } = event;
+
+        if (state === AdapterState.READY) {
+          console.log(`[SyncManager] 🟢 Adapter ready for ${workspaceId}, processing queue...`);
+          this.processQueueForWorkspace(workspaceId).catch((e) => {
+            console.error(`[SyncManager] Error processing queue:`, e);
+          });
+        } else if (state === AdapterState.ERRORED) {
+          console.error(
+            `[SyncManager] 🔴 Adapter error for ${workspaceId}:`,
+            adapter.getError()
           );
-        } catch (error) {
-          console.warn(`Failed to setup watcher for ${adapter.name}:`, error);
         }
+      } else if (event.type === 'initialization-failed') {
+        console.error(
+          `[SyncManager] Initialization failed for ${workspaceId}:`,
+          event.error
+        );
       }
-    }
+    };
+
+    adapter.addEventListener(listener);
+    this.storeEventListener(adapter.name, listener);
   }
 
   /**
-   * Public API to pull an entire workspace's remote state and upsert into RxDB.
-   * This is used during blocking workspace switches to ensure RxDB contains
-   * the latest remote files before the UI renders the workspace.
+   * Store event listener for cleanup.
    */
-  async pullWorkspace(workspace: { id: string; type: WorkspaceType | string; path?: string }): Promise<void> {
-    if (!workspace) return;
-
-    const adapterName = (String(workspace.type) === 'drive' || workspace.type === WorkspaceType.GDrive) ? 'gdrive' : String(workspace.type);
-    const adapter = this.adapters.get(adapterName);
-    if (!adapter) {
-      console.warn(`No adapter registered for workspace type: ${workspace.type}`);
-      return;
+  private storeEventListener(adapterName: string, listener: (event: AdapterLifecycleEvent) => void): void {
+    if (!this.adapterEventListeners.has(adapterName)) {
+      this.adapterEventListeners.set(adapterName, new Set());
     }
+    this.adapterEventListeners.get(adapterName)!.add(listener);
+  }
 
-    this.statusSubject.next(SyncStatus.SYNCING);
+  /**
+   * Process queued files for a workspace now that adapter is ready.
+   */
+  private async processQueueForWorkspace(workspaceId: string): Promise<void> {
+    const queued = this.fileQueue.getByWorkspace(workspaceId);
+    console.log(`[SyncManager] Processing ${queued.length} queued files for workspace ${workspaceId}`);
 
-    try {
-      // If adapter provides an optimized workspace pull, use it
-      if (typeof adapter.pullWorkspace === 'function') {
-        const items = await adapter.pullWorkspace(workspace.id, workspace.path);
-        for (const item of items || []) {
-          try {
-            // Adapter should return content string in `content`.
-            const content = (item as any).content ?? '';
-            const id = (item as any).fileId ?? (item as any).id ?? '';
-
-            // Normalize minimal info into canonical cached file and upsert
-            const normalized = adapterEntryToCachedFile({ fileId: id }, workspace.type as any, workspace.id);
-            await upsertCachedFile({ ...normalized, dirty: false });
-            // Don't mark files as dirty during initial workspace load
-            await saveFile(normalized.path || id, content, workspace.type as any, undefined, workspace.id, { markDirty: false });
-          } catch (err) {
-            console.warn('Failed to upsert remote item during pullWorkspace:', err);
-          }
+    for (const entry of queued) {
+      try {
+        const file = await getCachedFile(entry.fileId, workspaceId);
+        if (file && file.dirty) {
+          console.log(`[SyncManager] Retrying queued file: ${entry.fileId}`);
+          await this.pushDirtyFile(file as FileNode);
         }
-      } else if (typeof adapter.listWorkspaceFiles === 'function') {
-        // Fall back to listing files and pulling each individually
-        const list = await adapter.listWorkspaceFiles(workspace.id, workspace.path);
-        for (const entry of list || []) {
-          try {
-            const remoteContent = await adapter.pull(entry.id);
-            const normalized = adapterEntryToCachedFile(entry as any, workspace.type as any, workspace.id);
-            await upsertCachedFile({ ...normalized, dirty: false });
-            if (typeof remoteContent === 'string' && remoteContent.length > 0) {
-              // Don't mark files as dirty during initial workspace load
-              await saveFile(normalized.path || entry.path || entry.id, remoteContent, workspace.type as any, undefined, workspace.id, { markDirty: false });
-            }
-          } catch (err) {
-            console.warn('Failed to pull remote file during pullWorkspace:', err);
-          }
-        }
-      } else {
-        // Adapter does not support workspace pulls; nothing to pull
-        console.info(`Adapter ${adapter.name} does not support workspace pulls`);
+      } catch (e) {
+        console.error(`[SyncManager] Failed to process queued file ${entry.fileId}:`, e);
       }
-
-      this.statusSubject.next(SyncStatus.ONLINE);
-    } catch (error) {
-      // Non-fatal: adapter initialization or listing failures (e.g. local dir not provided)
-      // should not throw and block workspace switching. Log a warning and continue.
-      console.warn('pullWorkspace warning (non-fatal):', error);
-      this.statusSubject.next(SyncStatus.OFFLINE);
-      return;
     }
   }
 
   /**
-   * Periodic pull scaffolding for future background pulls. Not enabled by default.
+   * Emit a global event (for UI listeners).
    */
-  startPeriodicPulls(intervalMs?: number): void {
-    const ms = intervalMs ?? this.periodicPullIntervalMs;
-    if (this.pullInterval) return;
-    this.pullInterval = setInterval(() => {
-      this.performPull().catch((err) => console.error('Periodic pull failed:', err));
-    }, ms);
-  }
-
-  stopPeriodicPulls(): void {
-    if (this.pullInterval) {
-      clearInterval(this.pullInterval);
-      this.pullInterval = null;
-    }
+  private emitGlobalEvent(event: AdapterLifecycleEvent): void {
+    console.log('[SyncManager] Global event:', event);
+    // TODO: Emit to global event emitter if needed for UI notifications
   }
 
   /**
-   * Public helper to enable periodic pulls (opt-in).
+   * Get readiness info for a workspace.
    */
-  enablePeriodicPull(ms?: number): void {
-    this.startPeriodicPulls(ms);
-  }
-
-  private async performPull(): Promise<void> {
-    // Placeholder: iterate through configured workspaces and call pullWorkspace
-    // Future enhancement: discover active workspaces and only pull those
-    try {
-      const workspace = useWorkspaceStore.getState().activeWorkspace?.();
-      if (workspace) {
-        await this.pullWorkspace(workspace);
-      }
-    } catch (err) {
-      console.warn('performPull error:', err);
-    }
-  }
-
-  /**
-   * Pull a specific file's changes from an adapter and merge
-   */
-  private async pullFileFromAdapter(fileId: string, adapter: ISyncAdapter): Promise<void> {
-    try {
-      const workspace = useWorkspaceStore.getState().activeWorkspace?.();
-      const workspaceId = workspace?.id;
-
-      const file = await getCachedFile(fileId, workspaceId);
-      if (!file) return;
-
-      const remoteContent = await adapter.pull(fileId);
-      if (typeof remoteContent === 'string' && remoteContent.length > 0) {
-        // Delegate to merge strategy instead of blind overwrite
-        await this.mergeStrategy.handlePull(file, remoteContent);
-      }
-    } catch (error) {
-      console.error(`pullFileFromAdapter error:`, error);
-    }
-  }
-
-  // ==================== NEW FileNode-Based Sync Methods ====================
-  /**
-   * Pull changes from adapter using FileNode API
-   * Converts adapter entries to FileNode and persists to RxDB
-   * @param adapter Sync adapter to pull from
-   * @param workspaceId Target workspace ID
-   */
-  async pullFromAdapterWithFileNode(
-    adapter: ISyncAdapter,
-    workspaceId: string
-  ): Promise<void> {
-    try {
-      // Get adapter entries (if listWorkspaceFiles exists)
-      const adapterImpl = adapter as any;
-      if (!adapterImpl.listWorkspaceFiles) {
-        console.warn(`[SyncManager] Adapter ${adapter.name} does not support listWorkspaceFiles`);
-        return;
-      }
-
-      const entries = await adapterImpl.listWorkspaceFiles(workspaceId);
-      if (!entries || entries.length === 0) {
-        console.info(`[SyncManager] No files to pull from ${adapter.name}`);
-        return;
-      }
-
-      // Convert adapter entries to FileNode
-      const fileNodes = fileNodeBridge.adapterResponseToFileNode(
-        entries,
-        adapter.name as any,
-        workspaceId
-      );
-
-      // Persist to RxDB
-      for (const fileNode of fileNodes) {
-        try {
-          await saveFileNode(fileNode);
-        } catch (e) {
-          console.warn(`[SyncManager] Failed to save FileNode ${fileNode.id}`, e);
-        }
-      }
-
-      console.info(`[SyncManager] Pulled ${fileNodes.length} files from ${adapter.name} for workspace ${workspaceId}`);
-    } catch (e) {
-      console.error(`[SyncManager] pullFromAdapterWithFileNode failed:`, e);
-    }
-  }
-
-  /**
-   * Push dirty files to adapter using FileNode API
-   * Converts dirty FileNodes to adapter descriptors and pushes
-   * @param adapter S adapter to push to
-   * @param workspaceId Target workspace ID
-   */
-  async pushToAdapterWithFileNode(
-    adapter: ISyncAdapter,
-    workspaceId: string
-  ): Promise<void> {
-    try {
-      // Get all dirty files for this workspace
-      const dirtyFiles = await queryDirtyFiles(workspaceId);
-      if (dirtyFiles.length === 0) {
-        console.info(`[SyncManager] No dirty files to push for workspace ${workspaceId}`);
-        return;
-      }
-
-      // Load content for files if needed
-      const filesWithContent = await Promise.all(
-        dirtyFiles.map(async (file) => {
-          if (file.type === FileType.File && !file.content) {
-            return getFileNodeWithContent(file.id) || file;
-          }
-          return file;
-        })
-      );
-
-      // Convert to adapter descriptors
-      const descriptors = fileNodeBridge.fileNodeToAdapterDescriptor(
-        filesWithContent,
-        adapter.name as any
-      );
-
-      // Push to adapter
-      const adapterImpl = adapter as any;
-      if (adapterImpl.pushChanges && typeof adapterImpl.pushChanges === 'function') {
-        await adapterImpl.pushChanges(descriptors);
-      } else {
-        console.warn(`[SyncManager] Adapter ${adapter.name} does not support pushChanges`);
-        return;
-      }
-
-      // Mark files as synced
-      for (const file of dirtyFiles) {
-        try {
-          await updateSyncStatus(file.id, 'idle', (file.version ?? 0) + 1);
-        } catch (e) {
-          console.warn(`[SyncManager] Failed to update sync status for ${file.id}`, e);
-        }
-      }
-
-      console.info(`[SyncManager] Pushed ${dirtyFiles.length} files to ${adapter.name} for workspace ${workspaceId}`);
-    } catch (e) {
-      console.error(`[SyncManager] pushToAdapterWithFileNode failed:`, e);
-    }
+  getAdapterReadinessInfo(workspaceId: string): AdapterReadinessInfo | null {
+    const adapter = this.adaptersByWorkspace.get(workspaceId);
+    if (!adapter) return null;
+    return adapter.getReadinessInfo();
   }
 }
 
-// Singleton instance
-let syncManagerInstance: SyncManager | null = null;
+// ============================================================================
+// SINGLETON GETTER & INITIALIZATION FUNCTION
+// ============================================================================
 
 /**
- * Get or create the global SyncManager instance
+ * Get the global SyncManager singleton.
  */
 export function getSyncManager(): SyncManager {
-  if (!syncManagerInstance) {
-    syncManagerInstance = new SyncManager();
-  }
-  return syncManagerInstance;
+  return SyncManager.getInstance();
 }
 
 /**
- * Initialize and start the SyncManager
+ * Initialize and start the SyncManager.
+ * Register adapters via AdapterRegistry first (see initializeAdapters below).
  */
-/**
- * Initialize and start the SyncManager with direct subscription-driven sync
- * Removes persistent queue complexity in favor of simple in-memory retry with backoff
- */
-export async function initializeSyncManager(adapters: ISyncAdapter[]): Promise<SyncManager> {
-  const manager = getSyncManager();
-  for (const adapter of adapters) {
-    manager.registerAdapter(adapter);
+export async function initializeSyncManager(): Promise<SyncManager> {
+  const manager = SyncManager.getInstance();
+
+  // Initialize for current active workspace
+  const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+  if (activeWs) {
+    console.log(`[SyncManager] Initializing adapter for active workspace: ${activeWs.id}`);
+    await manager.initializeForWorkspace(activeWs.id);
   }
-  // Attempt to auto-initialize local adapter from persisted directory handle for the active workspace.
-  try {
-    const active = useWorkspaceStore.getState().activeWorkspace?.();
-    if (active && active.type === WorkspaceType.Local) {
-      const localAdapter = manager.getAdapter('local') as any;
-      if (localAdapter && typeof localAdapter.initialize === 'function') {
-        try {
-          // Ensure RxDB is available for handle metadata helpers and attempt to restore
-          // the persisted handle via `workspace-manager` which will also upsert RxDB metadata.
-          const { initializeRxDB } = await import('@/core/cache/file-manager');
-          const { restoreDirectoryHandle } = await import('@/core/cache/workspace-manager');
-          try { await initializeRxDB(); } catch (e) { /* best-effort */ }
-          const handle = await restoreDirectoryHandle(active.id);
-          if (handle) {
-            await localAdapter.initialize(handle);
-          }
-        } catch (e) {
-          // Non-fatal: log and continue. UI/gesture based flows will prompt when needed.
-          console.warn('Failed to auto-initialize local adapter from stored handle:', e);
-        }
-      }
-    }
-  } catch (e) {
-    // ignore errors during best-effort adapter restore
-  }
+
   manager.start();
   return manager;
 }
 
 /**
- * Cleanup: stop the SyncManager
+ * Stop and cleanup the SyncManager.
  */
-export function stopSyncManager(): void {
-  if (syncManagerInstance) {
-    syncManagerInstance.stop();
-  }
+export async function stopSyncManager(): Promise<void> {
+  const manager = SyncManager.getInstance();
+  await manager.stop();
 }

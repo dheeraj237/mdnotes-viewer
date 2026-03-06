@@ -1,7 +1,9 @@
 import { initializeRxDB, getCacheDB } from '@/core/cache/file-manager';
 import { enqueueSyncEntry, processPendingQueueOnce } from '@/core/sync/sync-queue-processor';
 import { SyncOp, FileType, WorkspaceType } from '@/core/cache/types';
-import type { ISyncAdapter } from '@/core/sync/adapter-types';
+import type { ISyncAdapter, AdapterInitContext } from '@/core/sync/adapter-types';
+import { AdapterState, AdapterInitError, AdapterErrorCode, AdapterReadinessInfo } from '@/core/sync/types/adapter-lifecycle';
+import type { AdapterLifecycleEvent, AdapterEventListener } from '@/core/sync/adapter-types';
 
 async function run() {
   console.log('Initializing RxDB (smoke test)...');
@@ -37,6 +39,16 @@ async function run() {
     pull: async () => null,
     exists: async () => true,
     delete: async () => true,
+    // Lifecycle methods (required by new interface)
+    getState: () => AdapterState.READY,
+    getError: () => null,
+    getReadinessInfo: () =>
+      new AdapterReadinessInfo(true, AdapterState.READY, null, 'test', true),
+    initialize: async () => {},
+    destroy: async () => {},
+    validateReady: () => true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
   };
 
   const adapters = new Map<string, ISyncAdapter>([[mockAdapter.name, mockAdapter]]);

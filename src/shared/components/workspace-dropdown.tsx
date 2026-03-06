@@ -139,13 +139,30 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         try {
           // Prompt user to select a local directory when the platform supports it
           await openLocalDirectory(newWorkspaceId);
+          toast.success("Directory selected and scanned successfully");
         } catch (err) {
-          // ignore picker errors; user can open folder via Search -> Open Folder
+          // Directory picker failed or wasn't supported — show empty workspace and guide user
+          console.warn('[Workspace] Directory picker failed:', err);
+          toast.error("Directory picker not available. Use the Search bar to open a folder.");
+        } finally {
+          // Refresh file tree regardless of openLocalDirectory success/failure
+          // This shows the file explorer with either scanned files or empty state
+          try {
+            await refreshFileTree();
+          } catch (e) {
+            console.warn('Failed to refresh file tree after creating local workspace', e);
+          }
         }
       } else if (selectedWorkspaceType === WorkspaceType.GDrive) {
         // Create a Drive workspace entry — do not call Google APIs from UI
         createWorkspace(newWorkspaceName, WorkspaceType.GDrive, {});
         toast.success("Drive workspace created (cache-only)");
+        // Refresh file tree to show empty state
+        try {
+          await refreshFileTree();
+        } catch (e) {
+          console.warn('Failed to refresh file tree after creating GDrive workspace', e);
+        }
       } else {
         // Browser workspace
         const workspaceId = `${WorkspaceType.Browser}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

@@ -1,5 +1,13 @@
 import { Observable } from 'rxjs';
-import { ISyncAdapter } from '../sync-manager';
+import type { ISyncAdapter, AdapterFileDescriptor, AdapterInitContext } from '../adapter-types';
+import {
+  AdapterState,
+  AdapterInitError,
+  AdapterErrorCode,
+  AdapterReadinessInfo,
+  AdapterLifecycleEvent,
+  AdapterEventListener,
+} from '../types/adapter-lifecycle';
 import type { FileNode } from '@/shared/types';
 
 /**
@@ -9,19 +17,114 @@ import type { FileNode } from '@/shared/types';
  * Can be used for workspaces stored on S3, MinIO, DigitalOcean Spaces, etc.
  */
 export class S3Adapter implements ISyncAdapter {
-  name = 's3';
+  readonly name = 's3';
+  private state: AdapterState = AdapterState.UNINITIALIZED;
+  private error: AdapterInitError | null = null;
+  private listeners: Set<AdapterEventListener> = new Set();
 
   constructor(
+    private workspaceId: string,
     private bucket: string,
     private region: string,
     private credentials?: any // AWS credentials or pre-signed URLs
   ) {}
 
-  async push(file: FileNode, content: string): Promise<boolean> {
+  // ============================================================================
+  // LIFECYCLE INTERFACE
+  // ============================================================================
+
+  getState(): AdapterState {
+    return this.state;
+  }
+
+  getError(): AdapterInitError | null {
+    return this.error;
+  }
+
+  getReadinessInfo(): AdapterReadinessInfo {
+    const isReady =
+      this.state === AdapterState.READY &&
+      !!this.bucket &&
+      !!this.region;
+    return new AdapterReadinessInfo(
+      isReady,
+      this.state,
+      this.error,
+      this.workspaceId,
+      isReady,
+      new Date()
+    );
+  }
+
+  validateReady(): boolean {
+    return this.state === AdapterState.READY && !!this.bucket && !!this.region;
+  }
+
+  async initialize(context: AdapterInitContext): Promise<void> {
+    try {
+      this.setState(AdapterState.INITIALIZING);
+
+      if (context.workspaceId !== this.workspaceId) {
+        throw new AdapterInitError(
+          AdapterErrorCode.WORKSPACE_NOT_FOUND,
+          `Workspace mismatch`
+        );
+      }
+
+      // TODO: Validate S3 credentials and bucket access
+      // For now, just mark as ready if we have bucket and region
+      if (!this.bucket || !this.region) {
+        throw new AdapterInitError(
+          AdapterErrorCode.CREDENTIALS_INVALID,
+          `S3 bucket and region required`
+        );
+      }
+
+      this.setState(AdapterState.READY);
+      this.emitEvent({
+        type: 'ready',
+        workspaceId: this.workspaceId,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      const error = new AdapterInitError(
+        AdapterErrorCode.INITIALIZATION_FAILED,
+        `Failed to initialize S3 adapter`,
+        err as Error
+      );
+      this.setState(AdapterState.ERRORED, error);
+      this.emitEvent({
+        type: 'initialization-failed',
+        error,
+        timestamp: new Date(),
+      });
+    }
+  }
+
+  async destroy(): Promise<void> {
+    this.setState(AdapterState.DESTROYING);
+    this.listeners.clear();
+    this.setState(AdapterState.DESTROYED);
+  }
+
+  addEventListener(listener: AdapterEventListener): void {
+    this.listeners.add(listener);
+  }
+
+  removeEventListener(listener: AdapterEventListener): void {
+    this.listeners.delete(listener);
+  }
+
+  // ============================================================================
+  // ADAPTER OPERATIONS (STUBBED)
+  // ============================================================================
+
+  async push(file: AdapterFileDescriptor | FileNode, content: string): Promise<boolean> {
     try {
       // TODO: Implement S3 PutObject
       // Use AWS SDK or presigned URL to upload file content as UTF-8 text or binary
-      console.log(`S3Adapter push: ${file.id} (content length=${content.length})`);
+      const fileId = 'id' in file ? file.id : (file as FileNode).id;
+      console.log(`S3Adapter push: ${fileId} (content length=${content.length})`);
       return true;
     } catch (error) {
       console.error('S3Adapter push error:', error);
@@ -84,5 +187,34 @@ export class S3Adapter implements ISyncAdapter {
   async pullWorkspace(workspaceId?: string, path?: string): Promise<Array<{ fileId: string; content: string }>> {
     console.info('S3Adapter.pullWorkspace: stub (not implemented)');
     return [];
+  }
+
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
+
+  private setState(newState: AdapterState, error: AdapterInitError | null = null): void {
+    const prevState = this.state;
+    this.state = newState;
+    this.error = error;
+    console.log(
+      `[S3Adapter] State transition: ${prevState} → ${newState}${error ? ` (error: ${error.code})` : ''}`
+    );
+    this.emitEvent({
+      type: 'state-changed',
+      state: newState,
+      previousState: prevState,
+      timestamp: new Date(),
+    });
+  }
+
+  private emitEvent(event: AdapterLifecycleEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        console.error('[S3Adapter] Event listener error:', err);
+      }
+    }
   }
 }

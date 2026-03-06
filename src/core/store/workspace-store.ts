@@ -141,11 +141,12 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         // Set loading state
         set({ isWorkspaceSwitching: true });
 
+        const oldWorkspaceId = get().activeWorkspaceId;
+
         // Save current editor tabs for the previous workspace BEFORE clearing them
         try {
-          const prevId = get().activeWorkspaceId;
-          if (prevId) {
-            get().saveTabsForWorkspace(prevId);
+          if (oldWorkspaceId) {
+            get().saveTabsForWorkspace(oldWorkspaceId);
           }
         } catch (err) {
           console.warn('Failed to save tabs for previous workspace:', err);
@@ -171,6 +172,24 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             activeWorkspaceId: id,
           };
         });
+
+        // Clean up old workspace's adapter (non-blocking)
+        if (oldWorkspaceId) {
+          try {
+            await getSyncManager().cleanupForWorkspace(oldWorkspaceId);
+          } catch (err) {
+            console.warn('Failed to cleanup previous workspace adapter:', err);
+          }
+        }
+
+        // Initialize adapter for new workspace (may prompt for permissions)
+        if (targetWorkspace) {
+          try {
+            await getSyncManager().initializeForWorkspace(id);
+          } catch (err) {
+            console.warn('Failed to initialize adapter for new workspace:', err);
+          }
+        }
 
         // Pull fresh data from the remote source for this workspace (blocking)
         try {

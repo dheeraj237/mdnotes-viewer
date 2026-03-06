@@ -5,10 +5,10 @@
 
 import { useEffect, useState } from 'react';
 import { initializeFileOperations, loadSampleFilesFromFolder } from '@/core/cache/file-manager';
-import { initializeSyncManager } from '@/core/sync/sync-manager';
+import { initializeSyncManager, getSyncManager } from '@/core/sync/sync-manager';
 import { LocalAdapter } from '@/core/sync/adapters/local-adapter';
-import { GDriveAdapter } from '@/core/sync/adapters/gdrive-adapter';
-import { S3Adapter } from '@/core/sync/adapters/s3-adapter';
+import { AdapterRegistry } from '@/core/sync/adapter-registry';
+import type { AdapterConfig, AdapterInitContext } from '@/core/sync/adapter-types';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { WorkspaceType } from '@/core/cache/types';
 import { checkAndHandleDeployment } from '@/core/init/deployment-version-manager';
@@ -47,28 +47,35 @@ export async function initializeApp(adapters?: any[]) {
     await loadSampleFilesFromFolder();
   }
 
-  // Initialize SyncManager with provided adapters or defaults
-  if (adapters && Array.isArray(adapters)) {
-    await initializeSyncManager(adapters);
-  } else {
-    const win: any = typeof window !== 'undefined' ? window : {};
-    const envBaseDir = typeof process !== 'undefined' && process?.env ? (process.env.VITE_LOCAL_BASE_DIR as string) : undefined;
-    const baseDir = win.__VERVE_LOCAL_BASE_DIR || envBaseDir || './';
-    await initializeSyncManager([
-      new LocalAdapter(),
-      new GDriveAdapter(),
-      new S3Adapter('', ''),
-    ]);
-  }
+  // Register adapter factories with AdapterRegistry (Java-style singleton)
+  const registry = AdapterRegistry.getInstance();
+
+  // Factory for LocalAdapter - workspace-scoped instance
+  registry.register('local', async (config: AdapterConfig, context?: Partial<AdapterInitContext>) => {
+    const workspaceId = context?.workspaceId || '';
+    const adapter = await LocalAdapter.create(workspaceId);
+    // Don't call initialize() here - SyncManager will do it
+    return adapter;
+  });
+
+  // TODO: Register GDrive and S3 factories when implementations are complete
+  // registry.register('gdrive', async (config, context) => { ... })
+  // registry.register('s3', async (config, context) => { ... })
+
+  // Initialize SyncManager with new patterns
+  // SyncManager will call initializeForWorkspace for the active workspace
+  await initializeSyncManager();
 
   // After sync manager initialized, pull the active workspace to populate cache
   try {
     const active = useWorkspaceStore.getState().activeWorkspace?.();
     if (active && active.type !== WorkspaceType.Browser) {
-      await (await import('@/core/sync/sync-manager')).getSyncManager().pullWorkspace(active);
+      const manager = getSyncManager();
+      await manager.initializeForWorkspace(active.id);
+      await manager.pullWorkspace(active);
     }
   } catch (err) {
-    console.warn('Failed to pull active workspace during initializeApp:', err);
+    console.warn('Failed to initialize adapter or pull active workspace during initializeApp:', err);
   }
 }
 
