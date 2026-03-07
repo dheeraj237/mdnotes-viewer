@@ -9,7 +9,7 @@ import { WorkspaceType } from '@/core/cache/types';
 import { useEditorStore } from "@/features/editor/store/editor-store";
 import { initializeFileOperations } from '@/core/cache/file-manager';
 import { createWorkspace as workspaceManagerCreateWorkspace, createSampleWorkspaceIfMissing } from '@/core/cache/workspace-manager';
-import { getSyncManager } from '@/core/sync/sync-manager';
+import { getSyncManager } from '@/core/sync';
 
 /**
  * Workspace Interface
@@ -176,7 +176,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         // Clean up old workspace's adapter (non-blocking)
         if (oldWorkspaceId) {
           try {
-            await getSyncManager().cleanupForWorkspace(oldWorkspaceId);
+            await getSyncManager().destroyForWorkspace(oldWorkspaceId);
           } catch (err) {
             console.warn('Failed to cleanup previous workspace adapter:', err);
           }
@@ -185,7 +185,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         // Initialize adapter for new workspace (may prompt for permissions)
         if (targetWorkspace) {
           try {
-            await getSyncManager().initializeForWorkspace(id);
+            await getSyncManager().initializeForWorkspace(id, targetWorkspace.type);
           } catch (err) {
             console.warn('Failed to initialize adapter for new workspace:', err);
           }
@@ -193,8 +193,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 
         // Pull fresh data from the remote source for this workspace (blocking)
         try {
-          if (targetWorkspace) {
-            await getSyncManager().pullWorkspace(targetWorkspace);
+          if (targetWorkspace && targetWorkspace.type !== 'browser') {
+            await getSyncManager().pullWorkspace(id);
           }
         } catch (err) {
           console.warn('Failed to pull workspace contents during switch:', err);

@@ -65,12 +65,9 @@ export function Editor() {
           const writable = await currentFile.fileHandle.createWritable();
           await writable.write(sanitizedContent);
           await writable.close();
-        } else {
-          // For browser/demo workspace files, use browser adapter directly
-          const { getBrowserAdapter } = await import('@/hooks/use-browser-mode');
-          const adapter = getBrowserAdapter();
-          await adapter.writeFile(currentFile.path, sanitizedContent);
         }
+        // TODO: For browser/demo workspace files, saves are handled through file-manager and RxDB
+        // The new SyncManager will pick up dirty files and push them via adapters
       }
 
       setHasChanges(false);

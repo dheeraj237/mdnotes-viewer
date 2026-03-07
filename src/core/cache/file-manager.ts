@@ -7,7 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { SyncOp, WorkspaceType, FileType } from './types';
+import { WorkspaceType, FileType } from './types';
 import type { FileNode } from '@/shared/types';
 
 import { initializeRxDB as rxInitializeRxDB, getCacheDB as rxGetCacheDB, upsertDoc as rxUpsertDoc, getDoc as rxGetDoc, findDocs as rxFindDocs, atomicUpsert as rxAtomicUpsert, removeDoc as rxRemoveDoc, subscribeQuery as rxSubscribeQuery } from '@/core/rxdb/rxdb-client';
@@ -432,19 +432,8 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
               console.warn('Failed to remove cached doc during folder delete:', remErr);
             try { await removeDoc(Collections.Files, d.id); } catch (_) { /* swallow */ }
           }
-          try {
-            if (String(d.workspaceType) !== WorkspaceType.Browser) {
-              const { enqueueSyncEntry } = await import('@/core/sync/sync-queue-processor');
-              await enqueueSyncEntry({
-                op: SyncOp.Delete,
-                target: 'file',
-                targetId: d.id,
-                payload: { path: d.path, workspaceType: d.workspaceType, workspaceId: d.workspaceId }
-              });
-            }
-          } catch (e) {
-            console.warn('Failed to enqueue delete sync entry for child:', e);
-          }
+          // TODO: Implement delete sync via adapter when adapter supports delete capability
+          // For now, just remove from cache for browser workspaces
         }
       } else {
         try {
@@ -452,19 +441,8 @@ export async function deleteFile(path: string, workspaceId?: string): Promise<vo
         } catch (e) {
           console.warn('deleteFile fallback remove failed:', e);
         }
-        try {
-          if (String(cached.workspaceType) !== WorkspaceType.Browser) {
-            const { enqueueSyncEntry } = await import('@/core/sync/sync-queue-processor');
-            await enqueueSyncEntry({
-              op: SyncOp.Delete,
-              target: 'file',
-              targetId: cached.id,
-              payload: { path: cached.path, workspaceType: cached.workspaceType, workspaceId: cached.workspaceId }
-            });
-          }
-        } catch (e) {
-          console.warn('Failed to enqueue delete sync entry:', e);
-        }
+        // TODO: Implement delete sync via adapter when adapter supports delete capability
+        // For now, just remove from cache for browser workspaces
       }
     } catch (err) {
       console.warn('deleteFile fallback remove failed:', err);

@@ -30,10 +30,11 @@ export async function createWorkspace(name: string, type: any, id: string) {
 }
 
 export async function startSyncManagerWithAdapter(adapter: any) {
-  const { getSyncManager } = await import('@/core/sync/sync-manager');
+  const { getSyncManager } = await import('@/core/sync');
+  const { getCacheDB } = await import('@/core/cache/file-manager');
   const mgr = getSyncManager();
-  mgr.registerAdapter(adapter);
-  mgr.start();
+  const rxdbClient = getCacheDB();
+  await mgr.initialize(rxdbClient);
   return mgr;
 }
 

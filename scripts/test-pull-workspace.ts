@@ -1,6 +1,6 @@
 import { initializeFileOperations } from '@/core/cache/file-manager';
-import { initializeSyncManager } from '@/core/sync/sync-manager';
-import type { ISyncAdapter } from '@/core/sync/sync-manager';
+import { initializeSyncManager } from '@/core/sync';
+import type { ISyncAdapter } from '@/core/sync';
 
 class MockAdapter implements ISyncAdapter {
   name = 'mock';

@@ -6,7 +6,7 @@ afterAll(async () => {
   try {
     // require lazily so tests can mock these modules per-test if needed
     // eslint-disable-next-line global-require
-    const { stopSyncManager } = require('@/core/sync/sync-manager');
+    const { stopSyncManager } = require('@/core/sync');
     try {
       stopSyncManager();
     } catch (err) {

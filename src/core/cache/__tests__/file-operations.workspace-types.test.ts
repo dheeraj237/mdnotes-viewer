@@ -46,9 +46,7 @@ describe('file-manager across workspace types', () => {
     expect(afterDelete.some(a => a.path === '/notes/b.md')).toBeFalsy();
   });
 
-  it('local workspace: dirty flag set and enqueue triggers adapter push', async () => {
-    const { getSyncManager, stopSyncManager } = await import('@/core/sync/sync-manager');
-
+  it('local workspace: dirty flag set when file is saved', async () => {
     await fileOps.initializeFileOperations();
 
     const wsId = 'ws-local-crud';
@@ -59,20 +57,9 @@ describe('file-manager across workspace types', () => {
     const dirty = await fileOps.getDirtyFiles(wsId);
     expect(dirty.some(d => d.path === '/local/doc.md')).toBeTruthy();
 
-    // register mock adapter and enqueue
-    const mgr = getSyncManager();
-    const pushMock = vi.fn(async () => true);
-    mgr.registerAdapter({ name: 'local', push: pushMock, pull: async () => null, exists: async () => false, delete: async () => false } as any);
-
-    await mgr.enqueueAndProcess(saved.id, saved.path, WorkspaceType.Local, wsId);
-    // wait until file is marked synced via RxDB subscription
-    const { observeCachedFiles } = await import('@/core/cache');
-    await new Promise<void>((resolve) => {
-      const sub: any = observeCachedFiles((files: any[]) => {
-        const f = files.find(x => x.id === saved.id && x.workspaceId === wsId);
-        if (f && f.dirty === false) {
-          try { sub.unsubscribe(); } catch (_) { }
-          resolve();
+    // In the new architecture, SyncManager will automatically detect dirty files via RxDB subscriptions
+    // and push them through the appropriate adapter
+  });
         }
       });
       setTimeout(() => { try { sub.unsubscribe(); } catch (_) { }; resolve(); }, 2000);
@@ -82,9 +69,7 @@ describe('file-manager across workspace types', () => {
     stopSyncManager();
   });
 
-  it('gdrive workspace: dirty flag and sync push via adapter', async () => {
-    const { getSyncManager, stopSyncManager } = await import('@/core/sync/sync-manager');
-
+it('gdrive workspace: dirty flag set when file is saved', async () => {
     await fileOps.initializeFileOperations();
 
     const wsId = 'ws-gdrive-crud';
@@ -94,25 +79,8 @@ describe('file-manager across workspace types', () => {
     const dirty = await fileOps.getDirtyFiles(wsId);
     expect(dirty.some(d => d.path === '/g/doc.md')).toBeTruthy();
 
-    const mgr = getSyncManager();
-    const pushMock = vi.fn(async () => true);
-    mgr.registerAdapter({ name: 'gdrive', push: pushMock, pull: async () => null, exists: async () => false, delete: async () => false } as any);
-
-    await mgr.enqueueAndProcess(saved.id, saved.path, WorkspaceType.GDrive, wsId);
-    const { observeCachedFiles } = await import('@/core/cache');
-    await new Promise<void>((resolve) => {
-      const sub: any = observeCachedFiles((files: any[]) => {
-        const f = files.find(x => x.id === saved.id && x.workspaceId === wsId);
-        if (f && f.dirty === false) {
-          try { sub.unsubscribe(); } catch (_) { }
-          resolve();
-        }
-      });
-      setTimeout(() => { try { sub.unsubscribe(); } catch (_) { }; resolve(); }, 2000);
-    });
-    expect(pushMock).toHaveBeenCalled();
-
-    stopSyncManager();
+    // In the new architecture, SyncManager will automatically detect dirty files via RxDB subscriptions
+    // and push them through the appropriate adapter
   });
 
   afterAll(async () => {

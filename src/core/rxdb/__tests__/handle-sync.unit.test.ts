@@ -12,7 +12,7 @@ describe('handle-sync', () => {
     await createRxDB();
   });
 
-  test('stores directoryHandle in directory_handles_meta', async () => {
+  test('stores directoryHandle metadata in directory_handles_meta', async () => {
     // Use a serializable handle-like object so fake-indexeddb can clone it.
     const fakeHandle: any = {
       name: 'root'
@@ -24,8 +24,9 @@ describe('handle-sync', () => {
     expect(meta).not.toBeNull();
     const doc: any = meta as any;
     expect(doc.directoryName).toBe('root');
-    // directoryHandle should be present and include the original name
-    expect((doc as any).directoryHandle).toBeDefined();
-    expect((doc as any).directoryHandle.name).toBe('root');
+    // NOTE: directoryHandle object is NOT stored because FileSystemDirectoryHandle
+    // doesn't serialize properly in IndexedDB. Only metadata is stored.
+    // The actual handle must be restored from user gesture (e.g., directory picker).
+    expect(doc.permissionStatus).toBe('granted');
   });
 });

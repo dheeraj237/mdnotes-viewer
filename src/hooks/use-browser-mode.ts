@@ -4,11 +4,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { initializeFileOperations, loadSampleFilesFromFolder } from '@/core/cache/file-manager';
-import { initializeSyncManager, getSyncManager } from '@/core/sync/sync-manager';
-import { LocalAdapter } from '@/core/sync/adapters/local-adapter';
+import { initializeFileOperations, loadSampleFilesFromFolder, getCacheDB } from '@/core/cache/file-manager';
+import { initializeSyncManager, getSyncManager } from '@/core/sync';
+import { LocalAdapter } from '@/core/sync/adapters/local';
+import { DummyAdapter } from '@/core/sync/adapters/dummy';
 import { AdapterRegistry } from '@/core/sync/adapter-registry';
-import type { AdapterConfig, AdapterInitContext } from '@/core/sync/adapter-types';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { WorkspaceType } from '@/core/cache/types';
 import { checkAndHandleDeployment } from '@/core/init/deployment-version-manager';
@@ -47,32 +47,50 @@ export async function initializeApp(adapters?: any[]) {
     await loadSampleFilesFromFolder();
   }
 
-  // Register adapter factories with AdapterRegistry (Java-style singleton)
+  // Register adapter factories with AdapterRegistry
   const registry = AdapterRegistry.getInstance();
 
-  // Factory for LocalAdapter - workspace-scoped instance
-  registry.register('local', async (config: AdapterConfig, context?: Partial<AdapterInitContext>) => {
-    const workspaceId = context?.workspaceId || '';
-    const adapter = await LocalAdapter.create(workspaceId);
-    // Don't call initialize() here - SyncManager will do it
-    return adapter;
-  });
+  // Register DummyAdapter for browser-only workspaces
+  registry.register('browser', async () => new DummyAdapter());
 
-  // TODO: Register GDrive and S3 factories when implementations are complete
-  // registry.register('gdrive', async (config, context) => { ... })
-  // registry.register('s3', async (config, context) => { ... })
+  // Register LocalAdapter for local file system workspaces
+  registry.register('local', async () => new LocalAdapter());
 
-  // Initialize SyncManager with new patterns
-  // SyncManager will call initializeForWorkspace for the active workspace
-  await initializeSyncManager();
+  // TODO: Register GDrive and S3 adapters when implementations are complete
+  // registry.register('gdrive', async () => new GDriveAdapter());
+  // registry.register('s3', async () => new S3Adapter());
 
-  // After sync manager initialized, pull the active workspace to populate cache
+  // Get RxDB client and initialize SyncManager
+  const rxdbClient = getCacheDB();
+  if (!rxdbClient) {
+    throw new Error('RxDB client not initialized');
+  }
+
+  await initializeSyncManager(rxdbClient);
+
+  // After sync manager initialized, set up active workspace adapter and pull if needed
   try {
     const active = useWorkspaceStore.getState().activeWorkspace?.();
-    if (active && active.type !== WorkspaceType.Browser) {
+    if (active) {
       const manager = getSyncManager();
-      await manager.initializeForWorkspace(active.id);
-      await manager.pullWorkspace(active);
+      // Try to fetch any stored directory handle for this workspace so the
+      // LocalAdapter can be initialized with it.
+      let dirHandle: any = null;
+      try {
+        const mod = await import('@/core/cache/db-manage');
+        if (mod && typeof mod.getHandle === 'function') {
+          dirHandle = await mod.getHandle(active.id);
+        }
+      } catch (e) {
+        // ignore - best-effort
+      }
+
+      await manager.initializeForWorkspace(active.id, active.type, dirHandle);
+
+      // If workspace is remote type, sync files from source
+      if (active.type === WorkspaceType.Local) {
+        await manager.pullWorkspace(active.id);
+      }
     }
   } catch (err) {
     console.warn('Failed to initialize adapter or pull active workspace during initializeApp:', err);
@@ -82,30 +100,18 @@ export async function initializeApp(adapters?: any[]) {
 export function useBrowserMode() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { createWorkspace, workspaces } = useWorkspaceStore();
 
   useEffect(() => {
-    initializeApp().then(() => setIsInitialized(true)).catch((err) => {
-      setError(err instanceof Error ? err.message : 'Failed to initialize file cache');
-      console.error('File cache initialization error:', err);
-    });
+    initializeApp()
+      .then(() => setIsInitialized(true))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to initialize app');
+        console.error('App initialization error:', err);
+      });
   }, []);
 
   return {
     isInitialized,
     error,
   };
-}
-
-/**
- * Get the global file cache (deprecated - use file-manager directly)
- */
-export function getBrowserAdapter(workspaceId: string = 'default') {
-  console.warn('getBrowserAdapter is deprecated - use file-manager from @/core/cache instead');
-  return null;
-}
-
-export function getBrowserFileManager() {
-  console.warn('getBrowserFileManager is deprecated - use file-manager from @/core/cache instead');
-  return null;
 }

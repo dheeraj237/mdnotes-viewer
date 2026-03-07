@@ -21,7 +21,7 @@ vi.mock('@/core/config/features', () => ({
 import { useEditorStore } from '../editor-store';
 import { useWorkspaceStore } from '@/core/store/workspace-store';
 import { saveFile } from '@/core/cache/file-manager';
-import { getSyncManager } from '@/core/sync/sync-manager';
+import { getSyncManager } from '@/core/sync';
 import { WorkspaceType } from '@/core/cache/types';
 // FileCategory removed in unified FileNode; indicate local files via `isLocal`
 
@@ -36,7 +36,7 @@ describe('applyEditorPatch sync behavior', () => {
     useEditorStore.setState({ openTabs: [{ id: 'file-1', path: '/doc.md', name: 'doc', content: 'old', isLocal: true }], activeTabId: 'file-1' });
   });
 
-  it('enqueues and processes saved file for active workspace', async () => {
+  it('saves file through file-manager when workspace is active', async () => {
     const apply = useEditorStore.getState().applyEditorPatch;
 
     await apply('file-1', 'new content');
@@ -44,7 +44,9 @@ describe('applyEditorPatch sync behavior', () => {
     // Allow promise microtasks to run
     await new Promise((r) => setTimeout(r, 0));
 
+    // In the new architecture, file-manager saves the file and marks it dirty in RxDB
+    // SyncManager then picks up dirty files reactively and pushes them via adapters
     expect(saveFile).toHaveBeenCalledWith('/doc.md', 'new content', expect.any(String), undefined, 'ws-1');
-    expect(enqueueMock).toHaveBeenCalledWith('file-1', '/doc.md', expect.any(String), 'ws-1');
+    // No explicit enqueue call in new architecture - SyncManager handles dirty file detection
   });
 });

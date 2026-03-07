@@ -9,7 +9,10 @@ import { initializeRxDB } from '@/core/rxdb/rxdb-client';
 import { WorkspaceType } from './types';
 import { loadSamplesIntoWorkspace } from '@/core/cache/sample-loader';
 import { saveFile } from '@/core/cache/file-manager';
-import { storeHandleForWorkspace, getHandleMeta, ensureHandleForWorkspace } from '@/core/rxdb/handle-sync';
+// FileSystem handle persistence/permission logic has been removed from this
+// manager. Adapters are responsible for handling any File System Access API
+// interactions and persistence. Keep minimal no-op helpers here so callers
+// won't crash if they call these functions.
 import { findDocs, removeDoc } from '@/core/rxdb/rxdb-client';
 
 export interface WorkspaceRecord {
@@ -102,24 +105,28 @@ export async function createSampleWorkspaceIfMissing(): Promise<WorkspaceRecord>
 /**
  * Persist a directory handle for the given workspace and upsert RxDB metadata
  */
-export async function storeDirectoryHandle(workspaceId: string, directoryHandle: FileSystemDirectoryHandle): Promise<void> {
-  try {
-    await storeHandleForWorkspace(workspaceId, directoryHandle);
-  } catch (err) {
-    console.warn('Failed to upsert handle metadata for workspace', workspaceId, err);
-  }
+export async function storeDirectoryHandle(workspaceId: string, /*directoryHandle: FileSystemDirectoryHandle*/ _directoryHandle: any): Promise<void> {
+  console.warn('storeDirectoryHandle: removed filesystem-handle persistence from workspace-manager; no-op');
+  return Promise.resolve();
 }
 
 /**
  * Restore a persisted directory handle (if any) and ensure RxDB metadata is present.
  */
-export async function restoreDirectoryHandle(workspaceId: string): Promise<FileSystemDirectoryHandle | null> {
-  const handle = await ensureHandleForWorkspace(workspaceId);
-  return handle;
+export async function restoreDirectoryHandle(workspaceId: string): Promise<any | null> {
+  // Handle restoration has moved to adapters; return null to indicate none
+  // is available via the workspace manager.
+  return null;
 }
 
 export async function listPersistedHandles() {
-  return await findDocs<any>('directory_handles_meta', { selector: {} });
+  // Persisted handle metadata is no longer managed here. Return an empty
+  // list to avoid consumers depending on this implementation.
+  try {
+    return await findDocs<any>('directory_handles_meta', { selector: {} });
+  } catch (e) {
+    return [];
+  }
 }
 
 /**
@@ -129,7 +136,7 @@ export async function removeDirectoryHandle(workspaceId: string): Promise<void> 
   try {
     await removeDoc('directory_handles_meta', workspaceId);
   } catch (err) {
-    console.warn('Failed to remove handle metadata for', workspaceId, err);
+    console.warn('removeDirectoryHandle: failed or removed persistence layer for', workspaceId, err);
   }
 }
 
@@ -138,29 +145,11 @@ export async function removeDirectoryHandle(workspaceId: string): Promise<void> 
  * Uses the `directory_handles_meta` RxDB doc to obtain the persisted `directoryHandle`.
  * If permission granted, upsert RxDB metadata and return the handle.
  */
-export async function requestPermissionForWorkspace(workspaceId: string): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    // Read stored handle from RxDB and request permission from it (must be user gesture)
-    const meta = await getHandleMeta(workspaceId);
-    const handle = (meta as any)?.directoryHandle as FileSystemDirectoryHandle | undefined | null;
-    if (!handle) return null;
-    try {
-      const permission = await handle.queryPermission({ mode: 'readwrite' });
-      if (permission === 'granted') return handle;
-      const newPermission = await handle.requestPermission({ mode: 'readwrite' });
-      if (newPermission === 'granted') {
-        try { await storeHandleForWorkspace(workspaceId, handle); } catch (_) { }
-        return handle;
-      }
-      return null;
-    } catch (err) {
-      console.warn('Permission request failed for handle:', err);
-      return null;
-    }
-  } catch (err) {
-    console.warn('requestPermissionForWorkspace failed:', err);
-    return null;
-  }
+export async function requestPermissionForWorkspace(workspaceId: string): Promise<any | null> {
+  // Permission/requesting directory handles is now performed by adapters and
+  // must be called directly from user gestures. Return null as a safe default.
+  console.warn('requestPermissionForWorkspace: removed - adapters must handle FS permission requests');
+  return null;
 }
 
 /**
@@ -169,9 +158,10 @@ export async function requestPermissionForWorkspace(workspaceId: string): Promis
  */
 export async function requestPermissionForLocalWorkspace(workspaceId: string): Promise<boolean> {
   try {
-    const sm = await import('@/core/sync/sync-manager');
-    const ok = await sm.getSyncManager().requestPermissionForLocalWorkspace(workspaceId);
-    return !!ok;
+    // TODO: Implement permission request via adapter
+    // In the new architecture, this should be handled by the adapter initialization
+    console.warn('requestPermissionForLocalWorkspace: removed - adapters handle local workspace permissions');
+    return false;
   } catch (err) {
     console.warn('requestPermissionForLocalWorkspace failed:', err);
     return false;
@@ -184,9 +174,10 @@ export async function requestPermissionForLocalWorkspace(workspaceId: string): P
  */
 export async function openLocalDirectory(workspaceId?: string): Promise<boolean> {
   try {
-    const sm = await import('@/core/sync/sync-manager');
-    await sm.getSyncManager().requestOpenLocalDirectory(workspaceId);
-    return true;
+    // TODO: Implement directory picker via adapter
+    // In the new architecture, adapters handle FS API interactions
+    console.warn('openLocalDirectory: removed - adapters must open local directories');
+    return false;
   } catch (err) {
     console.warn('openLocalDirectory failed:', err);
     return false;
@@ -198,10 +189,9 @@ export async function openLocalDirectory(workspaceId?: string): Promise<boolean>
  */
 export async function hasLocalDirectory(): Promise<boolean> {
   try {
-    const sm = await import('@/core/sync/sync-manager');
-    const adapter = sm.getSyncManager().getAdapter('local');
-    if (!adapter) return false;
-    return typeof (adapter as any).isReady === 'function' ? (adapter as any).isReady() : false;
+    // TODO: Check adapter readiness
+    // In the new architecture, check adapter state via SyncManager.getAdapter()
+    return false;
   } catch (e) {
     return false;
   }
@@ -212,11 +202,7 @@ export async function hasLocalDirectory(): Promise<boolean> {
  */
 export async function clearLocalDirectory(): Promise<void> {
   try {
-    const sm = await import('@/core/sync/sync-manager');
-    const adapter = sm.getSyncManager().getAdapter('local');
-    if (adapter && typeof (adapter as any).dispose === 'function') {
-      await (adapter as any).dispose().catch(() => { });
-    }
+    // No-op: adapters handle cleanup
   } catch (e) {
     // ignore
   }
