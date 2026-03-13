@@ -1,17 +1,12 @@
 /**
- * Local Adapter - Refactored with Java-Style OOP & Lifecycle State Machine
- * 
- * Key improvements over old version:
- * - Workspace ID immutably bound via constructor
- * - Private constructor + static factory pattern
- * - Lifecycle state machine: UNINITIALIZED -> INITIALIZING -> READY/ERRORED -> DESTROYING -> DESTROYED
- * - Event-based listeners for state changes
- * - Strict readiness validation (state + handle + permissions)
- * - Removed dead code (setCurrentWorkspace was never called)
- * 
- * Bug fix:
- * - OLD: currentWorkspaceId was always null, isReady() always returned false
- * - NEW: workspaceId immutable from construction, guaranted valid
+ * LocalAdapter — simplified v2 adapter for local filesystem workspaces.
+ *
+ * Implements IAdapter: pull (filesystem → RxDB), push (RxDB → filesystem),
+ * ensurePermission (public, call from user-gesture handler), filter contract,
+ * and destroy (short-circuits any in-flight pull via _destroyed flag).
+ *
+ * Handle persistence is delegated to handle-store.ts (vanilla IndexedDB, no Dexie).
+ * Filter rules are loaded from workspace-ignore.json at module load time.
  */
 
 import type { ISyncAdapter, AdapterFileDescriptor } from '../adapter-types';
