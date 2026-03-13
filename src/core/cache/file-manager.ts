@@ -1087,15 +1087,15 @@ export function subscribeToDirtyWorkspaceFiles(
   workspaceId: string,
   callback: (files: FileNode[]) => void
 ): () => void {
-  // Use generic subscription with dirty file selector
+  // Use generic subscription with dirty file selector.
+  // Browser workspaces are included — BrowserAdapter.push() is a no-op that
+  // immediately resolves, causing markCachedFileAsSynced to clear the dirty flag.
   return subscribeQuery(
     Collections.Files,
     {
       selector: {
         workspaceId,
         dirty: true,
-        // Browser workspaces don't need syncing (purely local IndexedDB)
-        workspaceType: { $ne: 'browser' }
       }
     },
     (docs: any[]) => {
