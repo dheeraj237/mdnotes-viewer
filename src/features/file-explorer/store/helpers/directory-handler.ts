@@ -1,13 +1,8 @@
 import { FileNode } from "@/shared/types";
 import { buildFileTreeFromDirectory, buildFileTreeFromAdapter } from "./file-tree-builder";
 import { WorkspaceType } from '@/core/cache/types';
-import {
-  removeDirectoryHandle,
-  openLocalDirectory as workspaceOpenLocalDirectory,
-  requestPermissionForLocalWorkspace,
-  hasLocalDirectory,
-  clearLocalDirectory as workspaceClearLocalDirectory
-} from '@/core/cache/workspace-manager';
+import { getSyncManager } from '@/core/sync/sync-manager';
+import { getHandle, removeHandle } from '@/core/sync/handle-store';
 
 /**
  * Opens a local directory using File System Access API
@@ -23,12 +18,10 @@ export async function openLocalDirectory(workspaceId?: string): Promise<{
   path: string;
   fileTree: FileNode[];
 }> {
-  // Delegate to workspace manager facade which handles File System Access API and directory scanning
-  await workspaceOpenLocalDirectory(workspaceId);
+  const wsId = workspaceId ?? 'local';
+  await getSyncManager().requestPermission(wsId);
 
-  // After directory has been scanned and files upserted into cache, build file tree from cache
   const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
-  // Name/path are best-effort: use workspaceId as path when available
   return { name: workspaceId ?? 'Local', path: workspaceId ?? '/', fileTree: tree };
 }
 
@@ -45,7 +38,7 @@ export async function restoreLocalDirectory(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const ok = await requestPermissionForLocalWorkspace(workspaceId);
+    const ok = await getSyncManager().requestPermission(workspaceId);
     if (!ok) return null;
     const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
     return { name: workspaceId, path: workspaceId, fileTree: tree };
@@ -65,7 +58,7 @@ export async function promptPermissionAndRestore(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const ok = await requestPermissionForLocalWorkspace(workspaceId);
+    const ok = await getSyncManager().requestPermission(workspaceId);
     if (!ok) return null;
     const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
     return { name: workspaceId, path: workspaceId, fileTree: tree };
@@ -101,7 +94,11 @@ export async function refreshLocalDirectory(): Promise<FileNode[] | null> {
  * @returns true if a directory handle exists
  */
 export async function hasLocalDirectoryAsync(): Promise<boolean> {
-  return await hasLocalDirectory();
+  const { useWorkspaceStore } = await import('@/core/store/workspace-store');
+  const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+  if (!activeWs || activeWs.type !== 'local') return false;
+  const handle = await getHandle(activeWs.id);
+  return handle != null;
 }
 
 /**
@@ -109,25 +106,12 @@ export async function hasLocalDirectoryAsync(): Promise<boolean> {
  * Removes the global directory handle reference
  */
 export async function clearLocalDirectory(): Promise<void> {
-  // Dispose local adapter and remove stored directory handle from cache
   try {
-    await workspaceClearLocalDirectory();
-  } catch (e) {
-    // ignore
-  }
-  try {
-    const mod = await import('@/core/store/workspace-store');
-    try {
-      const wsId = mod.useWorkspaceStore.getState().activeWorkspace?.()?.id;
-      if (wsId) {
-        try {
-          await removeDirectoryHandle(wsId);
-        } catch (_) {
-          // ignore
-        }
-      }
-    } catch (_) {
-      // ignore
+    const { useWorkspaceStore } = await import('@/core/store/workspace-store');
+    const wsId = useWorkspaceStore.getState().activeWorkspace?.()?.id;
+    if (wsId) {
+      getSyncManager().unmountWorkspace(wsId);
+      await removeHandle(wsId);
     }
   } catch (_) {
     // ignore

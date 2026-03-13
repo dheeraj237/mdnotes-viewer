@@ -358,12 +358,11 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       openLocalDirectory: async (workspaceId?: string) => {
         try {
           set({ isLoadingLocalFiles: true });
-          const { openLocalDirectory: wsOpenLocalDirectory } = await import('@/core/cache/workspace-manager');
+          const { getSyncManager } = await import('@/core/sync/sync-manager');
           try {
-            await wsOpenLocalDirectory(workspaceId);
+            await getSyncManager().requestPermission(workspaceId ?? 'local');
           } catch (err) {
             console.warn('openLocalDirectory failed, falling back to cache refresh', err);
-            // fallback to cache refresh
             await get().refreshFileTree();
             const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
             set({ expandedFolders: new Set(), currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });
@@ -383,8 +382,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       restoreLocalDirectory: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
-          const { requestPermissionForLocalWorkspace } = await import('@/core/cache/workspace-manager');
-          const ok = await requestPermissionForLocalWorkspace(workspaceId);
+          const { getSyncManager } = await import('@/core/sync/sync-manager');
+          const ok = await getSyncManager().requestPermission(workspaceId);
           if (!ok) {
             await get().refreshFileTree();
             return false;
@@ -406,8 +405,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       requestPermissionForWorkspace: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
-          const { requestPermissionForLocalWorkspace } = await import('@/core/cache/workspace-manager');
-          const ok = await requestPermissionForLocalWorkspace(workspaceId);
+          const { getSyncManager } = await import('@/core/sync/sync-manager');
+          const ok = await getSyncManager().requestPermission(workspaceId);
           await get().refreshFileTree();
           return !!ok;
         } catch (error) {

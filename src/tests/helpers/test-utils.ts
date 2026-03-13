@@ -29,10 +29,9 @@ export async function createWorkspace(name: string, type: any, id: string) {
   useWorkspaceStore.getState().createWorkspace(name, type, { id });
 }
 
-export async function startSyncManagerWithAdapter(adapter: any) {
+export async function startSyncManagerWithAdapter(_adapter: any) {
   const { getSyncManager } = await import('@/core/sync/sync-manager');
   const mgr = getSyncManager();
-  mgr.registerAdapter(adapter);
   mgr.start();
   return mgr;
 }

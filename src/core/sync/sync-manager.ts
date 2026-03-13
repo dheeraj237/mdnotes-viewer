@@ -152,6 +152,25 @@ export class SyncManager {
   }
 
   /**
+   * Ensures filesystem permission for a local workspace, showing the directory
+   * picker if no handle exists. Must be called from a user-gesture handler.
+   * If permission is granted, triggers a full mountWorkspace pull.
+   */
+  async requestPermission(workspaceId: string): Promise<boolean> {
+    let adapter = this._adapters.get(workspaceId);
+    if (!adapter || adapter.type !== 'local') {
+      adapter = new LocalAdapter(workspaceId);
+      this._adapters.set(workspaceId, adapter);
+    }
+    const granted = await (adapter as LocalAdapter).ensurePermission();
+    if (granted) {
+      useWorkspaceStore.getState().setPermissionNeeded?.(workspaceId, false);
+      await this.mountWorkspace(workspaceId, 'local');
+    }
+    return granted;
+  }
+
+  /**
    * Unmount a workspace: destroy its adapter and cancel its pending timers.
    * Call before workspace deletion.
    */

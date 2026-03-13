@@ -208,14 +208,13 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
         // Refresh file tree for the newly active workspace from RxDB cache
         await refreshFileTree();
 
-        // For Local workspaces, check if directory handle is ready
-        // If not ready, prompt user to grant permission or pick directory
+        // For Local workspaces, check if directory permission is needed
         if (workspace.type === WorkspaceType.Local) {
           try {
-            const sm = (await import('@/core/sync/sync-manager')).getSyncManager();
-            const readiness = sm.getLocalAdapterReadinessForWorkspace(workspace.id);
+            const { useWorkspaceStore: wsStore } = await import('@/core/store/workspace-store');
+            const needsPermission = wsStore.getState().permissionNeeded[workspace.id];
 
-            if (!readiness.isReady && readiness.needsUserGesture) {
+            if (needsPermission) {
               // Adapter is not ready - show modal to prompt for directory access
               console.log('[WorkspaceDropdown] Local adapter not ready, showing permission prompt...');
 
