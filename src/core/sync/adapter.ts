@@ -31,14 +31,6 @@ export interface IAdapter {
    */
   push(path: string, content: string): Promise<void>;
 
-  /**
-   * Ensure the adapter has the permissions it needs to operate.
-   * MUST be called from a user-gesture handler (button click) if it may
-   * show a native file-system dialog.
-   * Returns true if permission was granted, false otherwise.
-   */
-  ensurePermission(): Promise<boolean>;
-
   /** Filter contract — adapters define their own include/exclude rules. */
   shouldIncludeFile(path: string, name: string, sizeBytes: number): boolean;
   shouldIncludeFolder(name: string): boolean;

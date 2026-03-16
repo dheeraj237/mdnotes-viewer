@@ -35,6 +35,8 @@ import { useFileExplorerStore } from "@/features/file-explorer/store/file-explor
 import { cn } from "@/shared/utils/cn";
 import { toast } from "@/shared/utils/toast";
 import { WorkspaceTypePicker } from "@/shared/components/workspace-type-picker";
+import { pickDirectory, verifyPermission, isFileSystemAccessSupported } from '@/core/sync/directory-picker';
+import { setHandle } from '@/core/sync/handle-store';
 // UI uses RxDB cache only; do not call external adapters or auth flows here
 
 interface WorkspaceDropdownProps {
@@ -133,17 +135,64 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
     try {
       if (selectedWorkspaceType === WorkspaceType.Local) {
         const newWorkspaceId = `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        createWorkspace(newWorkspaceName, WorkspaceType.Local, { id: newWorkspaceId });
+        const tempWorkspaceName = newWorkspaceName;
 
-        // Dismiss the dialog BEFORE opening the native directory picker.
-        // Chrome blocks showDirectoryPicker() when a modal dialog is still in the DOM
-        // (SecurityError), and the error is swallowed silently inside openLocalDirectory.
+        // Check if File System Access API is supported (synchronous check)
+        if (!isFileSystemAccessSupported()) {
+          toast.error(
+            'File System Access API not supported',
+            'Please use a modern browser like Chrome 86+, Edge 86+, or Safari 15.2+'
+          );
+          return;
+        }
+
+        // CRITICAL: Call pickDirectory() IMMEDIATELY while in user gesture context.
+        // This must be the FIRST async operation (no awaits before this!)
+        let directoryHandle: FileSystemDirectoryHandle | null;
+        try {
+          directoryHandle = await pickDirectory();
+          if (!directoryHandle) {
+            // User cancelled
+            toast.info('Directory selection was cancelled');
+            return;
+          }
+
+          // Verify and request permission while still in user gesture context
+          const granted = await verifyPermission(directoryHandle, true);
+          if (!granted) {
+            toast.error('Permission denied', 'Unable to read/write to the selected directory');
+            return;
+          }
+        } catch (err: any) {
+          toast.error('Failed to open directory picker', err?.message || 'Unknown error');
+          return;
+        }
+
+        // Now that we have the handle with permissions, update UI state
         setIsCreateDialogOpen(false);
         setNewWorkspaceName("");
         setSelectedWorkspaceType(WorkspaceType.Browser);
 
-        // openLocalDirectory handles picker + pull + tree refresh internally.
-        await openLocalDirectory(newWorkspaceId);
+        try {
+          // Save handle to IndexedDB
+          await setHandle(newWorkspaceId, directoryHandle);
+
+          // Create workspace (needed for adapter to associate files with workspace)
+          createWorkspace(tempWorkspaceName, WorkspaceType.Local, { id: newWorkspaceId });
+
+          // Mount workspace and load files
+          const { getSyncManager } = await import('@/core/sync/sync-manager');
+          await getSyncManager().mountWorkspace(newWorkspaceId, 'local');
+
+          // Refresh file tree to show the loaded files
+          await refreshFileTree();
+
+          toast.success(`Local workspace "${tempWorkspaceName}" created successfully!`);
+        } catch (error: any) {
+          // Error occurred - delete the empty workspace and show message
+          deleteWorkspace(newWorkspaceId);
+          toast.error('Failed to load directory', error?.message || 'Unknown error');
+        }
         return; // dialog already dismissed above — skip the shared close below
       } else if (selectedWorkspaceType === WorkspaceType.GDrive) {
         // Create a Drive workspace entry — do not call Google APIs from UI

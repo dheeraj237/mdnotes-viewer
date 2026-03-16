@@ -5,22 +5,55 @@ import { getSyncManager } from '@/core/sync/sync-manager';
 import { LocalAdapter } from '@/core/sync/adapters/local-adapter';
 
 /**
- * Opens a local directory using File System Access API
- * Shows directory picker and builds file tree from selected directory
- * Optionally stores the directory handle in IndexedDB for later restoration
+ * Opens a local directory using File System Access API.
+ * Shows directory picker and builds file tree from selected directory.
+ * Follows Google Chrome Labs text-editor pattern.
+ * 
+ * UI component must call this from a user gesture context.
  * 
  * @param workspaceId - Optional workspace ID for storing the directory handle
  * @returns Promise with the directory name, path, and file tree
- * @throws Error if user cancels or API not supported
+ * @throws Error if user cancels, API not supported, or permission denied
  */
-export async function openLocalDirectory(workspaceId?: string): Promise<{
+export async function openLocalDirectory(
+  workspaceId?: string
+): Promise<{
   name: string;
   path: string;
   fileTree: FileNode[];
 }> {
   const wsId = workspaceId ?? 'local';
-  await getSyncManager().requestPermission(wsId);
 
+  // Check if File System Access API is supported
+  if (!LocalAdapter.isSupported) {
+    throw new Error(
+      'File System Access API is not supported in this browser. ' +
+      'Please use a modern browser like Chrome 86+, Edge 86+, or Safari 15.2+.'
+    );
+  }
+
+  // Import handle-store functions
+  const { openDirectoryPicker, setHandle, verifyAndRequestPermission } = await import('@/core/sync/handle-store');
+
+  // Open directory picker (requires user gesture)
+  const handle = await openDirectoryPicker();
+  if (!handle) {
+    throw new Error('Directory access was denied or cancelled. Please try again.');
+  }
+
+  // Verify and request permission (requires user gesture)
+  const granted = await verifyAndRequestPermission(handle, true);
+  if (!granted) {
+    throw new Error('Permission denied to read/write the selected directory.');
+  }
+
+  // Save handle to IndexedDB
+  await setHandle(wsId, handle);
+
+  // Mount workspace and pull files
+  await getSyncManager().mountWorkspace(wsId, 'local');
+
+  // Build file tree from adapter (files now in RxDB)
   const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
   return { name: workspaceId ?? 'Local', path: workspaceId ?? '/', fileTree: tree };
 }
@@ -29,8 +62,11 @@ export async function openLocalDirectory(workspaceId?: string): Promise<{
  * Restores a previously opened local directory from IndexedDB
  * Used to persist directory access across browser sessions
  * 
+ * NOTE: This only checks permission, does NOT request it (requires user gesture).
+ * If permission check fails, caller should prompt user to grant permission.
+ * 
  * @param workspaceId - Workspace ID used when storing the directory
- * @returns Promise with the directory data or null if not found/failed
+ * @returns Promise with the directory data or null if not found/permission denied
  */
 export async function restoreLocalDirectory(workspaceId: string): Promise<{
   name: string;
@@ -38,8 +74,25 @@ export async function restoreLocalDirectory(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const ok = await getSyncManager().requestPermission(workspaceId);
-    if (!ok) return null;
+    const { getHandle, checkPermission } = await import('@/core/sync/handle-store');
+
+    // Get stored handle
+    const handle = await getHandle(workspaceId);
+    if (!handle) {
+      console.warn('No stored handle for workspace:', workspaceId);
+      return null;
+    }
+
+    // Check permission (don't request - requires user gesture)
+    const hasPermission = await checkPermission(handle, true);
+    if (!hasPermission) {
+      console.warn('Permission not granted for workspace:', workspaceId);
+      return null; // Caller should prompt user to grant permission
+    }
+
+    // Mount workspace and pull files
+    await getSyncManager().mountWorkspace(workspaceId, 'local');
+
     const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
     return { name: workspaceId, path: workspaceId, fileTree: tree };
   } catch (error) {
@@ -51,6 +104,8 @@ export async function restoreLocalDirectory(workspaceId: string): Promise<{
 /**
  * Prompt the user (via a click/gesture) to re-request permission for a stored workspace.
  * Returns the directory data if permission is granted and the tree can be built.
+ * 
+ * MUST be called from a user gesture context.
  */
 export async function promptPermissionAndRestore(workspaceId: string): Promise<{
   name: string;
@@ -58,8 +113,24 @@ export async function promptPermissionAndRestore(workspaceId: string): Promise<{
   fileTree: FileNode[];
 } | null> {
   try {
-    const ok = await getSyncManager().requestPermission(workspaceId);
-    if (!ok) return null;
+    const { getHandle, verifyAndRequestPermission } = await import('@/core/sync/handle-store');
+
+    // Get stored handle
+    const handle = await getHandle(workspaceId);
+    if (!handle) {
+      console.error('No stored handle for workspace:', workspaceId);
+      return null;
+    }
+
+    // Request permission (requires user gesture)
+    const granted = await verifyAndRequestPermission(handle, true);
+    if (!granted) {
+      console.warn('User denied permission for workspace:', workspaceId);
+      return null;
+    }
+
+    // Mount workspace and build tree
+    await getSyncManager().mountWorkspace(workspaceId, 'local');
     const tree = await buildFileTreeFromAdapter(undefined, '', 'local-', WorkspaceType.Local, workspaceId);
     return { name: workspaceId, path: workspaceId, fileTree: tree };
   } catch (error) {

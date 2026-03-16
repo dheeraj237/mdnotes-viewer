@@ -11,6 +11,13 @@
  * here retain all their methods after retrieval.
  */
 
+import {
+  pickDirectory,
+  verifyPermission,
+  hasPermission,
+  isFileSystemAccessSupported,
+} from './directory-picker';
+
 const DB_NAME = 'verve-handles';
 const STORE_NAME = 'handles';
 const DB_VERSION = 1;
@@ -116,3 +123,42 @@ export async function removeHandle(workspaceId: string): Promise<void> {
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Re-export simplified directory picker functions
+// MUST be called from UI components with user gestures
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if File System Access API is supported.
+ * Use this in UI to show/hide local workspace options.
+ */
+export { isFileSystemAccessSupported };
+
+/**
+ * Opens the native directory picker to get a directory handle.
+ * MUST be called from a user gesture (button click, etc.)
+ * 
+ * @returns FileSystemDirectoryHandle if successful, null if user cancelled
+ */
+export { pickDirectory as openDirectoryPicker };
+
+/**
+ * Verify permission is granted, requesting if necessary.
+ * MUST be called from a user gesture.
+ * 
+ * @param handle - Directory handle to verify
+ * @param needWrite - True to verify write permission (default: true)
+ * @returns True if permission is granted
+ */
+export { verifyPermission as verifyAndRequestPermission };
+
+/**
+ * Check if we have permission WITHOUT requesting it.
+ * Safe to call without user gesture.
+ * 
+ * @param handle - Directory handle to check
+ * @param needWrite - True to check write permission (default: true)
+ * @returns True if permission is granted
+ */
+export { hasPermission as checkPermission };

@@ -27,11 +27,6 @@ export class BrowserAdapter implements IAdapter {
     return Promise.resolve();
   }
 
-  // No filesystem permission needed.
-  ensurePermission(): Promise<boolean> {
-    return Promise.resolve(true);
-  }
-
   // All files and folders are included (RxDB manages filtering).
   shouldIncludeFile(_path: string, _name: string, _sizeBytes: number): boolean {
     return true;

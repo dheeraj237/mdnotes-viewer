@@ -353,6 +353,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
       /**
        * Opens a local directory using the File System Access API
+       * UI component should have already obtained handle and stored it.
+       * This just mounts the workspace and refreshes the tree.
        * @param workspaceId - Optional workspace ID for persisting the directory handle
        */
       openLocalDirectory: async (workspaceId?: string) => {
@@ -360,14 +362,13 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           set({ isLoadingLocalFiles: true });
           const { getSyncManager } = await import('@/core/sync/sync-manager');
           try {
-            const granted = await getSyncManager().requestPermission(workspaceId ?? 'local');
-            // Refresh the file tree immediately after a successful pull so callers
-            // always see populated files without needing their own refresh call.
-            if (granted) {
-              await get().refreshFileTree();
-              const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
-              set({ currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });
-            }
+            // Mount the workspace (adapter will use stored handle)
+            await getSyncManager().mountWorkspace(workspaceId ?? 'local', 'local');
+
+            // Refresh the file tree to show loaded files
+            await get().refreshFileTree();
+            const activeWs = useWorkspaceStore.getState().activeWorkspace?.();
+            set({ currentDirectoryName: activeWs?.name ?? null, currentDirectoryPath: '/' });
           } catch (err) {
             console.warn('openLocalDirectory failed, falling back to cache refresh', err);
             await get().refreshFileTree();
@@ -383,22 +384,43 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
       /**
        * Restores a previously opened local directory from storage
+       * NOTE: This only checks permission, does NOT request it (requires user gesture).
+       * If permission check fails, caller should use requestPermissionForWorkspace().
+       * 
        * @param workspaceId - Workspace ID used when the directory was originally opened
        * @returns true if directory was restored successfully, false otherwise
        */
       restoreLocalDirectory: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
-          const { getSyncManager } = await import('@/core/sync/sync-manager');
-          const ok = await getSyncManager().requestPermission(workspaceId);
-          if (!ok) {
+
+          // Import handle-store functions
+          const { getHandle, checkPermission } = await import('@/core/sync/handle-store');
+
+          // Get stored handle
+          const handle = await getHandle(workspaceId);
+          if (!handle) {
+            console.warn('No stored handle for workspace:', workspaceId);
             await get().refreshFileTree();
             return false;
           }
+
+          // Check permission (don't request - requires user gesture)
+          const hasPermission = await checkPermission(handle, true);
+          if (!hasPermission) {
+            console.warn('Permission not granted for workspace:', workspaceId);
+            await get().refreshFileTree();
+            return false; // Caller should prompt user to grant permission
+          }
+
+          // Mount workspace and refresh
+          const { getSyncManager } = await import('@/core/sync/sync-manager');
+          await getSyncManager().mountWorkspace(workspaceId, 'local');
           await get().refreshFileTree();
           return true;
         } catch (error) {
-          console.error('Error restoring directory (cache-only):', error);
+          console.error('Error restoring directory:', error);
+          await get().refreshFileTree();
           return false;
         } finally {
           set({ isLoadingLocalFiles: false });
@@ -408,16 +430,39 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       /**
        * Prompt the user to re-grant permission for a stored local workspace.
        * This must be invoked from a user gesture to avoid SecurityError.
+       * 
+       * @param workspaceId - The workspace ID to request permission for
+       * @returns true if permission granted, false otherwise
        */
       requestPermissionForWorkspace: async (workspaceId: string): Promise<boolean> => {
         try {
           set({ isLoadingLocalFiles: true });
+
+          // Import handle-store functions
+          const { getHandle, verifyAndRequestPermission } = await import('@/core/sync/handle-store');
+
+          // Get stored handle
+          const handle = await getHandle(workspaceId);
+          if (!handle) {
+            console.error('No stored handle for workspace:', workspaceId);
+            return false;
+          }
+
+          // Request permission (requires user gesture)
+          const granted = await verifyAndRequestPermission(handle, true);
+          if (!granted) {
+            console.warn('User denied permission for workspace:', workspaceId);
+            return false;
+          }
+
+          // Mount workspace and refresh
           const { getSyncManager } = await import('@/core/sync/sync-manager');
-          const ok = await getSyncManager().requestPermission(workspaceId);
+          await getSyncManager().mountWorkspace(workspaceId, 'local');
           await get().refreshFileTree();
-          return !!ok;
+
+          return true;
         } catch (error) {
-          console.error('Error requesting permission (cache-only):', error);
+          console.error('Error requesting permission:', error);
           return false;
         } finally {
           set({ isLoadingLocalFiles: false });

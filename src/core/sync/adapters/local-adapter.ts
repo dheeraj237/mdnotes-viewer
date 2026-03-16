@@ -1,35 +1,32 @@
 /**
- * LocalAdapter — simplified v2 adapter for local filesystem workspaces.
+ * LocalAdapter — local filesystem adapter following Google Chrome Labs patterns.
  *
- * Follows the Chrome File System Access API workflow:
- * https://developer.chrome.com/docs/capabilities/web-apis/file-system-access
+ * Based on: https://github.com/GoogleChromeLabs/text-editor
+ * API Reference: https://developer.chrome.com/docs/capabilities/web-apis/file-system-access
  *
  * Implements IAdapter: pull (filesystem → RxDB), push (RxDB → filesystem),
  * ensurePermission (public, call from user-gesture handler), filter contract,
  * and destroy (short-circuits any in-flight pull via _destroyed flag).
  *
- * Permission flow:
- *  1. _verifyPermission() — single helper that calls queryPermission then
- *     requestPermission (matching the Chrome docs pattern exactly).
- *  2. ensureHandle() — checks in-memory handle, then the IDB-persisted handle;
- *     for 'readwrite' mode falls back to window.confirm() before throwing.
- *  3. ensurePermission() — user-gesture entry: checks in-memory → IDB restore →
- *     showDirectoryPicker() as last resort.
+ * Permission flow (matching Chrome Labs text-editor pattern):
+ *  1. verifyPermission() — checks queryPermission, then requestPermission if needed  
+ *  2. getDirectoryHandle() — opens native picker via directory-picker module
+ *  3. ensureHandle() — checks in-memory → IDB-persisted → throws PermissionError
  *
  * Handle persistence is delegated to handle-store.ts (vanilla IndexedDB, no Dexie).
  * Filter rules are loaded from workspace-ignore.json at module load time.
  */
 
 import type { IAdapter } from '../adapter';
-import { getHandle, setHandle, removeHandle } from '../handle-store';
+import { getHandle, setHandle, removeHandle, checkPermission } from '../handle-store';
+import { isFileSystemAccessSupported } from '../directory-picker';
 import { upsertCachedFile } from '@/core/cache/file-manager';
 import { FileType, WorkspaceType } from '@/core/cache/types';
 import ignoreConfig from '../workspace-ignore.json';
 
 /**
  * Thrown by ensureHandle() when no granted filesystem permission exists.
- * SyncManager catches this and sets permissionNeeded:true on the workspace store
- * so the UI can render a "Grant Access" button that calls ensurePermission().
+ * UI components should catch this and prompt the user to grant permissions.
  */
 export class PermissionError extends Error {
   constructor(message: string) {
@@ -46,6 +43,14 @@ export class LocalAdapter implements IAdapter {
 
   private _dirHandle: FileSystemDirectoryHandle | null = null;
   private _destroyed = false;
+
+  /**
+   * Check if the File System Access API is supported in this browser.
+   * Based on Google Chrome Labs text-editor pattern.
+   */
+  static get isSupported(): boolean {
+    return isFileSystemAccessSupported();
+  }
 
   constructor(workspaceId: string) {
     this.workspaceId = workspaceId;
@@ -95,8 +100,8 @@ export class LocalAdapter implements IAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Walks the directory tree and upserts every included file into RxDB
-   * with dirty:false, isSynced:true.
+   * Reads all files from the directory into RxDB cache.
+   * Follows Google Chrome Labs pattern for file reading.
    *
    * @param signal - Checked before each directory level to short-circuit stale
    *   pulls on rapid workspace switches.
@@ -107,64 +112,35 @@ export class LocalAdapter implements IAdapter {
   }
 
   /**
-   * Writes content to the workspace-relative path on the local filesystem,
-   * creating intermediate directories as needed.
+   * Writes content to disk following Google Chrome Labs writeFile pattern.
+   * Creates intermediate directories as needed.
+   *
+   * @param path - Relative path within the workspace
+   * @param content - File content to write
+   * @throws {PermissionError} if write permission not granted
    */
   async push(path: string, content: string): Promise<void> {
     const rootHandle = await this.ensureHandle('readwrite');
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop()!;
 
+    // Navigate to the target directory, creating as needed
     let dir: FileSystemDirectoryHandle = rootHandle;
     for (const seg of segments) {
       dir = await dir.getDirectoryHandle(seg, { create: true });
     }
 
+    // Get file handle and write using createWritable pattern (Chrome 83+)
     const fileHandle = await dir.getFileHandle(fileName, { create: true });
+
+    // Create a FileSystemWritableFileStream to write to
     const writable = await fileHandle.createWritable();
     try {
+      // Write the contents of the file to the stream
       await writable.write(content);
     } finally {
+      // Close the file and write the contents to disk
       await writable.close();
-    }
-  }
-
-  /**
-   * Ensures readwrite permission is granted for the workspace directory,
-   * restoring from IndexedDB when possible, otherwise opening the native
-   * directory picker.
-   *
-   * MUST be called from a direct user-gesture handler (e.g. a button click)
-   * because requestPermission() / showDirectoryPicker() require a live user
-   * activation in all supporting browsers.
-   *
-   * @returns true if readwrite permission was obtained, false if the user cancelled.
-   */
-  async ensurePermission(): Promise<boolean> {
-    try {
-      // 1. Try in-memory cached handle first.
-      if (this._dirHandle && (await this._verifyPermission(this._dirHandle, 'readwrite'))) {
-        return true;
-      }
-
-      // 2. Try the IDB-persisted handle — avoids triggering a picker on reload.
-      const persisted = await getHandle(this.workspaceId);
-      if (persisted && (await this._verifyPermission(persisted, 'readwrite'))) {
-        this._dirHandle = persisted;
-        return true;
-      }
-
-      // 3. No usable handle — open the native directory picker.
-      if (!('showDirectoryPicker' in window)) return false;
-      const picked: FileSystemDirectoryHandle = await (window as any).showDirectoryPicker({
-        mode: 'readwrite',
-      });
-      this._dirHandle = picked;
-      await setHandle(this.workspaceId, picked);
-      return true;
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return false;
-      throw err;
     }
   }
 
@@ -182,79 +158,83 @@ export class LocalAdapter implements IAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Verifies (and if needed requests) permission for a handle — the canonical
-   * Chrome File System Access API helper pattern.
-   * https://developer.chrome.com/docs/capabilities/web-apis/file-system-access
-   *
-   * Calls queryPermission first; only calls requestPermission when the status
-   * is not already 'granted', matching the MDN / Chrome docs approach of not
-   * guarding on a specific 'prompt' value (future statuses won't silently skip).
-   *
-   * @returns true if the handle has (or was just granted) the requested permission.
-   */
-  private async _verifyPermission(
-    handle: FileSystemDirectoryHandle,
-    mode: PermissionMode,
-  ): Promise<boolean> {
-    const opts = { mode };
-    if ((await (handle as any).queryPermission(opts)) === 'granted') return true;
-    // requestPermission() must be called in a user-activation context;
-    // it is a no-op in background frames and will resolve to 'denied'.
-    if ((await (handle as any).requestPermission(opts)) === 'granted') return true;
-    return false;
-  }
-
-  /**
    * Returns a granted directory handle for the requested access mode.
    *
-   * Tries the in-memory cached handle first, then the IndexedDB-persisted handle.
-   * For 'readwrite' mode: if neither source yields a granted handle, shows a
-   * native window.confirm() so the user can approve before a final retry. This
-   * covers the case where the tab regained focus without a direct button click.
+   * Tries in-memory cached handle first, then IndexedDB-persisted handle.
+   * Only checks permission (does NOT request) - throws PermissionError if not granted.
    *
-   * @throws {PermissionError} when no granted handle can be obtained.
+   * NOTE: UI components are responsible for requesting permissions via user gestures.
+   * This method only validates that permissions exist.
+   *
+   * @throws {PermissionError} when no granted handle can be obtained
    */
   private async ensureHandle(mode: PermissionMode): Promise<FileSystemDirectoryHandle> {
-    // In-memory handle.
-    if (this._dirHandle && (await this._verifyPermission(this._dirHandle, mode))) {
+    const needsWrite = mode === 'readwrite';
+
+    // Try in-memory handle
+    if (this._dirHandle && (await checkPermission(this._dirHandle, needsWrite))) {
       return this._dirHandle;
     }
 
-    // IDB-persisted handle.
+    // Try IDB-persisted handle
     const persisted = await getHandle(this.workspaceId);
-    if (persisted && (await this._verifyPermission(persisted, mode))) {
-      this._dirHandle = persisted;
-      return persisted;
-    }
-
-    // For write access: give the user one confirm-based chance to approve
-    // before failing. This surfaces a clear message without a custom toast.
-    if (mode === 'readwrite' && typeof window !== 'undefined') {
-      const allow = window.confirm(
-        'Verve needs write access to save changes to your local workspace.\n\nClick OK to grant permission.',
-      );
-      if (allow) {
-        // Re-attempt with the persisted handle after the confirm gesture.
-        const retryHandle = persisted ?? this._dirHandle;
-        if (retryHandle && (await this._verifyPermission(retryHandle, mode))) {
-          this._dirHandle = retryHandle;
-          return retryHandle;
-        }
+    if (persisted) {
+      if (await checkPermission(persisted, needsWrite)) {
+        this._dirHandle = persisted;
+        return persisted;
       }
+      // Handle exists but permission not granted
+      throw new PermissionError(
+        `Permission not granted for workspace "${this.workspaceId}". ` +
+        'User must grant permission from UI.'
+      );
     }
 
+    // No handle stored
     throw new PermissionError(
-      `No granted ${mode} permission for workspace "${this.workspaceId}". ` +
-        'Call adapter.ensurePermission() during a user gesture.',
+      `No directory handle found for workspace "${this.workspaceId}". ` +
+      'User must select a directory from UI.'
     );
   }
 
   /**
-   * Recurses the directory tree, upserting each included file into RxDB.
+   * Reads a file's content following Google Chrome Labs pattern.
+   * Uses file.text() API for modern browsers.
    *
-   * @param dirHandle - The directory to walk.
-   * @param prefix    - Accumulated relative path prefix for nested entries.
-   * @param signal    - AbortSignal to short-circuit stale traversals.
+   * @param file - File object from FileSystemFileHandle.getFile()
+   * @returns Promise resolving to file content as string
+   */
+  private async readFile(file: File): Promise<string> {
+    // Use the modern .text() reader if available (it is in all modern browsers)
+    if (file.text) {
+      return file.text();
+    }
+    // Fallback for older browsers (unlikely to be needed)
+    return this._readFileLegacy(file);
+  }
+
+  /**
+   * Legacy file reading using FileReader (fallback for older browsers).
+   * Based on Google Chrome Labs text-editor pattern.
+   */
+  private _readFileLegacy(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.addEventListener('loadend', (e) => {
+        const text = (e.target as FileReader).result as string;
+        resolve(text);
+      });
+      reader.readAsText(file);
+    });
+  }
+
+  /**
+   * Recursively walks the directory tree, reading and upserting files into RxDB.
+   * Respects filter rules for folders and files.
+   *
+   * @param dirHandle - The directory to walk
+   * @param prefix - Accumulated relative path prefix for nested entries
+   * @param signal - AbortSignal to short-circuit stale traversals
    */
   private async _walkDir(
     dirHandle: FileSystemDirectoryHandle,
@@ -267,18 +247,26 @@ export class LocalAdapter implements IAdapter {
       if (signal?.aborted || this._destroyed) return;
 
       if (entry.kind === 'directory') {
+        // Check folder filter rules
         if (!this.shouldIncludeFolder(name)) continue;
         const childPrefix = prefix ? `${prefix}/${name}` : name;
         await this._walkDir(entry as FileSystemDirectoryHandle, childPrefix, signal);
       } else {
         const relPath = prefix ? `${prefix}/${name}` : name;
-        const file: File = await (entry as FileSystemFileHandle).getFile();
+
+        // Get file from handle
+        const fileHandle = entry as FileSystemFileHandle;
+        const file: File = await fileHandle.getFile();
+
+        // Check file filter rules
         if (!this.shouldIncludeFile(relPath, name, file.size)) continue;
 
         if (signal?.aborted || this._destroyed) return;
 
-        const content = await file.text();
+        // Read file content using Google Chrome Labs pattern
+        const content = await this.readFile(file);
 
+        // Upsert into RxDB cache with dirty:false, isSynced:true
         await upsertCachedFile({
           id: this._fileId(relPath),
           path: relPath,
